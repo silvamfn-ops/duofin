@@ -1,0 +1,12 @@
+O NOSSO ORÇAMENTO PLUS
+
+Inclui resumo mensal, movimentos e histórico, calendário, orçamento por categoria com alertas, separação por adulto/conta conjunta, gráfico de poupança, previsão para a data-limite, objetivo editável, exportação/importação e suporte PWA offline.
+
+Instalação:
+1. Publique index.html, manifest.webmanifest e sw.js num alojamento HTTPS.
+2. Abra o endereço no smartphone com internet uma primeira vez.
+3. Escolha “Adicionar ao ecrã principal” (iPhone) ou “Instalar aplicação” (Android).
+4. Depois da primeira abertura, os ficheiros ficam em cache para uso offline.
+5. Os dados são guardados localmente no navegador/dispositivo. Não existe sincronização entre dispositivos. Exporte cópias de segurança regularmente.
+
+Valores iniciais: rendimento 3.200 €/mês, objetivo 6.000 €, prazo 31/08/2027. Categorias são valores de exemplo editáveis.
