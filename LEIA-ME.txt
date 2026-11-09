@@ -1,12 +1,69 @@
-O NOSSO ORÇAMENTO PLUS
+O NOSSO ORÇAMENTO PLUS — VERSÃO PARTILHADA
+============================================
 
-Inclui resumo mensal, movimentos e histórico, calendário, orçamento por categoria com alertas, separação por adulto/conta conjunta, gráfico de poupança, previsão para a data-limite, objetivo editável, exportação/importação e suporte PWA offline.
+O QUE ESTA VERSÃO INCLUI
+- Mantém o resumo, movimentos, calendário, limites por categoria, divisão por adulto, objetivo de 6.000 € e cópias JSON.
+- PWA corrigida: manifesto com ícones PNG 192×192 e 512×512 (inclui variantes maskable), e service worker com cache offline.
+- Sincronização opcional entre dois telemóveis através de Supabase Auth + PostgreSQL com Row Level Security (RLS).
+- Convite de utilização única, válido 48 horas.
+- Controlo de revisão para detetar edições simultâneas. Não substitui silenciosamente dados em conflito.
+- Sem chaves secretas no JavaScript. Só é introduzida no browser a chave pública (anon/publishable).
 
-Instalação:
-1. Publique index.html, manifest.webmanifest e sw.js num alojamento HTTPS.
-2. Abra o endereço no smartphone com internet uma primeira vez.
-3. Escolha “Adicionar ao ecrã principal” (iPhone) ou “Instalar aplicação” (Android).
-4. Depois da primeira abertura, os ficheiros ficam em cache para uso offline.
-5. Os dados são guardados localmente no navegador/dispositivo. Não existe sincronização entre dispositivos. Exporte cópias de segurança regularmente.
+IMPORTANTE — O QUE AINDA É NECESSÁRIO
+A sincronização NÃO fica operacional só por publicar o ZIP. O casal tem de criar um projeto Supabase, executar o SQL abaixo e introduzir o URL e a chave pública do projeto nos dois telemóveis. O alojamento do site e a base de dados Supabase são serviços separados.
 
-Valores iniciais: rendimento 3.200 €/mês, objetivo 6.000 €, prazo 31/08/2027. Categorias são valores de exemplo editáveis.
+PARTE A — PUBLICAR O SITE COM HTTPS
+1. Antes de atualizar a versão já em uso, exporta uma cópia JSON em Dados > Exportar cópia em cada telemóvel que tenha movimentos. Depois extrai todo o ZIP, preservando as pastas e os nomes dos ficheiros.
+2. Publica o conteúdo da pasta num alojamento estático com HTTPS (por exemplo, Cloudflare Pages, Netlify ou GitHub Pages).
+3. A página index.html, manifest.webmanifest, sw.js e a pasta icons têm de ficar no mesmo diretório publicado. A pasta supabase contém apenas o SQL e não precisa de ser publicada.
+4. Abre o endereço público, confirma que começa por https:// e atualiza a página.
+5. No Android, abre o endereço no Google Chrome (não na aplicação Google nem num navegador incorporado). Menu ⋮ > “Instalar aplicação” ou “Adicionar ao ecrã principal”.
+6. Se a versão antiga continuar em cache: primeiro exporta uma cópia JSON. Só depois, se necessário, vai a Chrome > Definições > Definições de sites > [endereço do site] > Armazenamento > Limpar dados; isto pode apagar os dados locais. Fecha o separador, abre novamente o endereço HTTPS e, se os dados não aparecerem, usa Dados > Importar cópia para repor o ficheiro JSON.
+
+PARTE B — CRIAR O SERVIÇO DE SINCRONIZAÇÃO
+1. Cria um projeto em https://supabase.com/ e guarda o acesso à conta.
+2. No painel do projeto, abre SQL Editor > New query.
+3. Abre o ficheiro supabase/setup.sql deste pacote, copia TODO o conteúdo, cola no SQL Editor e executa.
+4. Em Project Settings > API (ou equivalente), copia o Project URL e a chave pública “anon” ou “publishable”.
+   NUNCA uses a chave “service_role” ou qualquer segredo privado no site.
+5. Em Authentication > Providers > Email, mantém a autenticação por email ativa. Se a confirmação de email estiver ativa, cada pessoa deve confirmar a mensagem recebida antes de iniciar sessão.
+6. Em Authentication > URL Configuration, adiciona o endereço HTTPS publicado do site aos Redirect URLs permitidos, se o painel o exigir.
+
+PARTE C — LIGAR OS DOIS TELEMÓVEIS
+No primeiro telemóvel:
+1. Abre o site instalado ou no Chrome e entra em Dados > Sincronização.
+2. Introduz o mesmo Project URL e a chave pública. Toca em “Guardar configuração”.
+3. Cria uma conta com o email e palavra-passe do primeiro adulto e confirma o email se for pedido. Depois inicia sessão.
+4. Toca em “Criar orçamento partilhado”. A versão local deste telemóvel é enviada como primeira versão partilhada.
+5. Toca em “Gerar convite para o outro adulto” e envia o código ao segundo adulto por um canal privado. O código expira em 48 horas e só pode ser usado uma vez.
+
+No segundo telemóvel:
+1. Abre exatamente o mesmo endereço HTTPS no Google Chrome e instala a aplicação.
+2. Em Dados > Sincronização, introduz o mesmo Project URL e a mesma chave pública.
+3. Cria uma conta própria para o segundo adulto, confirma o email se necessário e inicia sessão.
+4. Cola o código recebido em “Código de convite” e toca em “Associar a este orçamento”.
+5. A aplicação carrega os dados partilhados. Se este telemóvel já tiver dados próprios, exporta primeiro uma cópia; a aplicação avisa antes de substituir dados locais.
+
+COMO FUNCIONA A SINCRONIZAÇÃO
+- As alterações são guardadas imediatamente no telemóvel e enviadas automaticamente quando há internet.
+- Enquanto a aplicação está aberta, verifica atualizações aproximadamente a cada 30 segundos; também verifica quando regressa ao primeiro plano.
+- Se ambos editarem antes de sincronizar, a aplicação deteta a revisão divergente e não apaga nenhuma versão. “Carregar versão partilhada” substitui os dados locais; “Enviar versão deste telemóvel” substitui a versão partilhada, após confirmação. Exportem uma cópia antes de resolver conflitos.
+- Offline: podem continuar a registar movimentos localmente. A sincronização acontece quando a aplicação volta a estar online e aberta.
+- Não há sincronização em segundo plano garantida, notificações push, nem edição simultânea em tempo real. Não feches a aplicação à espera de envio imediato; confirma o estado no separador Dados.
+- Cada conta só consegue ler os orçamentos de que é membro, devido às políticas RLS. O código de convite é temporário e de utilização única.
+
+RESOLUÇÃO DE PROBLEMAS NO CHROME ANDROID
+- Confirma HTTPS (certificado válido), não http://.
+- Confirma que manifest.webmanifest, sw.js e icons/icon-192.png e icons/icon-512.png abrem sem erro no mesmo domínio/caminho.
+- Se o site estiver numa subpasta, publica a pasta inteira no mesmo caminho; não movas apenas o index.html.
+- Atualiza a página. Se for necessário limpar os dados do site, exporta primeiro a cópia JSON: essa limpeza pode apagar os movimentos guardados localmente.
+- A opção “Instalar aplicação” pode demorar alguns segundos depois da primeira visita e do registo do service worker. Se não surgir o botão, usa o menu ⋮ do Chrome.
+
+PRIVACIDADE E CÓPIAS DE SEGURANÇA
+- O armazenamento local é separado em cada navegador/telemóvel; a sincronização é a forma de partilhar dados.
+- Exporta regularmente uma cópia JSON em Dados > Cópias de segurança.
+- Não partilhes a palavra-passe da conta nem a chave service_role. A chave anon/publishable é pública por desenho; a segurança depende da autenticação e das políticas RLS do SQL incluído.
+- O projeto Supabase é gerido pelo casal. Custos, limites e condições do fornecedor podem mudar; consulta o painel do serviço.
+
+CONFIGURAÇÃO INICIAL DO ORÇAMENTO
+Rendimento predefinido: 3.200 €/mês. Objetivo: 6.000 € até 31/08/2027. Os limites por categoria são exemplos editáveis, não uma recomendação financeira. Ajustem-nos aos vossos encargos reais.
