@@ -67,3 +67,17 @@ PRIVACIDADE E CÓPIAS DE SEGURANÇA
 
 CONFIGURAÇÃO INICIAL DO ORÇAMENTO
 Rendimento predefinido: 3.200 €/mês. Objetivo: 6.000 € até 31/08/2027. Os limites por categoria são exemplos editáveis, não uma recomendação financeira. Ajustem-nos aos vossos encargos reais.
+
+
+GESTÃO DE CATEGORIAS — VERSÃO 3
+--------------------------------
+No separador «Orçamento», encontra a secção «Gerir categorias de despesa».
+
+• Para criar uma categoria, indique o nome e o limite mensal e escolha «Adicionar categoria».
+• Para editar, altere o nome e/ou o limite na linha correspondente e escolha «Guardar alterações».
+• Ao mudar o nome, os movimentos antigos associados são atualizados automaticamente.
+• Para eliminar uma categoria sem movimentos, confirme a eliminação.
+• Se existirem movimentos associados, a aplicação pede o nome de uma categoria de destino e confirma a reclassificação. O histórico não é apagado.
+• Não são permitidos nomes vazios ou duplicados, nem a eliminação da última categoria.
+
+As alterações são guardadas juntamente com os restantes dados do orçamento. Quando a sincronização Supabase estiver configurada e a sessão estiver ligada, as alterações seguem o mecanismo de sincronização já incluído.

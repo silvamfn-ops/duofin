@@ -2,7 +2,7 @@
 <link rel="manifest" href="./manifest.webmanifest"><link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png"><link rel="apple-touch-icon" href="./icons/icon-192.png"><title>O Nosso Orçamento Plus</title>
 <style>
 :root{--g:#176b55;--p:#e6f3ed;--bg:#f3f7f4;--ink:#17231f;--muted:#68766f;--line:#e2eae5;--red:#b54747}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,sans-serif}header{background:var(--g);color:white;padding:22px 18px;border-radius:0 0 22px 22px}.wrap{max-width:850px;margin:auto;padding:0 14px}h1{margin:0;font-size:24px}header p{margin:4px 0 0;color:#d9eee6}nav{display:flex;gap:7px;overflow:auto;padding:14px 0}nav button{white-space:nowrap;border:1px solid var(--line);background:white;border-radius:99px;padding:9px 13px;color:var(--muted);font-weight:650}nav button.active,.primary{background:var(--g);color:white}.view{display:none;padding-bottom:35px}.view.active{display:block}.card,.stat{background:white;border:1px solid var(--line);border-radius:16px;padding:16px;margin:10px 0}.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}.stat{margin:0}.stat span{display:block;color:var(--muted);font-size:12px}.stat b{font-size:20px}h2{font-size:17px;margin:0 0 12px}.row{display:flex;align-items:center;justify-content:space-between;gap:10px}.small{font-size:12px;color:var(--muted)}label{display:block;font-weight:650;font-size:13px;margin:10px 0 5px}input,select{width:100%;min-height:42px;padding:10px;border:1px solid #ccd9d1;border-radius:10px;background:white;font:inherit}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}button{cursor:pointer}.primary,.secondary,.danger{border:0;border-radius:10px;padding:10px 14px;font:inherit;font-weight:700}.secondary{background:white;color:var(--g);border:1px solid var(--g)}.danger{background:#fff0ee;color:var(--red);padding:6px 10px}.actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}.progress{height:12px;background:#e8eeea;border-radius:99px;overflow:hidden;margin:9px 0}.progress i{display:block;height:100%;background:var(--g)}.pill{background:var(--p);color:var(--g);border-radius:99px;padding:4px 8px;font-size:12px}.alert{padding:10px;border-radius:10px;background:#fff7e6;color:#74521c;margin:7px 0;font-size:13px}.alert.red{background:#fff0ee;color:#923c38}.alert.good{background:var(--p);color:var(--g)}.item{border-top:1px solid var(--line);padding:10px 0}.item:first-child{border:0}.amount{font-weight:750;white-space:nowrap}.plus{color:var(--g)}.minus{color:var(--red)}.barline{display:flex;align-items:center;gap:7px;margin:9px 0;font-size:12px}.bar{height:8px;background:#e9efeb;border-radius:99px;flex:1;overflow:hidden}.bar i{display:block;height:100%;background:#4b9b7b}.calendar{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}.day,.dayname{text-align:center;padding:7px 0;font-size:12px}.day{background:#f5f8f6;border:1px solid transparent;border-radius:8px;min-height:43px}.day.selected{background:var(--p);border-color:var(--g)}.day em{display:block;color:var(--red);font-size:9px;font-style:normal}canvas{width:100%;height:180px}.empty{text-align:center;color:var(--muted);padding:18px}footer{text-align:center;color:var(--muted);font-size:12px;padding:20px}@media(min-width:620px){.stats{grid-template-columns:repeat(4,1fr)}.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}}
-</style></head><body><header><div class="wrap"><h1>O Nosso Orçamento</h1><p>Organizaçao do orçamento familiar por objectivos.</p></div></header><div class="wrap">
+</style></head><body><header><div class="wrap"><h1>O Nosso Orçamento</h1><p>Organizar hoje para chegar aos 6.000 € em agosto de 2027.</p></div></header><div class="wrap">
 <nav><button class="active" data-tab="resumo">Resumo</button><button data-tab="movimentos">Movimentos</button><button data-tab="calendario">Calendário</button><button data-tab="orcamento">Orçamento</button><button data-tab="objetivo">Objetivo</button><button data-tab="dados">Dados</button></nav>
 <section id="resumo" class="view active"><div class="row"><b id="monthTitle"></b><input id="month" type="month" style="max-width:160px"></div><div class="stats" style="margin-top:10px"><div class="stat"><span>Rendimento</span><b id="inc"></b></div><div class="stat"><span>Despesas</span><b id="exp"></b></div><div class="stat"><span>Saldo</span><b id="bal"></b></div><div class="stat"><span>Poupança do mês</span><b id="savm"></b></div></div><div id="alerts"></div>
 <div class="card"><div class="row"><h2>Objetivo de poupança</h2><span class="pill" id="pct"></span></div><b id="goalSum"></b><div class="progress"><i id="goalBar"></i></div><div class="row small"><span id="left"></span><span id="need"></span></div></div>
@@ -10,7 +10,19 @@
 <div class="card"><h2>Evolução da poupança</h2><canvas id="chart" width="700" height="220"></canvas><p class="small">Acumulado com base nas transferências registadas.</p></div><div class="card"><h2>Previsão até à data-limite</h2><b id="forecast"></b><p class="small" id="forecastText"></p></div><div class="card"><h2>Movimentos recentes</h2><div id="recent"></div></div></section>
 <section id="movimentos" class="view"><div class="card"><h2>Adicionar movimento</h2><form id="txForm"><div class="grid"><div><label>Data</label><input id="date" type="date" required></div><div><label>Tipo</label><select id="type"><option value="expense">Despesa</option><option value="income">Rendimento</option><option value="saving">Poupança transferida</option></select></div></div><label>Descrição</label><input id="desc" required><div class="grid"><div><label>Valor (€)</label><input id="amount" type="number" min=".01" step=".01" required></div><div><label>Categoria</label><select id="category"></select></div></div><label>Quem pagou</label><select id="person"><option>Adulto 1</option><option>Adulto 2</option><option>Conta conjunta</option></select><div class="actions"><button class="primary">Guardar movimento</button></div></form></div><div class="card"><div class="row"><h2>Histórico</h2><select id="filter" style="max-width:140px"><option value="all">Todos</option><option value="expense">Despesas</option><option value="income">Rendimentos</option><option value="saving">Poupança</option></select></div><div id="transactions"></div></div></section>
 <section id="calendario" class="view"><div class="card"><div class="row"><button class="secondary" id="prev">‹</button><h2 id="calTitle"></h2><button class="secondary" id="next">›</button></div><div id="calendar" class="calendar"></div></div><div class="card"><h2 id="dayTitle">Movimentos do dia</h2><div id="dayItems"></div></div></section>
-<section id="orcamento" class="view"><div class="card"><h2>Limites por categoria</h2><p class="small">Avisos aos 85% e quando ultrapassar o limite.</p><form id="budgetForm"><div id="budgetFields"></div><div class="row"><b>Total planeado</b><b id="budgetTotal"></b></div><div class="actions"><button class="primary">Guardar limites</button></div></form></div><div class="card"><h2>Rendimento familiar</h2><label>Rendimento líquido mensal (€)</label><input id="incomePlan" type="number"><div class="actions"><button class="secondary" id="saveIncome">Guardar</button></div></div><div class="card"><h2>Nomes dos adultos</h2><div class="grid"><div><label>Adulto 1</label><input id="adult1"></div><div><label>Adulto 2</label><input id="adult2"></div></div><div class="actions"><button class="secondary" id="savePeople">Guardar nomes</button></div></div></section>
+<section id="orcamento" class="view"><div class="card"><h2>Limites por categoria</h2><p class="small">Avisos aos 85% e quando ultrapassar o limite.</p><form id="budgetForm"><div id="budgetFields"></div><div class="row"><b>Total planeado</b><b id="budgetTotal"></b></div><div class="actions"><button class="primary">Guardar limites</button></div></form>
+<div class="divider" style="height:1px;background:var(--line);margin:18px 0"></div>
+<h2>Gerir categorias de despesa</h2>
+<p class="small">Crie categorias, altere nomes e limites ou elimine categorias. Os movimentos existentes são preservados.</p>
+<div id="categoryManager"></div>
+<form id="newCategoryForm">
+  <div class="grid">
+    <div><label for="newCategoryName">Nova categoria</label><input id="newCategoryName" maxlength="50" placeholder="Ex.: Animais de estimação" required></div>
+    <div><label for="newCategoryBudget">Limite mensal (€)</label><input id="newCategoryBudget" type="number" min="0" step=".01" value="0" required></div>
+  </div>
+  <div class="actions"><button class="secondary" type="submit">Adicionar categoria</button></div>
+</form>
+</div><div class="card"><h2>Rendimento familiar</h2><label>Rendimento líquido mensal (€)</label><input id="incomePlan" type="number"><div class="actions"><button class="secondary" id="saveIncome">Guardar</button></div></div><div class="card"><h2>Nomes dos adultos</h2><div class="grid"><div><label>Adulto 1</label><input id="adult1"></div><div><label>Adulto 2</label><input id="adult2"></div></div><div class="actions"><button class="secondary" id="savePeople">Guardar nomes</button></div></div></section>
 <section id="objetivo" class="view"><div class="card"><h2>Configurar objetivo</h2><label>Montante (€)</label><input id="target" type="number"><div class="grid"><div><label>Início do plano</label><input id="start" type="date"></div><div><label>Data-limite</label><input id="deadline" type="date"></div></div><div class="actions"><button class="primary" id="saveGoal">Guardar objetivo</button></div></div><div class="card"><h2>Plano recomendado</h2><p id="plan"></p><div class="alert good">Só contam transferências efetivas registadas como “Poupança transferida”.</div></div></section>
 <section id="dados" class="view"><div class="card"><h2>Instalar no telemóvel</h2><p class="small">No Android, abre esta página no Google Chrome, toca no menu ⋮ e escolhe “Instalar aplicação” ou “Adicionar ao ecrã principal”.</p><button class="primary" id="installApp" hidden>Instalar aplicação</button><p id="installHint" class="small">A instalação requer HTTPS e que o Chrome reconheça o manifesto e o service worker.</p></div>
 <div class="card"><h2>Sincronização entre os dois telemóveis</h2><p class="small">A sincronização usa uma conta de cada pessoa e uma base de dados privada partilhada. Os dados continuam guardados neste telemóvel e são enviados apenas quando existe ligação à internet.</p>
@@ -48,6 +60,13 @@ $('persons').innerHTML=[...db.settings.people,'Conta conjunta'].map(p=>`<div cla
 let recent=[...db.transactions].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5);$('recent').innerHTML=recent.length?recent.map(line).join(''):'<div class="empty">Ainda sem movimentos.</div>';
 let f=$('filter').value,list=[...db.transactions].filter(t=>f==='all'||t.type===f).sort((a,b)=>b.date.localeCompare(a.date));$('transactions').innerHTML=list.length?list.map(line).join(''):'<div class="empty">Sem movimentos.</div>';
 $('category').innerHTML=db.settings.categories.map(c=>`<option>${esc(c.name)}</option>`).join('');$('incomePlan').value=db.settings.income;$('target').value=db.settings.target;$('start').value=db.settings.start;$('deadline').value=db.settings.deadline;$('adult1').value=db.settings.people[0];$('adult2').value=db.settings.people[1];$('budgetFields').innerHTML=db.settings.categories.map((c,i)=>`<div class="grid"><div><label>${esc(c.name)}</label></div><div><input data-budget="${i}" type="number" min="0" step=".01" value="${c.budget}"></div></div>`).join('');updateBudget();
+$('categoryManager').innerHTML=db.settings.categories.map((c,i)=>`<div class="item" data-category-row="${i}">
+  <div class="grid">
+    <div><label>Nome da categoria</label><input data-cat-name="${i}" maxlength="50" value="${esc(c.name)}"></div>
+    <div><label>Limite mensal (€)</label><input data-cat-budget="${i}" type="number" min="0" step=".01" value="${Number(c.budget)||0}"></div>
+  </div>
+  <div class="actions"><button class="secondary" type="button" data-cat-save="${i}">Guardar alterações</button><button class="danger" type="button" data-cat-delete="${i}">Eliminar</button></div>
+</div>`).join('')||'<div class="empty">Ainda não existem categorias.</div>';
 let elapsed=Math.max(1,(now.getFullYear()-new Date(db.settings.start+'T12:00:00').getFullYear())*12+now.getMonth()-new Date(db.settings.start+'T12:00:00').getMonth()+1),forecast=totalSaved+(totalSaved/elapsed)*Math.max(0,months()-1);$('forecast').textContent=eur(forecast);$('forecastText').textContent=forecast>=db.settings.target?'Ao ritmo médio atual, estão no caminho certo.':'Poderão ficar aquém; procurem poupar '+eur(need)+' por mês.';$('plan').textContent=`Faltam ${eur(left)}. A contribuição média necessária é ${eur(need)} por mês. Previsão ao ritmo atual: ${eur(forecast)}.`;drawChart();drawCalendar()}
 function updateBudget(){$('budgetTotal').textContent=eur([...document.querySelectorAll('[data-budget]')].reduce((s,x)=>s+(+x.value||0),0))}
 function drawChart(){let c=$('chart'),x=c.getContext('2d'),w=c.width,h=c.height;x.clearRect(0,0,w,h);let d=new Date(db.settings.start+'T12:00:00'),end=new Date(db.settings.deadline+'T12:00:00'),vals=[],v=0;for(;d<=end;d.setMonth(d.getMonth()+1)){v+=sum(mTx(iso(d).slice(0,7)).filter(t=>t.type==='saving'));vals.push(v)}let max=Math.max(db.settings.target,...vals,1)*1.1;x.strokeStyle='#e2eae5';for(let i=0;i<5;i++){let y=10+(h-35)*i/4;x.beginPath();x.moveTo(40,y);x.lineTo(w-8,y);x.stroke()}x.strokeStyle='#176b55';x.lineWidth=4;x.beginPath();vals.forEach((v,i)=>{let px=40+(w-50)*i/Math.max(1,vals.length-1),py=h-24-(h-42)*v/max;i?x.lineTo(px,py):x.moveTo(px,py)});x.stroke()}
@@ -57,6 +76,54 @@ document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.query
 $('month').value=cur;$('month').onchange=render;$('date').value=iso(now);
 $('txForm').onsubmit=e=>{e.preventDefault();let a=+$('amount').value;if(a<=0)return;let t=$('type').value;db.transactions.push({id:Date.now(),date:$('date').value,type:t,description:$('desc').value.trim(),amount:a,category:t==='expense'?$('category').value:t==='saving'?'Poupança':'Rendimento',person:$('person').value});e.target.reset();$('date').value=iso(now);persist()};
 $('filter').onchange=render;document.addEventListener('click',e=>{let b=e.target.closest('[data-del]');if(b&&confirm('Apagar este movimento?')){db.transactions=db.transactions.filter(t=>t.id!==+b.dataset.del);persist()}let d=e.target.closest('[data-day]');if(d)showDay(d.dataset.day)});
+
+function validCategoryName(name, exceptIndex=-1){
+  const n=String(name||'').trim();
+  return n.length>0 && !db.settings.categories.some((c,i)=>i!==exceptIndex&&String(c.name).trim().toLocaleLowerCase('pt-PT')===n.toLocaleLowerCase('pt-PT'));
+}
+$('newCategoryForm').onsubmit=e=>{
+  e.preventDefault();
+  const name=$('newCategoryName').value.trim(), budget=+$('newCategoryBudget').value;
+  if(!validCategoryName(name)){alert('Indique um nome válido e diferente das categorias existentes.');return;}
+  if(!Number.isFinite(budget)||budget<0){alert('Indique um limite mensal válido.');return;}
+  db.settings.categories.push({name,budget});
+  $('newCategoryForm').reset();$('newCategoryBudget').value='0';
+  persist();alert('Categoria adicionada.');
+};
+$('categoryManager').addEventListener('click',e=>{
+  const save=e.target.closest('[data-cat-save]');
+  const del=e.target.closest('[data-cat-delete]');
+  if(save){
+    const i=Number(save.dataset.catSave), row=document.querySelector(`[data-category-row="${i}"]`);
+    if(!db.settings.categories[i]||!row)return;
+    const name=row.querySelector('[data-cat-name]').value.trim(), budget=+row.querySelector('[data-cat-budget]').value;
+    if(!validCategoryName(name,i)){alert('O nome não pode estar vazio nem repetir outra categoria.');return;}
+    if(!Number.isFinite(budget)||budget<0){alert('Indique um limite mensal válido.');return;}
+    const previous=db.settings.categories[i].name;
+    db.settings.categories[i]={name,budget};
+    if(previous!==name)db.transactions.forEach(t=>{if(t.category===previous)t.category=name;});
+    persist();alert('Categoria atualizada. Os movimentos associados foram preservados.');
+  }
+  if(del){
+    const i=Number(del.dataset.catDelete), cat=db.settings.categories[i];
+    if(!cat)return;
+    if(db.settings.categories.length<=1){alert('É necessário manter pelo menos uma categoria.');return;}
+    const used=db.transactions.filter(t=>t.category===cat.name);
+    let replacement=null;
+    if(used.length){
+      const choices=db.settings.categories.filter((c,j)=>j!==i).map(c=>c.name);
+      const answer=prompt('Esta categoria está associada a '+used.length+' movimento(s). Para preservar o histórico, escreva exatamente o nome da categoria de destino:\\n'+choices.join('\\n'));
+      if(answer===null)return;
+      replacement=choices.find(n=>n.toLocaleLowerCase('pt-PT')===answer.trim().toLocaleLowerCase('pt-PT'));
+      if(!replacement){alert('Categoria de destino não reconhecida. Nada foi alterado.');return;}
+      if(!confirm('Os '+used.length+' movimento(s) serão reclassificados como "'+replacement+'". Continuar?'))return;
+      db.transactions.forEach(t=>{if(t.category===cat.name)t.category=replacement;});
+    } else if(!confirm('Eliminar a categoria "'+cat.name+'"?')) return;
+    db.settings.categories.splice(i,1);
+    persist();alert('Categoria eliminada'+(replacement?' e movimentos reclassificados.':'.'));
+  }
+});
+
 $('budgetFields').addEventListener('input',updateBudget);$('budgetForm').onsubmit=e=>{e.preventDefault();document.querySelectorAll('[data-budget]').forEach(x=>db.settings.categories[+x.dataset.budget].budget=Math.max(0,+x.value||0));persist();alert('Limites guardados.')};
 $('saveIncome').onclick=()=>{db.settings.income=+$('incomePlan').value||0;persist();alert('Rendimento guardado.')};
 $('savePeople').onclick=()=>{let old=db.settings.people;db.settings.people=[$('adult1').value.trim()||'Adulto 1',$('adult2').value.trim()||'Adulto 2'];db.transactions.forEach(t=>{if(t.person===old[0])t.person=db.settings.people[0];if(t.person===old[1])t.person=db.settings.people[1]});$('person').innerHTML=db.settings.people.map(p=>`<option>${esc(p)}</option>`).join('')+'<option>Conta conjunta</option>';persist();alert('Nomes guardados.')};

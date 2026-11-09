@@ -1,4 +1,4 @@
-const CACHE_NAME = 'orcamento-plus-v2';
+const CACHE_NAME = 'orcamento-plus-v3-categorias';
 const CORE_ASSETS = [
   './index.html',
   './manifest.webmanifest',
