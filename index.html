@@ -1,14 +1,73 @@
-<!doctype html><html lang="pt-PT"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#176b55"><meta name="description" content="Orçamento familiar partilhado e disponível offline."><meta name="mobile-web-app-capable" content="yes">
-<link rel="manifest" href="./manifest.webmanifest"><link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png"><link rel="apple-touch-icon" href="./icons/icon-192.png"><title>O Nosso Orçamento Plus</title>
+<!doctype html><html lang="pt-PT"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#142b45"><meta name="description" content="DuoFin — gestão financeira a dois, simples, partilhada e disponível offline."><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="DuoFin"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="./manifest.webmanifest"><link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png"><link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png"><title>DuoFin — Gestão financeira a dois</title>
 <style>
 :root{--g:#176b55;--p:#e6f3ed;--bg:#f3f7f4;--ink:#17231f;--muted:#68766f;--line:#e2eae5;--red:#b54747}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,sans-serif}header{background:var(--g);color:white;padding:22px 18px;border-radius:0 0 22px 22px}.wrap{max-width:850px;margin:auto;padding:0 14px}h1{margin:0;font-size:24px}header p{margin:4px 0 0;color:#d9eee6}nav{display:flex;gap:7px;overflow:auto;padding:14px 0}nav button{white-space:nowrap;border:1px solid var(--line);background:white;border-radius:99px;padding:9px 13px;color:var(--muted);font-weight:650}nav button.active,.primary{background:var(--g);color:white}.view{display:none;padding-bottom:35px}.view.active{display:block}.card,.stat{background:white;border:1px solid var(--line);border-radius:16px;padding:16px;margin:10px 0}.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}.stat{margin:0}.stat span{display:block;color:var(--muted);font-size:12px}.stat b{font-size:20px}h2{font-size:17px;margin:0 0 12px}.row{display:flex;align-items:center;justify-content:space-between;gap:10px}.small{font-size:12px;color:var(--muted)}label{display:block;font-weight:650;font-size:13px;margin:10px 0 5px}input,select{width:100%;min-height:42px;padding:10px;border:1px solid #ccd9d1;border-radius:10px;background:white;font:inherit}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}button{cursor:pointer}.primary,.secondary,.danger{border:0;border-radius:10px;padding:10px 14px;font:inherit;font-weight:700}.secondary{background:white;color:var(--g);border:1px solid var(--g)}.danger{background:#fff0ee;color:var(--red);padding:6px 10px}.actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}.progress{height:12px;background:#e8eeea;border-radius:99px;overflow:hidden;margin:9px 0}.progress i{display:block;height:100%;background:var(--g)}.pill{background:var(--p);color:var(--g);border-radius:99px;padding:4px 8px;font-size:12px}.alert{padding:10px;border-radius:10px;background:#fff7e6;color:#74521c;margin:7px 0;font-size:13px}.alert.red{background:#fff0ee;color:#923c38}.alert.good{background:var(--p);color:var(--g)}.item{border-top:1px solid var(--line);padding:10px 0}.item:first-child{border:0}.amount{font-weight:750;white-space:nowrap}.plus{color:var(--g)}.minus{color:var(--red)}.barline{display:flex;align-items:center;gap:7px;margin:9px 0;font-size:12px}.bar{height:8px;background:#e9efeb;border-radius:99px;flex:1;overflow:hidden}.bar i{display:block;height:100%;background:#4b9b7b}.calendar{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}.day,.dayname{text-align:center;padding:7px 0;font-size:12px}.day{background:#f5f8f6;border:1px solid transparent;border-radius:8px;min-height:43px}.day.selected{background:var(--p);border-color:var(--g)}.day em{display:block;color:var(--red);font-size:9px;font-style:normal}canvas{width:100%;height:180px}.empty{text-align:center;color:var(--muted);padding:18px}footer{text-align:center;color:var(--muted);font-size:12px;padding:20px}@media(min-width:620px){.stats{grid-template-columns:repeat(4,1fr)}.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}}
-</style></head><body><header><div class="wrap"><h1>O Nosso Orçamento</h1><p>Organização do Orçamento Familiar por Objectivos.</p></div></header><div class="wrap">
+</style>
+<style>
+:root{
+  --g:#173653;--p:#e8eef4;--bg:#f4f6f9;--ink:#192838;--muted:#68798a;
+  --line:#dce4ec;--red:#b54747;--surface:#ffffff;--surface-2:#f0f3f7;
+  --gold:#c5a56b;--warning-bg:#fff5df;--warning-ink:#74521c;
+}
+body{background:var(--bg);color:var(--ink)}
+header{background:linear-gradient(130deg,#142b45,#21496d);padding-top:calc(22px + env(safe-area-inset-top))}
+header p{color:#e3eaf1}
+.brandline{display:flex;align-items:center;gap:11px}
+.brandmark{display:inline-flex;align-items:center;justify-content:center;width:39px;height:39px;border:1.5px solid #d8bd88;border-radius:12px;color:#e1c58f;font-size:15px;font-weight:800;letter-spacing:-1px;flex:0 0 auto}
+.card,.stat{background:var(--surface);border-color:var(--line)}
+nav button{background:var(--surface);border-color:var(--line);color:var(--muted)}
+input,select{background:var(--surface);color:var(--ink);border-color:var(--line)}
+.day{background:var(--surface-2)}
+.progress,.bar{background:var(--surface-2)}
+.bar i{background:var(--gold)}
+.pill{background:var(--p);color:var(--g)}
+.alert{background:var(--warning-bg);color:var(--warning-ink)}
+.alert.red{background:#fff0ee;color:#923c38}
+.alert.good{background:#e8f2ed;color:#245d49}
+.primary{background:var(--g);color:#fff}
+.secondary{color:var(--g);border-color:var(--g);background:var(--surface)}
+.danger{background:#fff0ee;color:var(--red)}
+.category-actions{margin-top:6px}
+.category-actions button{font-size:12px;padding:6px 9px}
+.inline-editor{border:1px solid var(--line);border-radius:13px;background:var(--surface-2);padding:13px;margin-top:12px}
+.inline-editor h3{font-size:15px;margin:0 0 4px}
+.setting-note{margin:8px 0 0}
+.install-instructions h3{font-size:14px;margin:14px 0 5px}
+.install-instructions ol{margin:5px 0 10px;padding-left:22px}
+.install-instructions li{margin:5px 0}
+footer{padding-bottom:calc(20px + env(safe-area-inset-bottom))}
+html.theme-dark{
+  --g:#315b80;--p:#1c344a;--bg:#101a26;--ink:#e8edf3;--muted:#a7b5c4;
+  --line:#2b3c4f;--red:#f08b83;--surface:#172536;--surface-2:#1e3043;
+  --gold:#d8bd88;--warning-bg:#3a3020;--warning-ink:#f0d49a;
+}
+html.theme-dark .alert.red{background:#3b2528;color:#ffb4ac}
+html.theme-dark .alert.good{background:#1c3a32;color:#a9dec7}
+html.theme-dark .danger{background:#3b2528;color:#ffb4ac}
+html.theme-dark .brandmark{border-color:#d8bd88;color:#e1c58f}
+html.density-compact body{font-size:14px}
+html.density-compact .card{padding:11px;margin:7px 0;border-radius:13px}
+html.density-compact .stat{padding:10px}
+html.density-compact .item{padding:7px 0}
+html.density-compact nav{gap:5px;padding:9px 0}
+html.density-compact nav button{padding:7px 10px}
+html.density-compact input,html.density-compact select{min-height:37px;padding:7px 9px}
+html.density-detailed body{font-size:16px}
+html.density-detailed .card{padding:20px;margin:13px 0}
+html.density-detailed .stat{padding:19px}
+html.density-detailed .item{padding:13px 0}
+html.density-detailed nav button{padding:11px 15px}
+html.density-detailed input,html.density-detailed select{min-height:47px;padding:12px}
+@media(max-width:480px){.brandmark{width:35px;height:35px}.grid{gap:8px}.install-instructions{font-size:14px}}
+</style>
+
+</head><body><header><div class="wrap"><div class="brandline"><span class="brandmark" aria-hidden="true">DF</span><h1>DuoFin</h1></div><p>As nossas finanças. O nosso equilíbrio.</p></div></header><div class="wrap">
 <nav><button class="active" data-tab="resumo">Resumo</button><button data-tab="movimentos">Movimentos</button><button data-tab="calendario">Calendário</button><button data-tab="orcamento">Orçamento</button><button data-tab="objetivo">Objetivo</button><button data-tab="dados">Dados</button></nav>
 <section id="resumo" class="view active"><div class="row"><b id="monthTitle"></b><input id="month" type="month" style="max-width:160px"></div><div class="stats" style="margin-top:10px"><div class="stat"><span>Rendimento</span><b id="inc"></b></div><div class="stat"><span>Despesas</span><b id="exp"></b></div><div class="stat"><span>Saldo</span><b id="bal"></b></div><div class="stat"><span>Poupança do mês</span><b id="savm"></b></div></div><div id="alerts"></div>
 <div class="card"><div class="row"><h2>Objetivo de poupança</h2><span class="pill" id="pct"></span></div><b id="goalSum"></b><div class="progress"><i id="goalBar"></i></div><div class="row small"><span id="left"></span><span id="need"></span></div></div>
 <div class="two"><div class="card"><h2>Despesas por categoria</h2><div id="cats"></div></div><div class="card"><h2>Despesas por adulto</h2><div id="persons"></div></div></div>
 <div class="card"><h2>Evolução da poupança</h2><canvas id="chart" width="700" height="220"></canvas><p class="small">Acumulado com base nas transferências registadas.</p></div><div class="card"><h2>Previsão até à data-limite</h2><b id="forecast"></b><p class="small" id="forecastText"></p></div><div class="card"><h2>Movimentos recentes</h2><div id="recent"></div></div></section>
-<section id="movimentos" class="view"><div class="card"><h2>Adicionar movimento</h2><form id="txForm"><div class="grid"><div><label>Data</label><input id="date" type="date" required></div><div><label>Tipo</label><select id="type"><option value="expense">Despesa</option><option value="income">Rendimento</option><option value="saving">Poupança transferida</option></select></div></div><label>Descrição</label><input id="desc" required><div class="grid"><div><label>Valor (€)</label><input id="amount" type="number" min=".01" step=".01" required></div><div><label>Categoria</label><select id="category"></select></div></div><label>Quem pagou</label><select id="person"><option>Adulto 1</option><option>Adulto 2</option><option>Conta conjunta</option></select><div class="actions"><button class="primary">Guardar movimento</button></div></form></div><div class="card"><div class="row"><h2>Histórico</h2><select id="filter" style="max-width:140px"><option value="all">Todos</option><option value="expense">Despesas</option><option value="income">Rendimentos</option><option value="saving">Poupança</option></select></div><div id="transactions"></div></div></section>
+<section id="movimentos" class="view"><div class="card"><h2>Adicionar movimento</h2><form id="txForm"><div class="grid"><div><label>Data</label><input id="date" type="date" required></div><div><label>Tipo</label><select id="type"><option value="expense">Despesa</option><option value="income">Rendimento</option><option value="saving">Poupança transferida</option></select></div></div><label>Descrição</label><input id="desc" required><div class="grid"><div><label>Valor (€)</label><input id="amount" type="number" min=".01" step=".01" required></div><div><label>Categoria</label><select id="category"></select><div class="actions category-actions"><button class="secondary" type="button" id="txCategoryAdd">+ Nova</button><button class="secondary" type="button" id="txCategoryEdit">Editar selecionada</button></div></div></div><label>Quem pagou</label><select id="person"><option>Adulto 1</option><option>Adulto 2</option><option>Conta conjunta</option></select><div class="actions"><button class="primary">Guardar movimento</button></div></form><div id="txCategoryEditor" class="inline-editor" hidden><h3 id="txCategoryEditorTitle">Categoria</h3><div class="grid"><div><label for="txCategoryName">Nome</label><input id="txCategoryName" maxlength="50" autocomplete="off"></div><div><label for="txCategoryBudget">Limite mensal (€)</label><input id="txCategoryBudget" type="number" min="0" step=".01" value="0"></div></div><div class="actions"><button class="primary" type="button" id="txCategorySave">Guardar categoria</button><button class="secondary" type="button" id="txCategoryCancel">Cancelar</button></div></div></div><div class="card"><div class="row"><h2>Histórico</h2><select id="filter" style="max-width:140px"><option value="all">Todos</option><option value="expense">Despesas</option><option value="income">Rendimentos</option><option value="saving">Poupança</option></select></div><div id="transactions"></div></div></section>
 <section id="calendario" class="view"><div class="card"><div class="row"><button class="secondary" id="prev">‹</button><h2 id="calTitle"></h2><button class="secondary" id="next">›</button></div><div id="calendar" class="calendar"></div></div><div class="card"><h2 id="dayTitle">Movimentos do dia</h2><div id="dayItems"></div></div></section>
 <section id="orcamento" class="view"><div class="card"><h2>Limites por categoria</h2><p class="small">Avisos aos 85% e quando ultrapassar o limite.</p><form id="budgetForm"><div id="budgetFields"></div><div class="row"><b>Total planeado</b><b id="budgetTotal"></b></div><div class="actions"><button class="primary">Guardar limites</button></div></form>
 <div class="divider" style="height:1px;background:var(--line);margin:18px 0"></div>
@@ -24,7 +83,8 @@
 </form>
 </div><div class="card"><h2>Rendimento familiar</h2><label>Rendimento líquido mensal (€)</label><input id="incomePlan" type="number"><div class="actions"><button class="secondary" id="saveIncome">Guardar</button></div></div><div class="card"><h2>Nomes dos adultos</h2><div class="grid"><div><label>Adulto 1</label><input id="adult1"></div><div><label>Adulto 2</label><input id="adult2"></div></div><div class="actions"><button class="secondary" id="savePeople">Guardar nomes</button></div></div></section>
 <section id="objetivo" class="view"><div class="card"><h2>Configurar objetivo</h2><label>Montante (€)</label><input id="target" type="number"><div class="grid"><div><label>Início do plano</label><input id="start" type="date"></div><div><label>Data-limite</label><input id="deadline" type="date"></div></div><div class="actions"><button class="primary" id="saveGoal">Guardar objetivo</button></div></div><div class="card"><h2>Plano recomendado</h2><p id="plan"></p><div class="alert good">Só contam transferências efetivas registadas como “Poupança transferida”.</div></div></section>
-<section id="dados" class="view"><div class="card"><h2>Instalar no telemóvel</h2><p class="small">No Android, abre esta página no Google Chrome, toca no menu ⋮ e escolhe “Instalar aplicação” ou “Adicionar ao ecrã principal”.</p><button class="primary" id="installApp" hidden>Instalar aplicação</button><p id="installHint" class="small">A instalação requer HTTPS e que o Chrome reconheça o manifesto e o service worker.</p></div>
+<section id="dados" class="view"><div class="card"><h2>Aparência</h2><div class="grid"><div><label for="themeMode">Tema</label><select id="themeMode"><option value="auto">Automático (seguir o sistema)</option><option value="light">Claro</option><option value="dark">Escuro</option></select></div><div><label for="densityMode">Densidade de informação</label><select id="densityMode"><option value="balanced">Equilibrada</option><option value="compact">Compacta</option><option value="detailed">Detalhada</option></select></div></div><p class="small setting-note">Estas preferências ficam guardadas apenas neste dispositivo. Não são incluídas nas cópias financeiras nem sincronizadas com o outro telemóvel.</p></div>
+<div class="card"><h2>Instalar no telemóvel</h2><div class="install-instructions"><h3>Android (Chrome)</h3><ol><li>Publica a aplicação num endereço HTTPS e abre-o no Google Chrome.</li><li>Abre o menu ⋮ e escolhe «Instalar aplicação» ou «Adicionar ao ecrã principal».</li><li>Confirma a instalação. O botão abaixo também aparece quando o Chrome disponibiliza o pedido de instalação.</li></ol><h3>iPhone (Safari)</h3><ol><li>Abre o endereço HTTPS da DuoFin diretamente no Safari.</li><li>Toca em «Partilhar» (o ícone do quadrado com seta).</li><li>Desliza a folha de partilha e escolhe «Adicionar ao ecrã principal».</li><li>Confirma o nome «DuoFin» e toca em «Adicionar». Abre depois a aplicação pelo novo ícone.</li></ol><p class="small">No iPhone, a instalação é uma PWA através do Safari; não é uma aplicação nativa nem está publicada na App Store. Algumas opções e comportamentos dependem da versão do iOS. A instalação não acrescenta sincronização em segundo plano, notificações push ou funcionamento offline antes da primeira visita com ligação.</p></div><button class="primary" id="installApp" hidden>Instalar aplicação</button><p id="installHint" class="small">A instalação requer HTTPS e que o navegador reconheça o manifesto e o service worker. No iPhone, usa sempre o menu Partilhar do Safari.</p></div>
 <div class="card"><h2>Sincronização entre os dois telemóveis</h2><p class="small">A sincronização usa uma conta de cada pessoa e uma base de dados privada partilhada. Os dados continuam guardados neste telemóvel e são enviados apenas quando existe ligação à internet.</p>
 <div id="cloudStatus" class="alert">Ainda não configurada. Segue o guia incluído no ZIP para criar o projeto de sincronização.</div>
 <label>URL do projeto Supabase</label><input id="sbUrl" type="url" placeholder="https://xxxxxxxx.supabase.co" autocomplete="url">
@@ -43,7 +103,7 @@
 <p class="small">A aplicação verifica alterações enquanto está aberta (aproximadamente a cada 30 segundos). Se os dois telemóveis alterarem os dados ao mesmo tempo, não substitui alterações silenciosamente: apresenta um conflito para escolherem que versão manter.</p>
 </div></div>
 <div class="card"><h2>Cópias de segurança e privacidade</h2><p class="small">Sem configurar a sincronização, os dados ficam apenas no armazenamento local deste navegador. Com a sincronização ativada, são enviados para o projeto Supabase que o casal configurar, protegidos por autenticação e regras de acesso.</p><div class="actions"><button class="primary" id="export">Exportar cópia</button><label class="secondary">Importar cópia<input id="import" type="file" accept="application/json" hidden></label></div></div><div class="card"><h2>Instalação offline</h2><p class="small">Publique os ficheiros num alojamento HTTPS, abra o site uma vez com internet e escolha “Adicionar ao ecrã principal” ou “Instalar aplicação”. Depois da primeira abertura, pode funcionar offline.</p></div><div class="card"><h2>Repor dados</h2><button class="danger" id="reset">Apagar todos os dados</button></div></section>
-<footer>O Nosso Orçamento Plus · Dados locais com sincronização opcional</footer></div>
+<footer>DuoFin · Gestão financeira a dois</footer></div>
 <script>
 const $=id=>document.getElementById(id),KEY='orcamento-plus-v1',now=new Date(),iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'),cur=iso(now).slice(0,7);
 const defs=[['Habitação',850],['Supermercado',450],['Água, luz e gás',180],['Transportes',250],['Telecomunicações',70],['Saúde e farmácia',80],['Crianças e família',150],['Restaurantes e lazer',150],['Vestuário e pessoal',120],['Outros / imprevistos',300]];
@@ -69,7 +129,7 @@ $('categoryManager').innerHTML=db.settings.categories.map((c,i)=>`<div class="it
 </div>`).join('')||'<div class="empty">Ainda não existem categorias.</div>';
 let elapsed=Math.max(1,(now.getFullYear()-new Date(db.settings.start+'T12:00:00').getFullYear())*12+now.getMonth()-new Date(db.settings.start+'T12:00:00').getMonth()+1),forecast=totalSaved+(totalSaved/elapsed)*Math.max(0,months()-1);$('forecast').textContent=eur(forecast);$('forecastText').textContent=forecast>=db.settings.target?'Ao ritmo médio atual, estão no caminho certo.':'Poderão ficar aquém; procurem poupar '+eur(need)+' por mês.';$('plan').textContent=`Faltam ${eur(left)}. A contribuição média necessária é ${eur(need)} por mês. Previsão ao ritmo atual: ${eur(forecast)}.`;drawChart();drawCalendar()}
 function updateBudget(){$('budgetTotal').textContent=eur([...document.querySelectorAll('[data-budget]')].reduce((s,x)=>s+(+x.value||0),0))}
-function drawChart(){let c=$('chart'),x=c.getContext('2d'),w=c.width,h=c.height;x.clearRect(0,0,w,h);let d=new Date(db.settings.start+'T12:00:00'),end=new Date(db.settings.deadline+'T12:00:00'),vals=[],v=0;for(;d<=end;d.setMonth(d.getMonth()+1)){v+=sum(mTx(iso(d).slice(0,7)).filter(t=>t.type==='saving'));vals.push(v)}let max=Math.max(db.settings.target,...vals,1)*1.1;x.strokeStyle='#e2eae5';for(let i=0;i<5;i++){let y=10+(h-35)*i/4;x.beginPath();x.moveTo(40,y);x.lineTo(w-8,y);x.stroke()}x.strokeStyle='#176b55';x.lineWidth=4;x.beginPath();vals.forEach((v,i)=>{let px=40+(w-50)*i/Math.max(1,vals.length-1),py=h-24-(h-42)*v/max;i?x.lineTo(px,py):x.moveTo(px,py)});x.stroke()}
+function drawChart(){let c=$('chart'),x=c.getContext('2d'),w=c.width,h=c.height;x.clearRect(0,0,w,h);let d=new Date(db.settings.start+'T12:00:00'),end=new Date(db.settings.deadline+'T12:00:00'),vals=[],v=0;for(;d<=end;d.setMonth(d.getMonth()+1)){v+=sum(mTx(iso(d).slice(0,7)).filter(t=>t.type==='saving'));vals.push(v)}let max=Math.max(db.settings.target,...vals,1)*1.1;x.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--line').trim()||'#dce4ec';for(let i=0;i<5;i++){let y=10+(h-35)*i/4;x.beginPath();x.moveTo(40,y);x.lineTo(w-8,y);x.stroke()}x.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--gold').trim()||'#c5a56b';x.lineWidth=4;x.beginPath();vals.forEach((v,i)=>{let px=40+(w-50)*i/Math.max(1,vals.length-1),py=h-24-(h-42)*v/max;i?x.lineTo(px,py):x.moveTo(px,py)});x.stroke()}
 function drawCalendar(){let m=$('month').value||cur,[y,mo]=m.split('-').map(Number),off=(new Date(y,mo-1,1).getDay()+6)%7,days=new Date(y,mo,0).getDate(),s=['2ª','3ª','4ª','5ª','6ª','Sáb','Dom'].map(x=>`<div class="dayname">${x}</div>`).join('');for(let i=0;i<off;i++)s+='<div></div>';for(let d=1;d<=days;d++){let dt=m+'-'+String(d).padStart(2,'0'),v=sum(db.transactions.filter(t=>t.date===dt&&t.type==='expense'));s+=`<button class="day ${dt===selected?'selected':''}" data-day="${dt}"><b>${d}</b>${v?`<em>${Math.round(v)} €</em>`:''}</button>`}$('calendar').innerHTML=s;$('calTitle').textContent=mName(m);showDay(selected)}
 function showDay(d){selected=d;$('dayTitle').textContent='Movimentos · '+new Date(d+'T12:00:00').toLocaleDateString('pt-PT');let a=db.transactions.filter(t=>t.date===d);$('dayItems').innerHTML=a.length?a.map(line).join(''):'<div class="empty">Sem movimentos neste dia.</div>';document.querySelectorAll('[data-day]').forEach(b=>b.classList.toggle('selected',b.dataset.day===d))}
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id===b.dataset.tab))});
@@ -81,6 +141,48 @@ function validCategoryName(name, exceptIndex=-1){
   const n=String(name||'').trim();
   return n.length>0 && !db.settings.categories.some((c,i)=>i!==exceptIndex&&String(c.name).trim().toLocaleLowerCase('pt-PT')===n.toLocaleLowerCase('pt-PT'));
 }
+
+let txCategoryMode='create',txCategoryIndex=-1;
+function openTxCategoryEditor(mode,index=-1){
+  txCategoryMode=mode;txCategoryIndex=index;
+  const box=$('txCategoryEditor');box.hidden=false;
+  if(mode==='edit'){
+    const c=db.settings.categories[index];if(!c){box.hidden=true;return;}
+    $('txCategoryEditorTitle').textContent='Editar categoria';
+    $('txCategoryName').value=c.name;$('txCategoryBudget').value=Number(c.budget)||0;
+  }else{
+    $('txCategoryEditorTitle').textContent='Nova categoria';
+    $('txCategoryName').value='';$('txCategoryBudget').value='0';
+  }
+  $('txCategoryName').focus();
+}
+$('txCategoryAdd').onclick=()=>openTxCategoryEditor('create');
+$('txCategoryEdit').onclick=()=>{
+  const index=db.settings.categories.findIndex(c=>c.name===$('category').value);
+  if(index<0){alert('Seleciona primeiro uma categoria.');return;}
+  openTxCategoryEditor('edit',index);
+};
+$('txCategoryCancel').onclick=()=>{$('txCategoryEditor').hidden=true};
+$('txCategorySave').onclick=()=>{
+  const name=$('txCategoryName').value.trim(),budget=Number($('txCategoryBudget').value);
+  if(!validCategoryName(name,txCategoryMode==='edit'?txCategoryIndex:-1)){
+    alert('O nome não pode estar vazio nem repetir outra categoria.');$('txCategoryName').focus();return;
+  }
+  if(!Number.isFinite(budget)||budget<0){
+    alert('Indica um limite mensal válido (zero ou superior).');$('txCategoryBudget').focus();return;
+  }
+  if(txCategoryMode==='edit'){
+    const c=db.settings.categories[txCategoryIndex];if(!c)return;
+    const previous=c.name;c.name=name;c.budget=budget;
+    if(previous!==name)db.transactions.forEach(t=>{if(t.category===previous)t.category=name;});
+  }else{
+    db.settings.categories.push({name,budget});
+  }
+  persist();
+  $('category').value=name;
+  $('txCategoryEditor').hidden=true;
+  alert(txCategoryMode==='edit'?'Categoria atualizada. Os movimentos existentes foram preservados.':'Categoria criada e disponível de imediato.');
+};
 $('newCategoryForm').onsubmit=e=>{
   e.preventDefault();
   const name=$('newCategoryName').value.trim(), budget=+$('newCategoryBudget').value;
@@ -129,10 +231,42 @@ $('saveIncome').onclick=()=>{db.settings.income=+$('incomePlan').value||0;persis
 $('savePeople').onclick=()=>{let old=db.settings.people;db.settings.people=[$('adult1').value.trim()||'Adulto 1',$('adult2').value.trim()||'Adulto 2'];db.transactions.forEach(t=>{if(t.person===old[0])t.person=db.settings.people[0];if(t.person===old[1])t.person=db.settings.people[1]});$('person').innerHTML=db.settings.people.map(p=>`<option>${esc(p)}</option>`).join('')+'<option>Conta conjunta</option>';persist();alert('Nomes guardados.')};
 $('saveGoal').onclick=()=>{let t=+$('target').value,s=$('start').value,d=$('deadline').value;if(t<=0||!s||!d||d<s){alert('Verifique o montante e as datas.');return}Object.assign(db.settings,{target:t,start:s,deadline:d});persist();alert('Objetivo guardado.')};
 function shift(n){let d=new Date(($('month').value||cur)+'-02T12:00:00');d.setMonth(d.getMonth()+n);$('month').value=iso(d).slice(0,7);selected=iso(d).slice(0,7)+'-01';render()}$('prev').onclick=()=>shift(-1);$('next').onclick=()=>shift(1);
-$('export').onclick=()=>{let a=document.createElement('a'),u=URL.createObjectURL(new Blob([JSON.stringify(db,null,2)],{type:'application/json'}));a.href=u;a.download='orcamento-familiar-backup.json';a.click();URL.revokeObjectURL(u)};
+$('export').onclick=()=>{let a=document.createElement('a'),u=URL.createObjectURL(new Blob([JSON.stringify(db,null,2)],{type:'application/json'}));a.href=u;a.download='duofin-backup.json';a.click();URL.revokeObjectURL(u)};
 $('import').onchange=async e=>{try{let x=JSON.parse(await e.target.files[0].text());if(!x.settings||!Array.isArray(x.transactions))throw 0;db=x;persist();alert('Cópia importada.')}catch(_){alert('Ficheiro inválido.')}e.target.value=''};
 $('reset').onclick=()=>{if(confirm('Apagar todos os dados deste dispositivo?')){db=fresh();persist()}};
 $('person').innerHTML=db.settings.people.map(p=>`<option>${esc(p)}</option>`).join('')+'<option>Conta conjunta</option>';render();
+// Preferências visuais locais: deliberadamente fora de db e do payload sincronizado.
+const UI_PREF_KEY='duofin-ui-preferences-v1';
+const uiDefaults={theme:'auto',density:'balanced'};
+function readUiPrefs(){
+  try{return {...uiDefaults,...JSON.parse(localStorage.getItem(UI_PREF_KEY)||'{}')}}catch(e){return {...uiDefaults}}
+}
+let uiPrefs=readUiPrefs();
+function applyUiPrefs(){
+  const root=document.documentElement;
+  root.classList.remove('theme-dark','density-compact','density-detailed');
+  const systemDark=!!(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);
+  if(uiPrefs.theme==='dark'||(uiPrefs.theme==='auto'&&systemDark))root.classList.add('theme-dark');
+  if(uiPrefs.density==='compact')root.classList.add('density-compact');
+  if(uiPrefs.density==='detailed')root.classList.add('density-detailed');
+}
+function saveUiPrefs(){
+  uiPrefs.theme=$('themeMode').value;
+  uiPrefs.density=$('densityMode').value;
+  localStorage.setItem(UI_PREF_KEY,JSON.stringify(uiPrefs));
+  applyUiPrefs();
+}
+$('themeMode').value=uiPrefs.theme;
+$('densityMode').value=uiPrefs.density;
+$('themeMode').onchange=saveUiPrefs;
+$('densityMode').onchange=saveUiPrefs;
+applyUiPrefs();
+if(window.matchMedia){
+  const colorQuery=window.matchMedia('(prefers-color-scheme: dark)');
+  if(colorQuery.addEventListener)colorQuery.addEventListener('change',()=>{if(uiPrefs.theme==='auto')applyUiPrefs()});
+  else if(colorQuery.addListener)colorQuery.addListener(()=>{if(uiPrefs.theme==='auto')applyUiPrefs()});
+}
+
 
 // Instalação PWA no Chrome Android
 let installPrompt=null;

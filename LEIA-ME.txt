@@ -1,83 +1,109 @@
-O NOSSO ORÇAMENTO PLUS — VERSÃO PARTILHADA
-============================================
+DUOFIN — VERSÃO 4
+==================
 
-O QUE ESTA VERSÃO INCLUI
-- Mantém o resumo, movimentos, calendário, limites por categoria, divisão por adulto, objetivo de 6.000 € e cópias JSON.
-- PWA corrigida: manifesto com ícones PNG 192×192 e 512×512 (inclui variantes maskable), e service worker com cache offline.
-- Sincronização opcional entre dois telemóveis através de Supabase Auth + PostgreSQL com Row Level Security (RLS).
-- Convite de utilização única, válido 48 horas.
-- Controlo de revisão para detetar edições simultâneas. Não substitui silenciosamente dados em conflito.
-- Sem chaves secretas no JavaScript. Só é introduzida no browser a chave pública (anon/publishable).
+Gestão financeira a dois. Identidade visual moderna e elegante.
 
-IMPORTANTE — O QUE AINDA É NECESSÁRIO
-A sincronização NÃO fica operacional só por publicar o ZIP. O casal tem de criar um projeto Supabase, executar o SQL abaixo e introduzir o URL e a chave pública do projeto nos dois telemóveis. O alojamento do site e a base de dados Supabase são serviços separados.
+CONTEÚDO
+--------
+- index.html: aplicação.
+- manifest.webmanifest: manifesto PWA.
+- sw.js: cache offline e atualização versionada.
+- icons/: ícones DuoFin para Android e iPhone.
+- supabase/setup.sql: estrutura de sincronização partilhada com autenticação e RLS.
+- CHECKLIST.txt: lista de verificação antes da publicação.
 
-PARTE A — PUBLICAR O SITE COM HTTPS
-1. Antes de atualizar a versão já em uso, exporta uma cópia JSON em Dados > Exportar cópia em cada telemóvel que tenha movimentos. Depois extrai todo o ZIP, preservando as pastas e os nomes dos ficheiros.
-2. Publica o conteúdo da pasta num alojamento estático com HTTPS (por exemplo, Cloudflare Pages, Netlify ou GitHub Pages).
-3. A página index.html, manifest.webmanifest, sw.js e a pasta icons têm de ficar no mesmo diretório publicado. A pasta supabase contém apenas o SQL e não precisa de ser publicada.
-4. Abre o endereço público, confirma que começa por https:// e atualiza a página.
-5. No Android, abre o endereço no Google Chrome (não na aplicação Google nem num navegador incorporado). Menu ⋮ > “Instalar aplicação” ou “Adicionar ao ecrã principal”.
-6. Se a versão antiga continuar em cache: primeiro exporta uma cópia JSON. Só depois, se necessário, vai a Chrome > Definições > Definições de sites > [endereço do site] > Armazenamento > Limpar dados; isto pode apagar os dados locais. Fecha o separador, abre novamente o endereço HTTPS e, se os dados não aparecerem, usa Dados > Importar cópia para repor o ficheiro JSON.
+O QUE MUDA NA VERSÃO 4
+----------------------
+1. Marca DuoFin: cabeçalho, cores azul profundo/dourado discreto, manifesto e ícones renovados.
+2. Categorias no formulário de despesas: «+ Nova» e «Editar selecionada» permitem criar ou alterar nome/limite sem sair do registo. A lista atualiza imediatamente. Nomes vazios/duplicados e limites negativos são rejeitados. Ao mudar o nome, os movimentos existentes são atualizados; não são apagados.
+3. Aparência: tema claro, escuro ou automático (segue o sistema); densidade compacta, equilibrada ou detalhada.
+4. As preferências de aparência usam uma chave local separada (`duofin-ui-preferences-v1`), não entram no objeto financeiro, nas cópias JSON nem na sincronização.
+5. PWA: suporte iOS/Safari com `apple-touch-icon` 180×180 e meta tags Apple; mantém os ícones Android 192×192 e 512×512 e cache versionada.
 
-PARTE B — CRIAR O SERVIÇO DE SINCRONIZAÇÃO
-1. Cria um projeto em https://supabase.com/ e guarda o acesso à conta.
-2. No painel do projeto, abre SQL Editor > New query.
-3. Abre o ficheiro supabase/setup.sql deste pacote, copia TODO o conteúdo, cola no SQL Editor e executa.
-4. Em Project Settings > API (ou equivalente), copia o Project URL e a chave pública “anon” ou “publishable”.
-   NUNCA uses a chave “service_role” ou qualquer segredo privado no site.
-5. Em Authentication > Providers > Email, mantém a autenticação por email ativa. Se a confirmação de email estiver ativa, cada pessoa deve confirmar a mensagem recebida antes de iniciar sessão.
-6. Em Authentication > URL Configuration, adiciona o endereço HTTPS publicado do site aos Redirect URLs permitidos, se o painel o exigir.
+COMPATIBILIDADE E PRESERVAÇÃO DE DADOS
+--------------------------------------
+A versão 4 parte do ZIP v3 fornecido e mantém a chave de armazenamento financeiro `orcamento-plus-v1` e a estrutura `settings` + `transactions`. Não é necessária migração do formato financeiro para esta atualização. Os movimentos, categorias, calendário, orçamento, nomes, metas, cópias e configuração de sincronização permanecem na mesma estrutura.
 
-PARTE C — LIGAR OS DOIS TELEMÓVEIS
-No primeiro telemóvel:
-1. Abre o site instalado ou no Chrome e entra em Dados > Sincronização.
-2. Introduz o mesmo Project URL e a chave pública. Toca em “Guardar configuração”.
-3. Cria uma conta com o email e palavra-passe do primeiro adulto e confirma o email se for pedido. Depois inicia sessão.
-4. Toca em “Criar orçamento partilhado”. A versão local deste telemóvel é enviada como primeira versão partilhada.
-5. Toca em “Gerar convite para o outro adulto” e envia o código ao segundo adulto por um canal privado. O código expira em 48 horas e só pode ser usado uma vez.
+Por precaução, antes de substituir a publicação:
+1. Abra a versão atual em cada telemóvel.
+2. Vá a Dados > Cópias de segurança > Exportar cópia.
+3. Guarde os ficheiros JSON em local seguro, identificando a que telemóvel pertencem.
+4. Publique a versão 4 no mesmo endereço HTTPS e caminho da versão anterior, se possível.
+5. Abra a aplicação e confirme movimentos, categorias e objetivo.
+6. Se for necessário recuperar dados, use Dados > Importar cópia no dispositivo correto. Importar substitui os dados financeiros locais desse dispositivo.
 
-No segundo telemóvel:
-1. Abre exatamente o mesmo endereço HTTPS no Google Chrome e instala a aplicação.
-2. Em Dados > Sincronização, introduz o mesmo Project URL e a mesma chave pública.
-3. Cria uma conta própria para o segundo adulto, confirma o email se necessário e inicia sessão.
-4. Cola o código recebido em “Código de convite” e toca em “Associar a este orçamento”.
-5. A aplicação carrega os dados partilhados. Se este telemóvel já tiver dados próprios, exporta primeiro uma cópia; a aplicação avisa antes de substituir dados locais.
+As preferências visuais são independentes por dispositivo e não são migradas nem sincronizadas. O armazenamento local pertence ao navegador/instalação; não confies nele como única cópia de segurança.
 
-COMO FUNCIONA A SINCRONIZAÇÃO
-- As alterações são guardadas imediatamente no telemóvel e enviadas automaticamente quando há internet.
-- Enquanto a aplicação está aberta, verifica atualizações aproximadamente a cada 30 segundos; também verifica quando regressa ao primeiro plano.
-- Se ambos editarem antes de sincronizar, a aplicação deteta a revisão divergente e não apaga nenhuma versão. “Carregar versão partilhada” substitui os dados locais; “Enviar versão deste telemóvel” substitui a versão partilhada, após confirmação. Exportem uma cópia antes de resolver conflitos.
-- Offline: podem continuar a registar movimentos localmente. A sincronização acontece quando a aplicação volta a estar online e aberta.
-- Não há sincronização em segundo plano garantida, notificações push, nem edição simultânea em tempo real. Não feches a aplicação à espera de envio imediato; confirma o estado no separador Dados.
-- Cada conta só consegue ler os orçamentos de que é membro, devido às políticas RLS. O código de convite é temporário e de utilização única.
+PUBLICAÇÃO PWA (OBRIGATÓRIA PARA INSTALAÇÃO)
+--------------------------------------------
+1. Descompacte o ZIP mantendo a estrutura de pastas.
+2. Publique todos os ficheiros, incluindo `icons/` e `supabase/`, num alojamento web com HTTPS válido.
+3. Mantenha `index.html`, `manifest.webmanifest` e `sw.js` no mesmo diretório, e a pasta `icons/` nesse mesmo nível.
+4. Abra o endereço HTTPS com ligação à internet pelo menos uma vez. O service worker instala os recursos principais para utilização offline.
+5. Se publicar numa subpasta, publique a pasta inteira sem alterar isoladamente os caminhos relativos.
+6. Após atualizar uma versão, feche e volte a abrir a aplicação; o service worker novo usa a cache `duofin-v4-20261110`.
 
-RESOLUÇÃO DE PROBLEMAS NO CHROME ANDROID
-- Confirma HTTPS (certificado válido), não http://.
-- Confirma que manifest.webmanifest, sw.js e icons/icon-192.png e icons/icon-512.png abrem sem erro no mesmo domínio/caminho.
-- Se o site estiver numa subpasta, publica a pasta inteira no mesmo caminho; não movas apenas o index.html.
-- Atualiza a página. Se for necessário limpar os dados do site, exporta primeiro a cópia JSON: essa limpeza pode apagar os movimentos guardados localmente.
-- A opção “Instalar aplicação” pode demorar alguns segundos depois da primeira visita e do registo do service worker. Se não surgir o botão, usa o menu ⋮ do Chrome.
+ANDROID — INSTALAR NO CHROME
+----------------------------
+1. Abra o endereço HTTPS da DuoFin no Google Chrome (não num navegador incorporado noutra aplicação).
+2. Aguarde alguns segundos pela deteção do manifesto e do service worker.
+3. Abra o menu ⋮ e escolha «Instalar aplicação» ou «Adicionar ao ecrã principal».
+4. Confirme. Se surgir o botão «Instalar aplicação» na secção Dados, também o pode usar.
+5. Se a opção não aparecer, confirme HTTPS, manifesto, ícones 192×192/512×512 e `sw.js`, atualize a página e tente novamente pelo menu do Chrome.
 
-PRIVACIDADE E CÓPIAS DE SEGURANÇA
-- O armazenamento local é separado em cada navegador/telemóvel; a sincronização é a forma de partilhar dados.
-- Exporta regularmente uma cópia JSON em Dados > Cópias de segurança.
-- Não partilhes a palavra-passe da conta nem a chave service_role. A chave anon/publishable é pública por desenho; a segurança depende da autenticação e das políticas RLS do SQL incluído.
-- O projeto Supabase é gerido pelo casal. Custos, limites e condições do fornecedor podem mudar; consulta o painel do serviço.
+IPHONE — INSTALAR PELO SAFARI
+-----------------------------
+1. Abra o endereço HTTPS da DuoFin diretamente no Safari do iPhone.
+2. Toque no botão «Partilhar» (quadrado com seta para cima).
+3. Na folha de partilha, deslize para baixo e selecione «Adicionar ao ecrã principal». Se não estiver visível, percorra as ações disponíveis/«Editar ações».
+4. Confirme o nome «DuoFin» e toque em «Adicionar».
+5. Abra a DuoFin pelo ícone criado no ecrã principal.
 
-CONFIGURAÇÃO INICIAL DO ORÇAMENTO
-Rendimento predefinido: 3.200 €/mês. Objetivo: 6.000 € até 31/08/2027. Os limites por categoria são exemplos editáveis, não uma recomendação financeira. Ajustem-nos aos vossos encargos reais.
+A aplicação usa o ícone Apple Touch de 180×180 e as meta tags `apple-mobile-web-app-capable`, `apple-mobile-web-app-title` e `apple-mobile-web-app-status-bar-style`. No iOS, o fluxo de instalação é pelo Safari; o evento de instalação automática usado pelo Chrome Android não é disponibilizado da mesma forma. O comportamento e algumas capacidades variam conforme a versão do iOS. A PWA não é uma aplicação nativa, não está publicada na App Store e não passa a ter capacidades nativas só por ser adicionada ao ecrã principal. Não foi implementado envio de notificações push nem sincronização em segundo plano garantida. O modo offline depende de uma primeira visita com internet e de o sistema manter a cache.
 
+SINCRONIZAÇÃO PARTILHADA — CONFIGURAÇÃO EXTERNA PENDENTE
+-------------------------------------------------------
+A sincronização não fica operacional apenas por publicar o ZIP. É necessário configurar um projeto Supabase do casal:
 
-GESTÃO DE CATEGORIAS — VERSÃO 3
---------------------------------
-No separador «Orçamento», encontra a secção «Gerir categorias de despesa».
+1. Crie um projeto no Supabase e aguarde pela disponibilidade da base de dados.
+2. No painel do projeto, abra o SQL Editor e execute integralmente `supabase/setup.sql`.
+3. Em Project Settings / API (ou API Keys, conforme a versão do painel), copie:
+   - Project URL, no formato `https://<project-ref>.supabase.co`;
+   - a chave pública `publishable` ou `anon` (legada).
+4. Na DuoFin, em Dados > Sincronização, introduza o Project URL e a chave pública nos dois telemóveis e guarde.
+5. Nas definições de Authentication / URL Configuration do Supabase, configure o Site URL e inclua nos Redirect URLs o endereço HTTPS exato da aplicação (incluindo subpasta, se existir). A inscrição acrescenta o URL atual como destino de redirecionamento.
+6. Cada adulto cria a sua própria conta e inicia sessão. Se a confirmação por email estiver ativa, confirme o email.
+7. No primeiro telemóvel, crie o orçamento partilhado e gere um convite.
+8. No segundo telemóvel, inicie sessão, introduza o código e escolha «Associar a este orçamento».
+9. Antes de carregar ou substituir uma versão durante a associação ou resolução de conflitos, exporte uma cópia de segurança de ambos os dispositivos.
 
-• Para criar uma categoria, indique o nome e o limite mensal e escolha «Adicionar categoria».
-• Para editar, altere o nome e/ou o limite na linha correspondente e escolha «Guardar alterações».
-• Ao mudar o nome, os movimentos antigos associados são atualizados automaticamente.
-• Para eliminar uma categoria sem movimentos, confirme a eliminação.
-• Se existirem movimentos associados, a aplicação pede o nome de uma categoria de destino e confirma a reclassificação. O histórico não é apagado.
-• Não são permitidos nomes vazios ou duplicados, nem a eliminação da última categoria.
+A aplicação usa autenticação Supabase, funções RPC e Row Level Security para limitar a leitura/escrita aos membros do orçamento. O código de convite é temporário e de utilização única. Se ambos alterarem os dados antes de sincronizar, a aplicação deteta a revisão divergente e pede uma decisão explícita: carregar a versão partilhada ou enviar a versão deste dispositivo. Não faz fusão automática de movimentos.
 
-As alterações são guardadas juntamente com os restantes dados do orçamento. Quando a sincronização Supabase estiver configurada e a sessão estiver ligada, as alterações seguem o mecanismo de sincronização já incluído.
+SEGURANÇA
+---------
+- Use apenas a chave pública `publishable`/`anon` no navegador.
+- Nunca introduza, publique ou partilhe a chave `service_role`, passwords de base de dados ou outros segredos no HTML/JavaScript.
+- A chave pública não substitui as políticas RLS. Execute o SQL fornecido e não desative RLS.
+- A configuração, domínio autorizado, autenticação e estado do projeto Supabase são responsabilidade do proprietário do projeto.
+- Sem projeto, SQL, URL, chave pública e contas configuradas, a sincronização permanece indisponível; os dados continuam locais.
+
+CÓPIAS DE SEGURANÇA E PRIVACIDADE
+---------------------------------
+- Exporte regularmente uma cópia JSON em Dados > Cópias de segurança.
+- Os dados locais de cada navegador/instalação são independentes.
+- O tema e a densidade são locais e não são partilhados.
+- A sincronização só ocorre quando configurada, com sessão válida, ligação à internet e aplicação ativa. A verificação periódica ocorre enquanto a aplicação está aberta; não há garantia de sincronização em segundo plano.
+- A exportação inclui os dados financeiros locais, não as preferências visuais nem tokens de autenticação.
+
+TESTES E LIMITAÇÕES DESTA ENTREGA
+---------------------------------
+Foram feitas verificações estáticas ao ZIP, manifesto JSON, existência e dimensões dos ícones, referências locais do HTML, presença do service worker e sintaxe JavaScript. Estas verificações não substituem testes em dispositivos reais.
+
+Não foram executados nesta entrega:
+- teste funcional completo em Chrome Android, Safari iOS ou outros navegadores;
+- teste de instalação real em dispositivos;
+- teste de funcionamento offline em dispositivos reais;
+- teste de autenticação, convites, RLS ou sincronização contra um projeto Supabase configurado;
+- auditoria de segurança independente ou publicação num domínio HTTPS.
+
+A sincronização de produção depende dos passos externos acima. A DuoFin v4 não está publicada numa loja de aplicações.

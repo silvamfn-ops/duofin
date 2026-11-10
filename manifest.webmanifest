@@ -1,15 +1,15 @@
 {
   "id": "./",
-  "name": "O Nosso Orçamento Plus",
-  "short_name": "Orçamento Plus",
-  "description": "Orçamento familiar partilhado, com funcionamento offline.",
+  "name": "DuoFin — Gestão financeira a dois",
+  "short_name": "DuoFin",
+  "description": "As nossas finanças. O nosso equilíbrio.",
   "lang": "pt-PT",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#f3f7f4",
-  "theme_color": "#176b55",
+  "background_color": "#f4f6f9",
+  "theme_color": "#142b45",
   "icons": [
     {
       "src": "./icons/icon-192.png",

@@ -1,0 +1,9 @@
+DUOFIN V4 — ALTERAÇÕES
+- Rebranding completo para DuoFin, com paleta azul profundo e dourado discreto.
+- Ícones PWA DuoFin para iOS e Android.
+- Criação e edição de categorias diretamente no formulário de movimentos/despesas.
+- Tema claro/escuro/automático e densidade compacta/equilibrada/detalhada, guardados localmente.
+- Metadados Apple e Apple Touch Icon 180×180.
+- Instruções detalhadas para instalação PWA Android e iPhone.
+- Cache do service worker versionada como duofin-v4-20261110.
+- Mantida a chave de dados financeiros orcamento-plus-v1 e o modelo existente.

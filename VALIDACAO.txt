@@ -1,0 +1,12 @@
+DUOFIN V4 — RELATÓRIO DE VALIDAÇÃO ESTÁTICA
+
+[OK] ZIP íntegro e estrutura essencial presente
+[OK] Manifesto JSON válido e ícones do manifesto presentes
+[OK] Ícones PNG presentes com dimensões corretas (180, 192 e 512)
+[OK] Metadados iOS, gestão inline de categorias e chave de dados original confirmados
+[OK] Referências locais src/href do HTML resolvidas
+[OK] Service worker presente e cache versionada
+[OK] Nenhum segredo service_role no código público
+[OK] Sintaxe JavaScript da aplicação e do service worker validada com node --check
+
+[NOTA] Não foram realizados testes funcionais em dispositivos reais, publicação HTTPS, instalação PWA real, teste offline em Android/iOS, nem testes de autenticação/RLS/sincronização contra um projeto Supabase configurado.

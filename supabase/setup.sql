@@ -1,4 +1,4 @@
--- O Nosso Orçamento Plus — configuração segura para Supabase
+-- DuoFin — configuração segura para Supabase (base da versão 3 preservada)
 -- Executar integralmente no SQL Editor do projeto Supabase.
 create schema if not exists extensions;
 create extension if not exists pgcrypto with schema extensions;
