@@ -1,0 +1,10 @@
+DUOFIN V5 — PRÉVIA DE DESENVOLVIMENTO (ESTRATÉGIA WEB)
+- Mantém a base da aplicação V4, as chaves de armazenamento e o formato financeiro.
+- Estratégia alterada para aplicação web única acessível por HTTPS em Windows, iPhone e Android.
+- A utilização no navegador é o modo principal; instalação PWA é opcional.
+- Remove o projeto Tauri/.exe da estratégia ativa para evitar manutenção e instalação local.
+- Atualiza as instruções dentro da aplicação para explicar acesso direto pelo navegador.
+- Mantém o projeto Supabase existente e o SQL V4 como referência, sem alterações destrutivas.
+- Atualiza a consulta remota para 15 segundos enquanto a página está visível.
+- Mantém cópia integral da V4 em backup/DuoFin_v4_original.zip.
+- Não inclui domínio publicado nem credenciais do projeto; publicação e testes reais continuam pendentes.

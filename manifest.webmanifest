@@ -1,8 +1,8 @@
 {
   "id": "./",
-  "name": "DuoFin — Gestão financeira a dois",
+  "name": "DuoFin v5 — Gestão financeira a dois",
   "short_name": "DuoFin",
-  "description": "As nossas finanças. O nosso equilíbrio.",
+  "description": "DuoFin partilhada entre Windows, Android e iPhone.",
   "lang": "pt-PT",
   "start_url": "./index.html",
   "scope": "./",

@@ -1,0 +1,104 @@
+DUOFIN V5 — GUIA TÉCNICO E DE MIGRAÇÃO
+======================================
+
+ESTRATÉGIA DEFINIDA
+-------------------
+A DuoFin V5 é uma aplicação web única, publicada num endereço HTTPS permanente.
+A utilização normal é feita diretamente no navegador, sem instalação local:
+- Windows: Microsoft Edge ou Google Chrome.
+- iPhone: Safari.
+- Android: Google Chrome.
+
+A instalação como PWA (ícone e janela própria) é opcional. Não é necessário instalar
+no iPhone, gerar um .exe ou instalar uma aplicação nativa. A pasta windows/ e o
+projeto Tauri deixaram de fazer parte desta estratégia e ficam adiados.
+
+BASE PRESERVADA
+---------------
+Esta prévia é construída a partir do ZIP DuoFin v4 disponível nesta execução.
+Mantém a chave de armazenamento financeiro `orcamento-plus-v1`, o formato
+`settings` + `transactions`, a configuração de sincronização
+`orcamento-plus-cloud-v1`, as funções atuais de autenticação/convites e a tabela
+`household_data`. As preferências visuais continuam locais e separadas.
+A versão original V4 está preservada em `backup/DuoFin_v4_original.zip`.
+
+ARQUITETURA
+----------
+- Um único endereço HTTPS serve a mesma aplicação em todos os dispositivos.
+- O projeto Supabase existente é reutilizado como fonte partilhada dos dados.
+- Cada adulto inicia sessão com a sua conta e associa-se ao orçamento existente.
+- O navegador mantém armazenamento local e sessão próprios por dispositivo; isso
+  não cria bases de dados partilhadas separadas quando a conta está associada.
+- O armazenamento do navegador depende do domínio (origem). Se a V5 for publicada
+  no mesmo domínio HTTPS da V4, as chaves locais podem continuar acessíveis no
+  mesmo navegador. Se mudar o domínio, os dados e a sessão locais não migram
+  automaticamente: exporta backups e configura/inicia sessão novamente.
+- O envio de alterações ocorre após uma pausa de 1,2 s e a consulta de alterações
+  remotas ocorre a cada 15 s enquanto a página está visível.
+- Não é sincronização instantânea e não funciona quando o navegador está fechado.
+- A implementação atual usa revisão otimista (compare-and-swap). Se houver
+  alterações concorrentes, assinala conflito e exige escolha explícita; não faz
+  fusão automática de movimentos.
+- O service worker/PWA é opcional para a utilização normal no navegador.
+
+PUBLICAÇÃO WEB
+--------------
+A pasta raiz deste pacote é um site estático. Publica-a num alojamento HTTPS
+compatível com ficheiros estáticos (por exemplo, Cloudflare Pages ou Vercel).
+Configura o domínio HTTPS e confirma que `index.html` abre na raiz publicada.
+Não coloques chaves secretas no código. A URL e a chave pública (publishable/anon)
+do Supabase são configuradas na própria aplicação.
+
+Depois de publicar:
+1. Abre o URL HTTPS no Edge/Chrome, Safari e Chrome Android.
+2. Confirma que o URL é o mesmo em todos os dispositivos.
+3. Inicia sessão com as contas já existentes.
+4. Confirma que cada dispositivo está associado ao household correto.
+5. Testa primeiro leitura; só depois faz uma alteração de teste controlada.
+6. Se quiseres, instala a PWA a partir do menu do navegador. É opcional.
+
+SUPABASE EXISTENTE
+------------------
+O ficheiro `supabase/setup.sql` é mantido como referência da V4. O utilizador
+confirmou que a V4 já utiliza o projeto Supabase existente e forneceu o SQL.
+Não executar novamente o script nem alterar tabelas/funções por rotina: primeiro
+verificar o estado real do projeto. O script contém CREATE TABLE IF NOT EXISTS,
+políticas RLS e funções RPC; a compatibilidade do texto SQL não prova, por si só,
+que o projeto remoto está íntegro ou que a V5 já sincroniza corretamente.
+
+A aplicação precisa da URL do projeto e de uma chave pública publishable/anon.
+Nunca incluir `service_role`, palavra-passe da base de dados ou outros segredos no
+site. Confirmar também os Redirect URLs de autenticação no painel Supabase.
+
+MIGRAÇÃO E PROTEÇÃO DE DADOS — OBRIGATÓRIO
+-----------------------------------------
+Antes de migrar, exporta uma cópia JSON em cada telemóvel e guarda os ficheiros
+separadamente. Não carregues automaticamente as duas cópias locais para a mesma
+linha partilhada.
+
+Procedimento recomendado:
+1. Exporta e guarda as cópias dos dois telemóveis e de qualquer outro dispositivo.
+2. Identifica qual contém a versão financeira principal mais completa.
+3. Compara movimentos por data, valor, descrição, pessoa e categoria; resolve
+   duplicados manualmente antes de enviar dados para a cloud.
+4. Confirma que a versão atual partilhada no Supabase também está salvaguardada.
+5. Faz a migração numa única direção, escolhendo conscientemente a cópia correta.
+6. Nos outros dispositivos, carrega a versão partilhada só depois de confirmar
+   que existe uma cópia de segurança local.
+7. Confirma totais, movimentos, categorias, metas e divisões.
+
+A aplicação trabalha com uma cópia completa do orçamento. Não existe nesta
+entrega um algoritmo seguro de fusão automática entre cópias locais divergentes.
+
+ESTADO E LIMITAÇÕES
+-------------------
+A prévia conserva as chaves e o formato de dados da V4 e foi adaptada para
+utilização browser-first com instalação PWA opcional.
+Ainda não foram executados nesta entrega: publicação num domínio real, testes
+funcionais em dispositivos físicos, autenticação real no projeto Supabase,
+testes RLS/convites, sincronização entre os três dispositivos, concorrência,
+recuperação de backup ou auditoria de segurança.
+
+Esta é uma prévia de desenvolvimento, não uma versão final certificada. A
+sincronização só estará operacional depois de a aplicação ser publicada, de a
+configuração existente ser validada e de os testes reais passarem.

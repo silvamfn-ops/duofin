@@ -1,0 +1,19 @@
+DUOFIN V5 — CHECKLIST DE ACEITAÇÃO (WEB)
+[ ] Guardar cópias JSON separadas dos dois telemóveis e restantes dispositivos.
+[ ] Confirmar estado real do projeto Supabase existente; não reaplicar SQL sem necessidade.
+[ ] Confirmar URL, chave pública e Redirect URLs de autenticação.
+[ ] Publicar a pasta raiz num alojamento HTTPS permanente.
+[ ] Confirmar que o mesmo URL abre no Edge/Chrome, Safari e Chrome Android.
+[ ] Testar login das contas existentes e associação ao household correto.
+[ ] Confirmar leitura dos dados partilhados antes de qualquer escrita.
+[ ] Comparar cópias locais e resolver duplicados antes da migração.
+[ ] Confirmar saldos, movimentos, categorias, metas e divisões.
+[ ] Testar uma alteração controlada no Windows e confirmar receção nos telemóveis.
+[ ] Testar uma alteração no iPhone e confirmar receção no Windows e Android.
+[ ] Testar uma alteração no Android e confirmar receção nos restantes.
+[ ] Testar conflito de revisões com edições simultâneas e verificar escolha explícita.
+[ ] Testar perda e recuperação de ligação à Internet.
+[ ] Testar exportação e recuperação de cópias de segurança.
+[ ] Confirmar que nenhum segredo/service_role está no pacote público.
+[ ] Verificar instalação PWA opcional, sem a tornar requisito.
+[ ] Só declarar V5 concluída após todos os testes funcionais.

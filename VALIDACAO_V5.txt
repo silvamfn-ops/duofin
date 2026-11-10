@@ -1,0 +1,17 @@
+DUOFIN V5 — VALIDAÇÃO ESTÁTICA DA PRÉVIA WEB
+- Base de código derivada da V4; chaves locais financeiras e cloud preservadas.
+- SQL de referência mantido sem migrações destrutivas.
+- Manifesto PWA e service worker mantidos para instalação opcional.
+- Instruções de acesso atualizadas: navegador como modo principal em Windows, iPhone e Android.
+- Projeto Tauri/.exe removido da estratégia ativa.
+- Backup ZIP integral da V4 incluído.
+
+PENDENTE DE VALIDAÇÃO REAL
+- Publicação HTTPS e configuração de domínio.
+- Login/autenticação contra o projeto Supabase do utilizador.
+- Testes de leitura/escrita e sincronização nos três dispositivos.
+- Testes de conflito, recuperação de ligação e cópias de segurança.
+- Testes físicos em Safari iPhone, Chrome Android e Edge/Chrome Windows.
+
+A prévia não deve ser considerada versão final nem a sincronização deve ser
+considerada operacional até à conclusão dos testes acima.
