@@ -9,3 +9,8 @@ DUOFIN V5.1 — DESPESAS RECORRENTES
 - Não altera nem exige reaplicar o SQL existente.
 - A execução não ocorre com a aplicação fechada. Não há scheduler/backend dedicado nesta versão.
 - A sincronização mantém o mecanismo CAS atual: alterações simultâneas podem gerar conflito e exigem resolução explícita; não há fusão automática.
+
+CORREÇÃO V5.1.1 — EDIÇÃO DE RECORRÊNCIAS
+- Reforça os controlos Editar/Suspender/Retomar/Eliminar com delegação de eventos no próprio painel de regras e botões explicitamente type=button.
+- Ao editar, garante que categoria e pessoa existentes são selecionáveis mesmo que já não constem das opções atuais; desloca o formulário para a área de edição.
+- Atualiza a versão da cache PWA para forçar a obtenção dos ficheiros corrigidos.

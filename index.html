@@ -154,9 +154,6 @@ let b=e.target.closest('[data-del]');if(b&&confirm('Apagar este movimento?')){co
 let c=e.target.closest('[data-confirm-rec]');if(c){let t=db.transactions.find(x=>String(x.id)===c.dataset.confirmRec);if(t&&t.status==='pending'){t.status='confirmed';t.confirmedAt=iso(new Date());persist()}}
 let sk=e.target.closest('[data-skip-rec]');if(sk){let t=db.transactions.find(x=>String(x.id)===sk.dataset.skipRec);if(t&&t.status==='pending'&&confirm('Ignorar esta ocorrência? Não será contabilizada como despesa.')){t.status='skipped';persist()}}
 let d=e.target.closest('[data-day]');if(d)showDay(d.dataset.day);
-let toggle=e.target.closest('[data-recurrence-toggle]');if(toggle){let r=db.recurringExpenses?.find(x=>x.id===toggle.dataset.recurrenceToggle);if(r){r.active=!r.active;persist()}}
-let edit=e.target.closest('[data-recurrence-edit]');if(edit){const r=db.recurringExpenses?.find(x=>x.id===edit.dataset.recurrenceEdit);if(r)loadRecurrenceForm(r)}
-let del=e.target.closest('[data-recurrence-delete]');if(del){const r=db.recurringExpenses?.find(x=>x.id===del.dataset.recurrenceDelete);if(r&&confirm('Eliminar esta regra? Os movimentos já criados serão preservados.')){db.recurringExpenses=db.recurringExpenses.filter(x=>x.id!==r.id);persist()}}
 });
 
 // Despesas recorrentes: geração idempotente por regra e mês, partilhada no payload Supabase.
@@ -185,12 +182,24 @@ function renderRecurrences(){
  people.innerHTML=[...db.settings.people,'Conta conjunta'].map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('');
  if([...cats.options].some(o=>o.value===prevCat))cats.value=prevCat;if([...people.options].some(o=>o.value===prevPerson))people.value=prevPerson;
  const rules=db.recurringExpenses||[];
- $('recurrenceRules').innerHTML=rules.length?rules.map(r=>`<div class="item"><div class="row"><div><b>${esc(r.description)}</b><div class="small">${eur(r.amount)} · dia ${r.day} · ${esc(r.category)} · ${esc(r.person)}</div><div class="small">Desde ${r.startMonth}${r.endMonth?' até '+r.endMonth:''} · ${r.active?'Ativa':'Suspensa'}</div></div><span class="pill">${r.active?'Ativa':'Pausada'}</span></div><div class="actions"><button class="secondary" data-recurrence-edit="${esc(r.id)}">Editar</button><button class="secondary" data-recurrence-toggle="${esc(r.id)}">${r.active?'Suspender':'Retomar'}</button><button class="danger" data-recurrence-delete="${esc(r.id)}">Eliminar regra</button></div></div>`).join(''):'<div class="empty">Ainda não existem despesas recorrentes.</div>';
+ $('recurrenceRules').innerHTML=rules.length?rules.map(r=>`<div class="item"><div class="row"><div><b>${esc(r.description)}</b><div class="small">${eur(r.amount)} · dia ${r.day} · ${esc(r.category)} · ${esc(r.person)}</div><div class="small">Desde ${r.startMonth}${r.endMonth?' até '+r.endMonth:''} · ${r.active?'Ativa':'Suspensa'}</div></div><span class="pill">${r.active?'Ativa':'Pausada'}</span></div><div class="actions"><button type="button" class="secondary" data-recurrence-edit="${esc(r.id)}">Editar</button><button type="button" class="secondary" data-recurrence-toggle="${esc(r.id)}">${r.active?'Suspender':'Retomar'}</button><button type="button" class="danger" data-recurrence-delete="${esc(r.id)}">Eliminar regra</button></div></div>`).join(''):'<div class="empty">Ainda não existem despesas recorrentes.</div>';
+ $('recurrenceRules').onclick=e=>{
+  const edit=e.target.closest('[data-recurrence-edit]');
+  const toggle=e.target.closest('[data-recurrence-toggle]');
+  const del=e.target.closest('[data-recurrence-delete]');
+  if(edit){const r=db.recurringExpenses.find(x=>String(x.id)===edit.dataset.recurrenceEdit);if(r){loadRecurrenceForm(r);$('recurrenceFormTitle').scrollIntoView({behavior:'smooth',block:'start'});$('recurrenceDescription').focus({preventScroll:true});}return;}
+  if(toggle){const r=db.recurringExpenses.find(x=>String(x.id)===toggle.dataset.recurrenceToggle);if(r){r.active=!r.active;persist();}return;}
+  if(del){const r=db.recurringExpenses.find(x=>String(x.id)===del.dataset.recurrenceDelete);if(r&&confirm('Eliminar esta regra? Os movimentos já criados serão preservados.')){db.recurringExpenses=db.recurringExpenses.filter(x=>x.id!==r.id);persist();}}
+ };
  const pending=db.transactions.filter(t=>t.status==='pending'&&t.recurrenceId).sort((a,b)=>a.date.localeCompare(b.date));
  $('pendingRecurring').innerHTML=pending.length?pending.map(line).join(''):'<div class="empty">Não há despesas recorrentes pendentes.</div>';
 }
 function loadRecurrenceForm(r){
- $('recurrenceId').value=r.id;$('recurrenceDescription').value=r.description;$('recurrenceAmount').value=r.amount;$('recurrenceCategory').value=r.category;$('recurrencePerson').value=r.person;$('recurrenceDay').value=r.day;$('recurrenceStart').value=r.startMonth;$('recurrenceEnd').value=r.endMonth||'';$('recurrenceFormTitle').textContent='Editar despesa recorrente';$('recurrenceSave').textContent='Guardar alterações';$('recurrenceCancel').hidden=false;
+ if(!r)return;
+ $('recurrenceId').value=String(r.id);$('recurrenceDescription').value=r.description??'';$('recurrenceAmount').value=Number(r.amount)||'';
+ if(![...$('recurrenceCategory').options].some(o=>o.value===r.category)){const o=document.createElement('option');o.value=r.category;o.textContent=r.category;$('recurrenceCategory').append(o)}
+ if(![...$('recurrencePerson').options].some(o=>o.value===r.person)){const o=document.createElement('option');o.value=r.person;o.textContent=r.person;$('recurrencePerson').append(o)}
+ $('recurrenceCategory').value=r.category;$('recurrencePerson').value=r.person;$('recurrenceDay').value=r.day;$('recurrenceStart').value=r.startMonth;$('recurrenceEnd').value=r.endMonth||'';$('recurrenceFormTitle').textContent='Editar despesa recorrente';$('recurrenceSave').textContent='Guardar alterações';$('recurrenceCancel').hidden=false;
 }
 function resetRecurrenceForm(){ $('recurrenceForm').reset();$('recurrenceId').value='';$('recurrenceDay').value='1';$('recurrenceStart').value=cur;$('recurrenceFormTitle').textContent='Nova despesa recorrente';$('recurrenceSave').textContent='Guardar recorrência';$('recurrenceCancel').hidden=true; }
 $('recurrenceStart').value=cur;
