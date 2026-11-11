@@ -1,0 +1,14 @@
+DUOFIN V5.1 — CHECKLIST DE TESTE DAS RECORRÊNCIAS
+[ ] Exportar cópia JSON antes de atualizar a versão publicada.
+[ ] Abrir o mesmo endereço HTTPS e confirmar que os movimentos antigos permanecem.
+[ ] Criar uma recorrência com vencimento hoje e confirmar que surge como pendente.
+[ ] Confirmar que a despesa pendente não altera totais, saldo nem limites.
+[ ] Confirmar pagamento e verificar que passa a contar como despesa.
+[ ] Ignorar uma ocorrência e verificar que não conta nos totais nem volta a ser criada.
+[ ] Criar recorrência para dia 31 e verificar fevereiro/mês com menos dias.
+[ ] Suspender e retomar uma regra.
+[ ] Editar uma regra e confirmar que movimentos já criados não são reescritos.
+[ ] Definir mês de fim e confirmar que não são criadas ocorrências posteriores.
+[ ] Confirmar que a mesma regra/mês não gera duplicado ao fechar e reabrir a aplicação.
+[ ] Testar sincronização em dois dispositivos e observar a resolução de conflitos.
+[ ] Testar Safari iPhone, Chrome Android e Edge/Chrome Windows.

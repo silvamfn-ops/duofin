@@ -1,0 +1,11 @@
+DUOFIN V5.1 — DESPESAS RECORRENTES
+- Adiciona separador "Recorrentes" para criar, editar, suspender, retomar e eliminar regras mensais.
+- Cada regra guarda descrição, valor, categoria, pessoa, dia do mês e período de vigência.
+- Cria ocorrências vencidas como movimentos pendentes quando a aplicação é aberta/sincronizada.
+- Cada ocorrência usa uma chave estável regra+mês para impedir geração repetida no mesmo payload partilhado.
+- Dias 29, 30 e 31 ajustam-se ao último dia dos meses mais curtos.
+- Permite confirmar pagamento ou ignorar a ocorrência; pendentes/ignoradas não entram nos totais, gráficos de despesa ou limites.
+- Mantém movimentos antigos, chave financeira local, formato settings+transactions e configuração Supabase.
+- Não altera nem exige reaplicar o SQL existente.
+- A execução não ocorre com a aplicação fechada. Não há scheduler/backend dedicado nesta versão.
+- A sincronização mantém o mecanismo CAS atual: alterações simultâneas podem gerar conflito e exigem resolução explícita; não há fusão automática.

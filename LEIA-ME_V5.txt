@@ -29,10 +29,6 @@ ARQUITETURA
 - Cada adulto inicia sessão com a sua conta e associa-se ao orçamento existente.
 - O navegador mantém armazenamento local e sessão próprios por dispositivo; isso
   não cria bases de dados partilhadas separadas quando a conta está associada.
-- O armazenamento do navegador depende do domínio (origem). Se a V5 for publicada
-  no mesmo domínio HTTPS da V4, as chaves locais podem continuar acessíveis no
-  mesmo navegador. Se mudar o domínio, os dados e a sessão locais não migram
-  automaticamente: exporta backups e configura/inicia sessão novamente.
 - O envio de alterações ocorre após uma pausa de 1,2 s e a consulta de alterações
   remotas ocorre a cada 15 s enquanto a página está visível.
 - Não é sincronização instantânea e não funciona quando o navegador está fechado.
@@ -102,3 +98,26 @@ recuperação de backup ou auditoria de segurança.
 Esta é uma prévia de desenvolvimento, não uma versão final certificada. A
 sincronização só estará operacional depois de a aplicação ser publicada, de a
 configuração existente ser validada e de os testes reais passarem.
+
+ATUALIZAÇÃO V5.1 — DESPESAS RECORRENTES
+---------------------------------------
+A secção "Recorrentes" permite registar despesas mensais fixas. Cada regra inclui
+Descrição, Valor, Categoria, Quem paga, Dia do mês, mês de início e fim opcional.
+Pode ser editada, suspensa, retomada ou eliminada. Eliminar a regra não apaga
+movimentos já criados.
+
+Na data prevista, a aplicação cria um movimento pendente quando é aberta e
+consegue processar os dados. O pagamento só entra nos totais e limites depois
+de ser confirmado. Uma ocorrência pode também ser ignorada. Os dias 29, 30 e 31
+são ajustados ao último dia dos meses mais curtos.
+
+IMPORTANTE: esta versão não executa tarefas com a aplicação fechada nem envia
+notificações. A chave regra+mês evita gerar repetidamente a mesma ocorrência no
+mesmo conjunto de dados. A sincronização continua a usar o controlo de revisão
+(CAS) existente; em alterações simultâneas pode surgir um conflito que exige
+escolha explícita. Não existe fusão automática nem restrição transacional de
+ocorrências no servidor nesta atualização.
+
+A atualização preserva as chaves locais e cloud, os movimentos existentes e o
+SQL Supabase. Não executar novamente `setup.sql` apenas por causa desta versão.
+Antes de publicar, exportar cópias de segurança e seguir CHECKLIST_V5_1.txt.

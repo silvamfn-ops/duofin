@@ -1,0 +1,23 @@
+DUOFIN V5.1 — VALIDAÇÃO DA ATUALIZAÇÃO
+
+VALIDAÇÕES EXECUTADAS
+- Sintaxe JavaScript validada com Node.js (node --check).
+- Teste isolado da lógica de recorrência: geração de ocorrências vencidas, ajuste do dia 31 para 28 de fevereiro e idempotência (segunda execução não cria duplicados).
+- Estrutura do HTML verificada por contagem de secções e presença dos elementos do formulário.
+- Service worker atualizado para uma nova cache (duofin-v5-1-20261111).
+- ZIP de origem V5 mantido com backup integral V4; SQL Supabase não foi alterado.
+- Chave local `orcamento-plus-v1`, chave cloud `orcamento-plus-cloud-v1` e estrutura settings/transactions preservadas.
+
+FUNCIONALIDADE ADICIONADA
+- Regras mensais com descrição, valor, categoria, pessoa, dia, início e fim opcional.
+- Editar, suspender, retomar e eliminar regra; os movimentos existentes são preservados.
+- Ocorrências pendentes com chave regra+mês; confirmação ou ignorar.
+- Dias 29/30/31 ajustados ao último dia do mês.
+- Pendentes e ignoradas excluídas dos totais e limites de despesas.
+
+LIMITAÇÕES E TESTES AINDA PENDENTES
+- Não foi possível executar testes de interface num navegador real nesta sessão; o teste automatizado cobre a lógica de geração, não a interface completa.
+- Não foram feitos testes com o projeto Supabase real nem nos dispositivos físicos.
+- A criação ocorre quando a aplicação abre e sincroniza, não enquanto está fechada.
+- O CAS existente deteta conflitos entre dispositivos, mas não faz fusão automática. A chave de ocorrência evita repetição dentro do mesmo payload; não substitui uma restrição única transacional no servidor para concorrência simultânea.
+- Antes de produção, testar a criação da mesma ocorrência em dois dispositivos, confirmação/ignorar, suspensão, fim de recorrência, mudança de mês, backup e restauro.
