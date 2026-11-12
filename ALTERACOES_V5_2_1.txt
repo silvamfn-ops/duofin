@@ -1,0 +1,15 @@
+DUOFIN V5.2.1 — ALTERAÇÕES
+==========================
+
+- O cartão principal passou a chamar-se “Total de rendimentos”.
+- O valor apresentado é a soma dos movimentos do tipo rendimento (income),
+  considerados no ciclo financeiro selecionado e excluídos os movimentos
+  pendentes ou ignorados.
+- O painel deixou de substituir um total zero pelo rendimento mensal fixo
+  configurado nas definições.
+- O cálculo do saldo do ciclo deixou igualmente de presumir esse rendimento
+  fixo: usa apenas os rendimentos efetivamente registados, menos despesas
+  pagas e poupanças transferidas pagas, conforme a lógica já existente.
+- Não foram alterados os movimentos, as definições, os objetivos, a estrutura
+  de armazenamento local ou o esquema Supabase.
+- Cache do service worker atualizada para forçar a atualização dos ficheiros.

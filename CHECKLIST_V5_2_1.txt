@@ -1,0 +1,11 @@
+DUOFIN V5.2.1 — CHECKLIST
+=========================
+[ ] Publicar no mesmo endereço HTTPS.
+[ ] Reabrir a aplicação online para atualizar a cache.
+[ ] Selecionar um ciclo com rendimentos registados e confirmar a soma.
+[ ] Selecionar um ciclo sem rendimentos e confirmar 0,00 €.
+[ ] Adicionar, editar e apagar um rendimento e confirmar atualização do total.
+[ ] Confirmar que os movimentos pendentes/ignorados não entram no total.
+[ ] Confirmar que as definições de rendimento mensal continuam disponíveis,
+    mas não são usadas como valor presumido no painel.
+[ ] Confirmar sincronização entre os dois dispositivos/contas.

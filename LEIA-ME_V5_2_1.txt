@@ -1,0 +1,24 @@
+DUOFIN V5.2.1 — GUIA DE ATUALIZAÇÃO
+===================================
+
+Esta versão parte da V5.2 e corrige a apresentação do rendimento no painel.
+
+INSTALAÇÃO / PUBLICAÇÃO
+1. Faça uma cópia de segurança dos ficheiros atualmente publicados.
+2. Extraia o conteúdo deste ZIP.
+3. Publique os ficheiros da pasta duofin_v5_browser no mesmo alojamento HTTPS
+   e no mesmo endereço da aplicação.
+4. Abra novamente a aplicação com ligação à internet para receber a nova
+   versão. O service worker tem uma cache nova (v5.2.1).
+5. Confirme o total de rendimentos no ciclo selecionado.
+
+DADOS E SINCRONIZAÇÃO
+Os dados locais e a configuração Supabase mantêm as mesmas chaves e formato.
+Não execute novamente o setup SQL por causa desta atualização.
+
+COMPORTAMENTO
+O cartão “Total de rendimentos” soma os rendimentos registados no ciclo
+selecionado. Se não houver rendimentos registados, apresenta 0,00 €, sem
+recorrer ao rendimento fixo das definições. O saldo usa a mesma soma real.
+
+Consulte ALTERACOES_V5_2_1.txt e VALIDACAO_V5_2_1.txt.
