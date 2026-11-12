@@ -518,7 +518,7 @@ function printReport(mode){
  $('printSheet').innerHTML=`
    <div class="print-header">
      <div><h1>DuoFin · ${esc(title)}</h1><div class="small">${esc(peopleNames)}</div></div>
-     <div class="print-meta">Emitido em ${esc(emitted)}<br>DuoFin V5.6.0</div>
+     <div class="print-meta">Emitido em ${esc(emitted)}<br>DuoFin V5.6.1</div>
    </div>
    ${bodyHtml}
    <div class="print-footer"><span>DuoFin — Gestão Financeira a Dois</span><span>Documento gerado localmente no dispositivo</span></div>
@@ -613,11 +613,9 @@ $('csvFileInput').onchange=async e=>{
  const file=e.target.files[0];if(!file)return;
  try{
    const text=await file.text();
-   const lines=text.split(/?
-/).map(l=>l.trim()).filter(Boolean);
+   const lines=text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
    if(lines.length<2)throw new Error('O ficheiro CSV parece estar vazio.');
-   const sample=lines.slice(0,5).join('
-');
+   const sample=lines.slice(0,5).join('\n');
    const sep=(sample.match(/;/g)||[]).length>=(sample.match(/,/g)||[]).length?';':',';
    let headerIdx=0;
    for(let i=0;i<Math.min(10,lines.length);i++){
@@ -1098,9 +1096,7 @@ $('categoryManager').addEventListener('click',e=>{
     let replacement=null;
     if(used.length){
       const choices=db.settings.categories.filter((c,j)=>j!==i).map(c=>c.name);
-      const answer=prompt('Esta categoria está associada a '+used.length+' movimento(s). Escreva exatamente o nome da categoria de destino:
-'+choices.join('
-'));
+      const answer=prompt('Esta categoria está associada a '+used.length+' movimento(s). Escreva exatamente o nome da categoria de destino:\n'+choices.join('\n'));
       if(answer===null)return;
       replacement=choices.find(n=>n.toLocaleLowerCase('pt-PT')===answer.trim().toLocaleLowerCase('pt-PT'));
       if(!replacement){alert('Categoria de destino não reconhecida. Nada foi alterado.');return;}
