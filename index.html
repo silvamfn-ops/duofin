@@ -13,7 +13,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png">
   <link rel="stylesheet" href="./styles.css">
-  <title>DuoFin v5.6.1 — Gestão financeira a dois</title>
+  <title>DuoFin v5.7.0 — Gestão financeira a dois</title>
 </head>
 <body>
   <header>
@@ -22,7 +22,7 @@
         <div class="brandline"><span class="brandmark" aria-hidden="true">DF</span><h1>DuoFin</h1></div>
         <p>As nossas finanças. O nosso equilíbrio.</p>
       </div>
-      <span class="version-badge">v5.6</span>
+      <span class="version-badge">v5.7</span>
     </div>
   </header>
   <div class="wrap">
@@ -321,15 +321,24 @@
 
     <section id="dados" class="view">
       <div class="card">
-        <h2>Importar extrato bancário (CSV)</h2>
-        <p class="small">Carrega um ficheiro CSV exportado do teu banco (CGD, Millennium bcp, Santander, BPI, Novo Banco, ActivoBank, Moey, Revolut, etc.). Podes rever e ajustar as categorias antes de confirmar a importação.</p>
+        <h2>Importar extrato bancário (PDF ou CSV)</h2>
+        <p class="small">Carrega um extrato bancário em <strong>PDF</strong> (ou CSV) exportado do teu banco (CGD, Millennium bcp, Santander, BPI, Novo Banco, ActivoBank, Moey, Revolut, etc.), ou cola diretamente o texto copiado do PDF. Podes rever e ajustar as categorias antes de confirmar.</p>
         <div class="grid">
           <div>
             <label for="csvDefaultPerson">Responsável por defeito</label>
             <select id="csvDefaultPerson"><option>Conta conjunta</option></select>
           </div>
-          <div style="display:flex;align-items:end">
-            <label class="secondary" style="margin:0;text-align:center;cursor:pointer">📂 Escolher ficheiro CSV<input id="csvFileInput" type="file" accept=".csv,text/csv,text/plain" hidden></label>
+          <div style="display:flex;align-items:end;gap:8px;flex-wrap:wrap">
+            <label class="secondary" style="margin:0;text-align:center;cursor:pointer;flex:1">📄 Escolher PDF ou CSV<input id="csvFileInput" type="file" accept=".pdf,application/pdf,.csv,text/csv,text/plain" hidden></label>
+            <button class="ghost" type="button" id="togglePasteExtractBtn" style="white-space:nowrap">📋 Colar texto</button>
+          </div>
+        </div>
+        <div id="pasteExtractBox" class="inline-editor" hidden>
+          <label for="pasteExtractText" style="margin-top:0">Colar texto copiado do extrato PDF</label>
+          <textarea id="pasteExtractText" rows="5" placeholder="Cola aqui as linhas copiadas do extrato bancário (ex.: 10-11-2026  COMPRA CONTINENTE  -45,20 €)..."></textarea>
+          <div class="actions">
+            <button class="secondary" type="button" id="parsePastedTextBtn">Analisar texto colado</button>
+            <button class="ghost" type="button" id="cancelPasteTextBtn">Fechar</button>
           </div>
         </div>
         <div id="csvPreviewContainer" hidden>
@@ -479,7 +488,7 @@
     <!-- Folha dedicada exclusivamente à impressão A4 / PDF -->
     <div id="printSheet" aria-hidden="true"></div>
 
-    <footer>DuoFin · V5.6.1 · Gestão financeira a dois</footer>
+    <footer>DuoFin · V5.7.0 · Gestão financeira a dois</footer>
   </div>
   <script src="./app.js"></script>
 </body>

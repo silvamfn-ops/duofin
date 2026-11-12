@@ -1,4 +1,4 @@
-const CACHE_NAME = 'duofin-v5-6-1-20261112';
+const CACHE_NAME = 'duofin-v5-7-0-20261112';
 const CORE_ASSETS = [
   './',
   './index.html',
@@ -23,7 +23,8 @@ self.addEventListener('fetch', event => {
   const req = event.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
-  if (url.origin !== self.location.origin) return;
+  const isAllowedCdn = url.origin === 'https://cdnjs.cloudflare.com' && url.pathname.includes('/pdf.js/');
+  if (url.origin !== self.location.origin && !isAllowedCdn) return;
   if (req.mode === 'navigate') {
     event.respondWith(fetch(req).then(res => {
       if (res && res.ok) {
