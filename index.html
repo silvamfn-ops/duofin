@@ -13,7 +13,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png">
   <link rel="stylesheet" href="./styles.css">
-  <title>DuoFin v5.3.0 — Ciclos financeiros e objetivos</title>
+  <title>DuoFin v5.4.0 — Ciclos financeiros, objetivos e relatórios</title>
 </head>
 <body>
   <header>
@@ -46,6 +46,9 @@
         <div class="stat"><span>Despesas pagas</span><b id="exp"></b></div>
         <div class="stat"><span>Saldo do ciclo</span><b id="bal"></b></div>
         <div class="stat"><span>Poupança líquida</span><b id="savm"></b></div>
+      </div>
+      <div class="actions">
+        <button class="secondary" type="button" id="printFullReportBtn">🖨️ Imprimir relatório completo (ciclo + objetivos)</button>
       </div>
       <div id="alerts"></div>
       <div class="card">
@@ -124,7 +127,10 @@
       </div>
 
       <div class="card">
-        <h2>Histórico de movimentos</h2>
+        <div class="row">
+          <h2>Histórico de movimentos</h2>
+          <button class="secondary" type="button" id="printMovementsBtn">🖨️ Imprimir movimentos</button>
+        </div>
         <div class="grid">
           <div><label for="movementCycle">Ciclo financeiro</label><select id="movementCycle"></select></div>
           <div>
@@ -226,7 +232,10 @@
 
     <section id="objetivo" class="view">
       <div class="card">
-        <h2 id="goalFormTitle">Criar objetivo de poupança</h2>
+        <div class="row">
+          <h2 id="goalFormTitle">Criar objetivo de poupança</h2>
+          <button class="secondary" type="button" id="printGoalsBtn">🖨️ Imprimir relatório de objetivos</button>
+        </div>
         <form id="goalForm">
           <input id="goalId" type="hidden">
           <label for="goalName">Nome do objetivo</label>
@@ -246,6 +255,16 @@
     </section>
 
     <section id="dados" class="view">
+      <div class="card">
+        <h2>Relatórios e impressão (PDF / A4)</h2>
+        <p class="small">Gera relatórios formatados para impressão em papel ou gravação como PDF diretamente a partir do navegador.</p>
+        <div class="actions">
+          <button class="primary" type="button" id="printDadosFullBtn">🖨️ Relatório completo (ciclo + objetivos)</button>
+          <button class="secondary" type="button" id="printDadosMovBtn">🖨️ Apenas movimentos filtrados</button>
+          <button class="secondary" type="button" id="printDadosGoalsBtn">🖨️ Apenas objetivos de poupança</button>
+        </div>
+      </div>
+
       <div class="card">
         <h2>Aparência</h2>
         <div class="grid">
@@ -362,7 +381,10 @@
       </div>
     </section>
 
-    <footer>DuoFin · V5.3.0 · Gestão financeira a dois</footer>
+    <!-- Folha dedicada exclusivamente à impressão A4 / PDF -->
+    <div id="printSheet" aria-hidden="true"></div>
+
+    <footer>DuoFin · V5.4.0 · Gestão financeira a dois</footer>
   </div>
   <script src="./app.js"></script>
 </body>

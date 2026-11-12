@@ -34,7 +34,6 @@ const savingSigned=t=>t.type==='saving_withdraw'?-(Number(t.amount)||0):(Number(
 
 function buildCycles(){
  const today=iso(now),validTx=db.transactions.filter(t=>validDate(t.date)&&t.date<=today);
- // Apenas rendimentos marcados como definidores de ciclo (countsForCycle !== false) abrem/fecham ciclos
  const cycleIncomes=validTx.filter(t=>t.type==='income'&&isPaid(t)&&t.countsForCycle!==false).sort((a,b)=>a.date.localeCompare(b.date)||String(a.id).localeCompare(String(b.id)));
  if(!cycleIncomes.length){
    const monthKeys=[...new Set([...validTx.map(t=>t.date.slice(0,7)),cur])].sort();
@@ -49,7 +48,6 @@ function buildCycles(){
  });
  const cycles=[];
  const firstMovement=validTx.map(t=>t.date).sort()[0];
- // Isola movimentos anteriores ao primeiro vencimento registado num período inicial próprio
  if(firstMovement&&firstMovement<groups[0].firstDate){
    const preEnd=addDays(groups[0].firstDate,-1);
    cycles.push({key:'pre:'+firstMovement+':'+preEnd,start:firstMovement,end:preEnd,anchor:null,open:false,fallback:false,preCycle:true,incomeDates:[],incomeCount:0});
@@ -109,7 +107,6 @@ function render(){
  const tx=cycleTransactions(cycle),ex=tx.filter(t=>t.type==='expense'&&isPaid(t)),inc=tx.filter(t=>t.type==='income'&&isPaid(t));
  const svIn=tx.filter(t=>t.type==='saving'&&isPaid(t)),svOut=tx.filter(t=>t.type==='saving_withdraw'&&isPaid(t));
  const netSaving=sum(svIn)-sum(svOut);
- // Resgate de poupança devolve liquidez ao ciclo (+sum(svOut))
  const cycleBalance=sum(inc)+sum(svOut)-sum(ex)-sum(svIn);
 
  $('inc').textContent=eur(sum(inc));
@@ -164,13 +161,24 @@ function render(){
  updateTxFormVisibility();
 }
 
-function renderTransactions(){
+function getFilteredMovements(){
  const f=$('filter').value,period=$('movementCycle').value;
- let list=[...db.transactions];
- if(period==='selected'&&activeCycle)list=list.filter(t=>t.date>=activeCycle.start&&t.date<=activeCycle.end);
- else if(period!=='all'&&period!=='selected'){const c=activeCycles.find(x=>x.key===period);if(c)list=list.filter(t=>t.date>=c.start&&t.date<=c.end);}
+ let list=[...db.transactions],periodLabel='Todos os movimentos';
+ if(period==='selected'&&activeCycle){
+   list=list.filter(t=>t.date>=activeCycle.start&&t.date<=activeCycle.end);
+   periodLabel=cycleName(activeCycle);
+ }else if(period!=='all'&&period!=='selected'){
+   const c=activeCycles.find(x=>x.key===period);
+   if(c){list=list.filter(t=>t.date>=c.start&&t.date<=c.end);periodLabel=cycleName(c);}
+ }
  if(f!=='all')list=list.filter(t=>t.type===f);
  list.sort((a,b)=>b.date.localeCompare(a.date));
+ const typeLabels={all:'Todos os tipos',expense:'Apenas despesas',income:'Apenas rendimentos',saving:'Apenas poupança transferida',saving_withdraw:'Apenas resgates de poupança'};
+ return {list,periodLabel,typeLabel:typeLabels[f]||'Todos os tipos'};
+}
+
+function renderTransactions(){
+ const {list}=getFilteredMovements();
  $('transactions').innerHTML=list.length?list.map(line).join(''):'<div class="empty">Sem movimentos neste período.</div>';
 }
 
@@ -203,6 +211,135 @@ function renderGoals(){
   }).join('');
   return `<div class="card"><div class="row"><div><h2>${esc(g.name)}</h2><span class="pill">${goalStatusLabel(g.status)}</span></div><b>${Math.round(pct)}%</b></div><div class="row"><b>${eur(total)} / ${eur(g.target)}</b><span class="small">${g.deadline?'Prazo: '+fmtDate(g.deadline):'Sem data-limite'}</span></div><div class="progress"><i style="width:${pct}%"></i></div><div class="small">${left>0?'Faltam '+eur(left):'Montante-alvo atingido.'}</div><div class="actions"><button class="secondary" type="button" data-goal-edit="${esc(g.id)}">Editar</button>${g.status!=='completed'?`<button class="secondary" type="button" data-goal-toggle="${esc(g.id)}">${g.status==='paused'?'Retomar':'Pausar'}</button>`:''}<button class="secondary" type="button" data-goal-complete="${esc(g.id)}">${g.status==='completed'?'Reabrir':'Concluir'}</button></div>${g.status==='active'?`<div class="grid"><div><label>Atribuir movimento de poupança existente</label><select data-goal-assign-select="${esc(g.id)}"><option value="">Selecionar movimento…</option>${options}</select></div><div style="display:flex;align-items:end"><button class="secondary" type="button" data-goal-assign="${esc(g.id)}">Atribuir movimento</button></div></div>`:''}<h3 style="font-size:14px;margin:14px 0 4px">Reforços e resgates atribuídos</h3>${history||'<div class="empty">Ainda sem movimentos associados.</div>'}</div>`;
  }).join(''):'<div class="card empty">Ainda não existem objetivos. Usa o formulário acima para criar um.</div>';
+}
+
+// GERAÇÃO DE RELATÓRIOS PARA IMPRESSÃO / PDF
+function txTypeLabel(t){
+ if(t.type==='income')return t.countsForCycle===false?'Rendimento (extra)':'Rendimento';
+ if(t.type==='saving')return 'Poupança (+)';
+ if(t.type==='saving_withdraw')return 'Resgate (−)';
+ return 'Despesa';
+}
+
+function buildGoalsReportHtml(){
+ const goals=db.savingsGoals||[];
+ if(!goals.length)return '<div class="print-section"><h2>Objetivos de Poupança</h2><p class="small">Ainda não existem objetivos definidos.</p></div>';
+ const totalTarget=goals.reduce((s,g)=>s+(Number(g.target)||0),0);
+ const totalSaved=goals.reduce((s,g)=>s+goalTotal(g),0);
+ const rows=goals.map(g=>{
+   const saved=goalTotal(g),target=Number(g.target)||0,left=Math.max(0,target-saved),pct=target>0?Math.min(100,saved/target*100):0;
+   const txs=goalTransactions(g).sort((a,b)=>b.date.localeCompare(a.date));
+   const lastMove=txs[0]?`${txs[0].date} (${txs[0].type==='saving_withdraw'?'−':'+'}${eur(txs[0].amount)})`:'—';
+   return `<tr>
+     <td><b>${esc(g.name)}</b><br><span class="small">${goalStatusLabel(g.status)}</span></td>
+     <td>${g.deadline?fmtDate(g.deadline):'Sem prazo'}</td>
+     <td class="num">${eur(target)}</td>
+     <td class="num"><b>${eur(saved)}</b></td>
+     <td class="num">${eur(left)}</td>
+     <td><span class="print-bar"><i style="width:${pct}%"></i></span><b>${Math.round(pct)}%</b></td>
+     <td>${esc(lastMove)}</td>
+   </tr>`;
+ }).join('');
+ return `<div class="print-section">
+   <h2>Estado dos Objetivos de Poupança</h2>
+   <div class="print-kpis" style="grid-template-columns:repeat(3,1fr)">
+     <div class="print-kpi"><span>Total Poupança nos Objetivos</span><b>${eur(totalSaved)}</b></div>
+     <div class="print-kpi"><span>Total Alvo Definido</span><b>${eur(totalTarget)}</b></div>
+     <div class="print-kpi"><span>Montante Global em Falta</span><b>${eur(Math.max(0,totalTarget-totalSaved))}</b></div>
+   </div>
+   <table class="print-table">
+     <thead><tr><th>Objetivo</th><th>Prazo</th><th class="num">Alvo</th><th class="num">Acumulado</th><th class="num">Em falta</th><th>Progresso</th><th>Último movimento</th></tr></thead>
+     <tbody>${rows}</tbody>
+   </table>
+ </div>`;
+}
+
+function buildMovementsReportHtml(txList, subtitle, includeCategoryBreakdown=false){
+ const paid=txList.filter(isPaid);
+ const inc=sum(paid.filter(t=>t.type==='income'));
+ const exp=sum(paid.filter(t=>t.type==='expense'));
+ const svIn=sum(paid.filter(t=>t.type==='saving'));
+ const svOut=sum(paid.filter(t=>t.type==='saving_withdraw'));
+ const bal=inc+svOut-exp-svIn;
+
+ let breakdownHtml='';
+ if(includeCategoryBreakdown){
+   const catRows=db.settings.categories.map(c=>{
+     const v=sum(paid.filter(t=>t.type==='expense'&&t.category===c.name));
+     const b=Number(c.budget)||0;
+     const pct=b>0?Math.round(v/b*100)+'%':'—';
+     return `<tr><td>${esc(c.name)}</td><td class="num">${eur(b)}</td><td class="num"><b>${eur(v)}</b></td><td class="num">${pct}</td></tr>`;
+   }).join('');
+   const peopleRows=[...db.settings.people,'Conta conjunta'].map(p=>{
+     const v=sum(paid.filter(t=>t.type==='expense'&&t.person===p));
+     return `<tr><td>${esc(p)}</td><td class="num"><b>${eur(v)}</b></td></tr>`;
+   }).join('');
+   breakdownHtml=`<div class="print-section" style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px">
+     <div><h2>Despesas por Categoria</h2><table class="print-table"><thead><tr><th>Categoria</th><th class="num">Limite</th><th class="num">Gasto</th><th class="num">%</th></tr></thead><tbody>${catRows}</tbody></table></div>
+     <div><h2>Despesas por Adulto</h2><table class="print-table"><thead><tr><th>Responsável</th><th class="num">Total</th></tr></thead><tbody>${peopleRows}</tbody></table></div>
+   </div>`;
+ }
+
+ const rows=txList.length?txList.map(t=>{
+   const sign=t.type==='income'?'+':t.type==='saving'?'↗':t.type==='saving_withdraw'?'↙':'−';
+   const statusNote=t.status==='pending'?' [Pendente]':t.status==='skipped'?' [Ignorada]':'';
+   return `<tr>
+     <td style="white-space:nowrap">${esc(t.date)}</td>
+     <td>${esc(txTypeLabel(t))}</td>
+     <td><b>${esc(t.description)}</b>${esc(statusNote)}</td>
+     <td>${esc(t.category)}</td>
+     <td>${esc(t.person)}</td>
+     <td class="num"><b>${sign} ${eur(t.amount)}</b></td>
+   </tr>`;
+ }).join(''):'<tr><td colspan="6" style="text-align:center;padding:14px">Sem movimentos registados neste âmbito.</td></tr>';
+
+ return `<div class="print-section">
+   <h2>Resumo Financeiro · ${esc(subtitle)}</h2>
+   <div class="print-kpis">
+     <div class="print-kpi"><span>Rendimentos</span><b>${eur(inc)}</b></div>
+     <div class="print-kpi"><span>Despesas Pagas</span><b>${eur(exp)}</b></div>
+     <div class="print-kpi"><span>Saldo Líquido</span><b>${eur(bal)}</b></div>
+     <div class="print-kpi"><span>Poupança Líquida</span><b>${eur(svIn-svOut)}</b></div>
+   </div>
+ </div>
+ ${breakdownHtml}
+ <div class="print-section">
+   <h2>Detalhe de Movimentos (${txList.length})</h2>
+   <table class="print-table">
+     <thead><tr><th>Data</th><th>Tipo</th><th>Descrição</th><th>Categoria</th><th>Responsável</th><th class="num">Valor</th></tr></thead>
+     <tbody>${rows}</tbody>
+   </table>
+ </div>`;
+}
+
+function printReport(mode){
+ const {cycle}=getSelectedCycle();
+ const emitted=new Date().toLocaleString('pt-PT',{dateStyle:'short',timeStyle:'short'});
+ const peopleNames=db.settings.people.join(' & ');
+ let title='Relatório Financeiro Geral',bodyHtml='';
+
+ if(mode==='goals'){
+   title='Relatório de Objetivos de Poupança';
+   bodyHtml=buildGoalsReportHtml();
+ }else if(mode==='movements'){
+   const {list,periodLabel,typeLabel}=getFilteredMovements();
+   title='Extrato de Movimentos';
+   bodyHtml=buildMovementsReportHtml(list,`${periodLabel} (${typeLabel})`,false);
+ }else{
+   const tx=[...cycleTransactions(cycle)].sort((a,b)=>b.date.localeCompare(a.date));
+   title='Relatório do Ciclo Financeiro e Objetivos';
+   bodyHtml=buildMovementsReportHtml(tx,cycleName(cycle),true)+buildGoalsReportHtml();
+ }
+
+ $('printSheet').innerHTML=`
+   <div class="print-header">
+     <div><h1>DuoFin · ${esc(title)}</h1><div class="small">${esc(peopleNames)}</div></div>
+     <div class="print-meta">Emitido em ${esc(emitted)}<br>DuoFin V5.4.0</div>
+   </div>
+   ${bodyHtml}
+   <div class="print-footer"><span>DuoFin — Gestão Financeira a Dois</span><span>Documento gerado localmente no dispositivo</span></div>
+ `;
+ window.print();
 }
 
 function updateSavingGoalOptions(){
@@ -281,6 +418,14 @@ $('cycleSelect').onchange=()=>{selectedCycleKey=$('cycleSelect').value;render()}
 $('filter').onchange=renderTransactions;
 $('movementCycle').onchange=renderTransactions;
 $('type').onchange=updateTxFormVisibility;
+
+// Eventos dos botões de impressão
+$('printFullReportBtn').onclick=()=>printReport('full');
+$('printMovementsBtn').onclick=()=>printReport('movements');
+$('printGoalsBtn').onclick=()=>printReport('goals');
+$('printDadosFullBtn').onclick=()=>printReport('full');
+$('printDadosMovBtn').onclick=()=>printReport('movements');
+$('printDadosGoalsBtn').onclick=()=>printReport('goals');
 
 $('txForm').onsubmit=e=>{
  e.preventDefault();
@@ -534,7 +679,7 @@ addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;in
 installBtn.onclick=async()=>{if(!installPrompt)return;installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;installBtn.hidden=true};
 addEventListener('appinstalled',()=>{$('installHint').textContent='DuoFin adicionada ao dispositivo. Também podes continuar a utilizar o endereço no navegador.';installBtn.hidden=true});
 
-// Sincronização Supabase com Auto-Merge inteligente de transações e regras
+// Sincronização Supabase com Auto-Merge
 const CLOUD_KEY='orcamento-plus-cloud-v1';
 let cloud={url:'',key:'',access_token:'',refresh_token:'',expires_at:0,user:null,household_id:null,revision:null,dirty:false};
 try{cloud={...cloud,...JSON.parse(localStorage.getItem(CLOUD_KEY)||'{}')}}catch(e){}
@@ -565,11 +710,9 @@ function validPayload(p){return !!(p&&p.settings&&Array.isArray(p.transactions))
 function hasLocalData(){return JSON.stringify(db)!==JSON.stringify(fresh())}
 function setLocalData(p){const n=normalizeDb(p);db=n.db;localStorage.setItem(KEY,JSON.stringify(db));render();return n.changed;}
 
-// Fusão não-destrutiva quando ambos os dispositivos criaram movimentos em simultâneo
 function tryMergePayloads(localRaw, remoteRaw){
   const local=normalizeDb(JSON.parse(JSON.stringify(localRaw))).db;
   const remote=normalizeDb(JSON.parse(JSON.stringify(remoteRaw))).db;
-  // Se definições estruturais (nomes, categorias, janela de ciclo) diferirem, exige resolução manual
   if(JSON.stringify(local.settings)!==JSON.stringify(remote.settings))return null;
   const txMap=new Map();
   remote.transactions.forEach(t=>txMap.set(String(t.id),t));
@@ -579,10 +722,9 @@ function tryMergePayloads(localRaw, remoteRaw){
     else{
       const rTx=txMap.get(id);
       if(JSON.stringify(rTx)!==JSON.stringify(t)){
-        // Se uma recorrência foi confirmada/ignorada num dispositivo e noutro ainda está pendente, prevalece o estado confirmado/ignorado
         if(rTx.status==='pending'&&t.status!=='pending')txMap.set(id,t);
         else if(t.status==='pending'&&rTx.status!=='pending')txMap.set(id,rTx);
-        else return null; // Edição conflitante no mesmo registo
+        else return null;
       }
     }
   }
