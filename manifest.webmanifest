@@ -1,8 +1,8 @@
 {
   "id": "./",
-  "name": "DuoFin v5.4.0 — Ciclos financeiros, objetivos e relatórios",
+  "name": "DuoFin v5.5.0 — Ciclos, prestações, relatórios e importação CSV",
   "short_name": "DuoFin",
-  "description": "Gestão financeira a dois, com ciclos financeiros, objetivos de poupança e relatórios imprimíveis.",
+  "description": "Gestão financeira a dois, com ciclos financeiros, objetivos de poupança, prestações, importação CSV e relatórios imprimíveis.",
   "lang": "pt-PT",
   "start_url": "./index.html",
   "scope": "./",

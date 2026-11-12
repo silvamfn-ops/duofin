@@ -32,6 +32,14 @@ const DAY_MS=86400000,dateMs=s=>Date.parse(s+'T00:00:00Z'),validDate=s=>/^\d{4}-
 const isSavingTx=t=>t&&(t.type==='saving'||t.type==='saving_withdraw');
 const savingSigned=t=>t.type==='saving_withdraw'?-(Number(t.amount)||0):(Number(t.amount)||0);
 
+function addMonthsClamp(dateStr, monthsToAdd){
+ const [y,m,d]=dateStr.split('-').map(Number);
+ const totalM=(y*12+(m-1))+monthsToAdd;
+ const ny=Math.floor(totalM/12),nm=(totalM%12)+1;
+ const lastDay=new Date(ny,nm,0).getDate();
+ return `${ny}-${String(nm).padStart(2,'0')}-${String(Math.min(d,lastDay)).padStart(2,'0')}`;
+}
+
 function buildCycles(){
  const today=iso(now),validTx=db.transactions.filter(t=>validDate(t.date)&&t.date<=today);
  const cycleIncomes=validTx.filter(t=>t.type==='income'&&isPaid(t)&&t.countsForCycle!==false).sort((a,b)=>a.date.localeCompare(b.date)||String(a.id).localeCompare(String(b.id)));
@@ -59,7 +67,9 @@ function buildCycles(){
      const end=addDays(next.firstDate,-1);
      cycles.push({key:'cycle:'+start+':'+end,start,end,anchor:g.lastDate,open:false,fallback:false,preCycle:false,incomeDates:g.items.map(t=>t.date),incomeCount:g.items.length});
    }else{
-     cycles.push({key:'open:'+start,start,end:today,anchor:g.lastDate,open:true,fallback:false,preCycle:false,incomeDates:g.items.map(t=>t.date),incomeCount:g.items.length});
+     const futureDates=db.transactions.filter(t=>validDate(t.date)&&t.date>today).map(t=>t.date).sort();
+     const maxEnd=futureDates.length?futureDates[futureDates.length-1]:today;
+     cycles.push({key:'open:'+start,start,end:maxEnd,anchor:g.lastDate,open:true,fallback:false,preCycle:false,incomeDates:g.items.map(t=>t.date),incomeCount:g.items.length});
    }
  }
  return cycles;
@@ -84,17 +94,26 @@ function getSelectedCycle(){
 }
 function persist(skipCloud=false){localStorage.setItem(KEY,JSON.stringify(db));render();if(!skipCloud)queueCloudSave()}
 
+function switchTab(tabId){
+ document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('active',x.dataset.tab===tabId));
+ document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id===tabId));
+}
+
 function line(t){
  let state=t.status==='pending'?' · <strong>Pendente</strong>':t.status==='skipped'?' · <strong>Ignorada</strong>':'';
  if(t.type==='income'&&t.countsForCycle===false)state+=' · <em>Extra (não fecha ciclo)</em>';
  if(t.type==='saving_withdraw'){
    const g=(db.savingsGoals||[]).find(x=>x.id===t.goalId);
    state+=g?` · <em>Resgate: ${esc(g.name)}</em>`:' · <em>Resgate de poupança</em>';
+ }else if(t.type==='saving'&&t.goalId){
+   const g=(db.savingsGoals||[]).find(x=>x.id===t.goalId);
+   if(g)state+=` · <em>Objetivo: ${esc(g.name)}</em>`;
  }
+ if(t.date>iso(now))state+=' · <em>Agendado</em>';
  let actions=t.status==='pending'?`<button class="secondary" data-confirm-rec="${esc(String(t.id))}">Confirmar</button><button class="danger" data-skip-rec="${esc(String(t.id))}">Ignorar</button>`:'';
  const cls=t.type==='income'?'plus':t.type==='saving_withdraw'?'neutral':'minus';
  const prefix=t.type==='income'?'+':t.type==='saving'?'↗':t.type==='saving_withdraw'?'↙':'−';
- return `<div class="item row"><div><b>${esc(t.description)}</b><div class="small">${t.date} · ${esc(t.category)} · ${esc(t.person)}${state}</div></div><div class="row"><b class="amount ${cls}">${prefix} ${eur(t.amount)}</b>${actions}<button class="danger" data-del="${esc(String(t.id))}">×</button></div></div>`;
+ return `<div class="item row"><div><b>${esc(t.description)}</b><div class="small">${t.date} · ${esc(t.category)} · ${esc(t.person)}${state}</div></div><div class="row"><b class="amount ${cls}">${prefix} ${eur(t.amount)}</b>${actions}<button class="icon-btn" type="button" data-edit-tx="${esc(String(t.id))}" title="Editar movimento">✎</button><button class="danger" type="button" data-del="${esc(String(t.id))}" title="Apagar movimento">×</button></div></div>`;
 }
 
 function render(){
@@ -104,7 +123,9 @@ function render(){
  $('cycleSelect').innerHTML=cycles.slice().reverse().map(c=>`<option value="${esc(c.key)}">${esc(cycleName(c))}</option>`).join('');
  $('cycleSelect').value=cycle.key;
 
- const tx=cycleTransactions(cycle),ex=tx.filter(t=>t.type==='expense'&&isPaid(t)),inc=tx.filter(t=>t.type==='income'&&isPaid(t));
+ const today=iso(now);
+ const tx=cycleTransactions(cycle).filter(t=>t.date<=today);
+ const ex=tx.filter(t=>t.type==='expense'&&isPaid(t)),inc=tx.filter(t=>t.type==='income'&&isPaid(t));
  const svIn=tx.filter(t=>t.type==='saving'&&isPaid(t)),svOut=tx.filter(t=>t.type==='saving_withdraw'&&isPaid(t));
  const netSaving=sum(svIn)-sum(svOut);
  const cycleBalance=sum(inc)+sum(svOut)-sum(ex)-sum(svIn);
@@ -144,8 +165,22 @@ function render(){
  $('categoryManager').innerHTML=db.settings.categories.map((c,i)=>`<div class="item" data-category-row="${i}"><div class="grid"><div><label>Nome da categoria</label><input data-cat-name="${i}" maxlength="50" value="${esc(c.name)}"></div><div><label>Limite por ciclo (€)</label><input data-cat-budget="${i}" type="number" min="0" step=".01" value="${Number(c.budget)||0}"></div></div><div class="actions"><button class="secondary" type="button" data-cat-save="${i}">Guardar alterações</button><button class="danger" type="button" data-cat-delete="${i}">Eliminar</button></div></div>`).join('')||'<div class="empty">Ainda não existem categorias.</div>';
 
  const move=$('movementCycle'),oldMove=move.value;
- move.innerHTML='<option value="selected">Ciclo selecionado</option><option value="all">Todos os movimentos</option>'+cycles.slice().reverse().map(c=>`<option value="${esc(c.key)}">${esc(cycleName(c))}</option>`).join('');
+ move.innerHTML='<option value="selected">Ciclo selecionado</option><option value="all">Todos os movimentos</option><option value="future">Prestações / movimentos futuros</option>'+cycles.slice().reverse().map(c=>`<option value="${esc(c.key)}">${esc(cycleName(c))}</option>`).join('');
  move.value=oldMove&&[...move.options].some(o=>o.value===oldMove)?oldMove:'selected';
+
+ const fCat=$('filterCategory'),oldFCat=fCat.value;
+ fCat.innerHTML='<option value="all">Todas as categorias</option>'+db.settings.categories.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
+ fCat.value=oldFCat&&[...fCat.options].some(o=>o.value===oldFCat)?oldFCat:'all';
+
+ const fPer=$('filterPerson'),oldFPer=fPer.value;
+ const peopleOpts=[...db.settings.people,'Conta conjunta'];
+ fPer.innerHTML='<option value="all">Todos</option>'+peopleOpts.map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('');
+ fPer.value=oldFPer&&[...fPer.options].some(o=>o.value===oldFPer)?oldFPer:'all';
+
+ const csvPer=$('csvDefaultPerson'),oldCsvPer=csvPer.value;
+ csvPer.innerHTML=['Conta conjunta',...db.settings.people].map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('');
+ if(oldCsvPer&&[...csvPer.options].some(o=>o.value===oldCsvPer))csvPer.value=oldCsvPer;
+
  renderTransactions();
  renderGoals();
 
@@ -162,24 +197,41 @@ function render(){
 }
 
 function getFilteredMovements(){
- const f=$('filter').value,period=$('movementCycle').value;
+ const f=$('filter').value,period=$('movementCycle').value,search=$('filterSearch').value.trim().toLocaleLowerCase('pt-PT'),cat=$('filterCategory').value,per=$('filterPerson').value;
+ const today=iso(now);
  let list=[...db.transactions],periodLabel='Todos os movimentos';
+
  if(period==='selected'&&activeCycle){
    list=list.filter(t=>t.date>=activeCycle.start&&t.date<=activeCycle.end);
    periodLabel=cycleName(activeCycle);
+ }else if(period==='future'){
+   list=list.filter(t=>t.date>today);
+   periodLabel='Prestações e movimentos futuros';
  }else if(period!=='all'&&period!=='selected'){
    const c=activeCycles.find(x=>x.key===period);
    if(c){list=list.filter(t=>t.date>=c.start&&t.date<=c.end);periodLabel=cycleName(c);}
  }
+
  if(f!=='all')list=list.filter(t=>t.type===f);
+ if(cat!=='all')list=list.filter(t=>t.category===cat);
+ if(per!=='all')list=list.filter(t=>t.person===per);
+ if(search)list=list.filter(t=>String(t.description||'').toLocaleLowerCase('pt-PT').includes(search)||String(t.category||'').toLocaleLowerCase('pt-PT').includes(search));
+
  list.sort((a,b)=>b.date.localeCompare(a.date));
- const typeLabels={all:'Todos os tipos',expense:'Apenas despesas',income:'Apenas rendimentos',saving:'Apenas poupança transferida',saving_withdraw:'Apenas resgates de poupança'};
- return {list,periodLabel,typeLabel:typeLabels[f]||'Todos os tipos'};
+ const typeLabels={all:'Todos os tipos',expense:'Despesas',income:'Rendimentos',saving:'Poupança transferida',saving_withdraw:'Resgates de poupança'};
+ let filterParts=[typeLabels[f]||'Todos os tipos'];
+ if(cat!=='all')filterParts.push('Cat.: '+cat);
+ if(per!=='all')filterParts.push('Resp.: '+per);
+ if(search)filterParts.push('Pesquisa: "'+$('filterSearch').value.trim()+'"');
+ const hasExtraFilters=f!=='all'||cat!=='all'||per!=='all'||search.length>0;
+ return {list,periodLabel,typeLabel:filterParts.join(' · '),hasExtraFilters};
 }
 
 function renderTransactions(){
- const {list}=getFilteredMovements();
- $('transactions').innerHTML=list.length?list.map(line).join(''):'<div class="empty">Sem movimentos neste período.</div>';
+ const {list,hasExtraFilters}=getFilteredMovements();
+ $('filterCountLabel').textContent=`${list.length} movimento(s) encontrado(s) · Total filtrado: ${eur(sum(list.filter(isPaid)))}`;
+ $('resetFiltersBtn').hidden=!hasExtraFilters;
+ $('transactions').innerHTML=list.length?list.map(line).join(''):'<div class="empty">Sem movimentos que correspondam aos filtros selecionados.</div>';
 }
 
 function goalTransactions(g){
@@ -212,6 +264,71 @@ function renderGoals(){
   return `<div class="card"><div class="row"><div><h2>${esc(g.name)}</h2><span class="pill">${goalStatusLabel(g.status)}</span></div><b>${Math.round(pct)}%</b></div><div class="row"><b>${eur(total)} / ${eur(g.target)}</b><span class="small">${g.deadline?'Prazo: '+fmtDate(g.deadline):'Sem data-limite'}</span></div><div class="progress"><i style="width:${pct}%"></i></div><div class="small">${left>0?'Faltam '+eur(left):'Montante-alvo atingido.'}</div><div class="actions"><button class="secondary" type="button" data-goal-edit="${esc(g.id)}">Editar</button>${g.status!=='completed'?`<button class="secondary" type="button" data-goal-toggle="${esc(g.id)}">${g.status==='paused'?'Retomar':'Pausar'}</button>`:''}<button class="secondary" type="button" data-goal-complete="${esc(g.id)}">${g.status==='completed'?'Reabrir':'Concluir'}</button></div>${g.status==='active'?`<div class="grid"><div><label>Atribuir movimento de poupança existente</label><select data-goal-assign-select="${esc(g.id)}"><option value="">Selecionar movimento…</option>${options}</select></div><div style="display:flex;align-items:end"><button class="secondary" type="button" data-goal-assign="${esc(g.id)}">Atribuir movimento</button></div></div>`:''}<h3 style="font-size:14px;margin:14px 0 4px">Reforços e resgates atribuídos</h3>${history||'<div class="empty">Ainda sem movimentos associados.</div>'}</div>`;
  }).join(''):'<div class="card empty">Ainda não existem objetivos. Usa o formulário acima para criar um.</div>';
 }
+
+// EDIÇÃO DE MOVIMENTOS & PRESTAÇÕES
+function startEditTransaction(id){
+ const t=db.transactions.find(x=>String(x.id)===String(id));
+ if(!t)return;
+ switchTab('movimentos');
+ $('txEditId').value=String(t.id);
+ $('txFormTitle').textContent='Editar movimento';
+ $('txEditBadge').hidden=false;
+ $('txSaveBtn').textContent='Guardar alterações';
+ $('txCancelEditBtn').hidden=false;
+ $('date').value=t.date;
+ $('type').value=t.type;
+ $('desc').value=t.description;
+ $('amount').value=Number(t.amount)||'';
+ $('isInstallment').checked=false;
+ $('installmentsOptions').hidden=true;
+ updateTxFormVisibility();
+ if(t.type==='expense'&&[...$('category').options].some(o=>o.value===t.category))$('category').value=t.category;
+ if(t.type==='income')$('incomeCountsForCycle').checked=t.countsForCycle!==false;
+ if(isSavingTx(t)){
+   updateSavingGoalOptions();
+   $('savingGoal').value=t.goalId||'';
+ }
+ if([...'person'].length&&[...$('person').options].some(o=>o.value===t.person))$('person').value=t.person;
+ $('txFormCard').scrollIntoView({behavior:'smooth',block:'start'});
+ $('desc').focus({preventScroll:true});
+}
+
+function resetTxForm(){
+ $('txForm').reset();
+ $('txEditId').value='';
+ $('txFormTitle').textContent='Adicionar movimento';
+ $('txEditBadge').hidden=true;
+ $('txSaveBtn').textContent='Guardar movimento';
+ $('txCancelEditBtn').hidden=true;
+ $('date').value=iso(now);
+ $('incomeCountsForCycle').checked=true;
+ $('isInstallment').checked=false;
+ $('installmentsOptions').hidden=true;
+ $('amountLabel').textContent='Valor (€)';
+ updateTxFormVisibility();
+}
+
+function updateInstallmentPreview(){
+ const isInst=$('isInstallment').checked;
+ $('installmentsOptions').hidden=!isInst;
+ const mode=$('installmentAmountMode').value;
+ $('amountLabel').textContent=isInst&&mode==='total'?'Valor total a dividir (€)':'Valor (€)';
+ const val=Number($('amount').value)||0;
+ const count=Math.max(2,Math.min(60,Math.round(Number($('installmentCount').value)||3)));
+ if(isInst&&val>0){
+   const perMonth=mode==='total'?(val/count):val;
+   const total=mode==='total'?val:(val*count);
+   $('installmentSummary').textContent=`Serão criadas ${count} prestações mensais de aprox. ${eur(perMonth)} cada (total: ${eur(total)}).`;
+ }else{
+   $('installmentSummary').textContent='A 1.ª prestação fica registada na data escolhida e as seguintes nos meses subsequentes (com arredondamento exato aos cêntimos).';
+ }
+}
+
+$('isInstallment').onchange=updateInstallmentPreview;
+$('installmentCount').oninput=updateInstallmentPreview;
+$('installmentAmountMode').onchange=updateInstallmentPreview;
+$('amount').oninput=()=>{if($('isInstallment').checked)updateInstallmentPreview()};
+$('txCancelEditBtn').onclick=resetTxForm;
 
 // GERAÇÃO DE RELATÓRIOS PARA IMPRESSÃO / PDF
 function txTypeLabel(t){
@@ -326,7 +443,8 @@ function printReport(mode){
    title='Extrato de Movimentos';
    bodyHtml=buildMovementsReportHtml(list,`${periodLabel} (${typeLabel})`,false);
  }else{
-   const tx=[...cycleTransactions(cycle)].sort((a,b)=>b.date.localeCompare(a.date));
+   const today=iso(now);
+   const tx=[...cycleTransactions(cycle)].filter(t=>t.date<=today).sort((a,b)=>b.date.localeCompare(a.date));
    title='Relatório do Ciclo Financeiro e Objetivos';
    bodyHtml=buildMovementsReportHtml(tx,cycleName(cycle),true)+buildGoalsReportHtml();
  }
@@ -334,7 +452,7 @@ function printReport(mode){
  $('printSheet').innerHTML=`
    <div class="print-header">
      <div><h1>DuoFin · ${esc(title)}</h1><div class="small">${esc(peopleNames)}</div></div>
-     <div class="print-meta">Emitido em ${esc(emitted)}<br>DuoFin V5.4.0</div>
+     <div class="print-meta">Emitido em ${esc(emitted)}<br>DuoFin V5.5.0</div>
    </div>
    ${bodyHtml}
    <div class="print-footer"><span>DuoFin — Gestão Financeira a Dois</span><span>Documento gerado localmente no dispositivo</span></div>
@@ -351,7 +469,9 @@ function updateSavingGoalOptions(){
 
 function updateTxFormVisibility(){
  const t=$('type').value;
+ const isEditing=!!$('txEditId').value;
  $('categoryField').hidden=t!=='expense';
+ $('installmentsField').hidden=t!=='expense'||isEditing;
  $('incomeCycleField').hidden=t!=='income';
  const isSav=t==='saving'||t==='saving_withdraw';
  $('savingGoalField').hidden=!isSav;
@@ -361,6 +481,192 @@ function updateTxFormVisibility(){
    updateSavingGoalOptions();
  }
 }
+
+// IMPORTADOR DE EXTRATOS CSV
+let parsedCsvRows=[];
+
+function parseCsvLine(line, sep){
+ const res=[];let cur='',inQuotes=false;
+ for(let i=0;i<line.length;i++){
+   const ch=line[i];
+   if(ch==='"'){
+     if(inQuotes&&line[i+1]==='"'){cur+='"';i++;}
+     else inQuotes=!inQuotes;
+   }else if(ch===sep&&!inQuotes){
+     res.push(cur.trim());cur='';
+   }else{
+     cur+=ch;
+   }
+ }
+ res.push(cur.trim());
+ return res;
+}
+
+function normalizeCsvDate(raw){
+ const s=String(raw||'').trim().split(' ')[0];
+ if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s;
+ let m=s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
+ if(m)return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+ m=s.match(/^(\d{4})[\/.](\d{1,2})[\/.](\d{1,2})$/);
+ if(m)return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+ return null;
+}
+
+function normalizeCsvAmount(raw){
+ let s=String(raw||'').replace(/[€$£\s ]/g,'').trim();
+ if(!s)return NaN;
+ if(s.includes(',')&&s.includes('.')){
+   if(s.lastIndexOf(',')>s.lastIndexOf('.'))s=s.replace(/\./g,'').replace(',','.');
+   else s=s.replace(/,/g,'');
+ }else if(s.includes(',')){
+   s=s.replace(',','.');
+ }
+ return parseFloat(s);
+}
+
+function guessCategory(desc){
+ const d=desc.toLocaleLowerCase('pt-PT');
+ const rules=[
+   ['Supermercado',['continente','pingo doce','lidl','aldi','auchan','intermarche','mercadona','minipreco','talho','padaria','mercearia']],
+   ['Transportes',['galp','repsol','bp ','cepsa','prio','via verde','uber','bolt','cp ','carris','metro','estacionamento','parque','auto','oficina','pneus']],
+   ['Água, luz e gás',['edp','endesa','goldenergy','iberdrola','galp energia','epal','aguas','saneamento']],
+   ['Telecomunicações',['meo','nos ','vodafone','digi','nowo']],
+   ['Saúde e farmácia',['farmacia','hospital','clinica','cuf','lusiadas','medico','dentista','optica','wells']],
+   ['Restaurantes e lazer',['restaurante','cafe','pastelaria','mcdonald','burger','pizza','uber eats','glovo','cinema','bilhete','spotify','netflix','hbo','disney']],
+   ['Habitação',['renda','condominio','ikea','leroy','bricomarche','imov']],
+   ['Vestuário e pessoal',['zara','hm ','primark','decathlon','sport zone','cabeleireiro','barbeiro']]
+ ];
+ const avail=new Set(db.settings.categories.map(c=>c.name));
+ for(const [catName,keywords] of rules){
+   if(avail.has(catName)&&keywords.some(k=>d.includes(k)))return catName;
+ }
+ return avail.has('Outros / imprevistos')?'Outros / imprevistos':(db.settings.categories[0]?.name||'Outros / imprevistos');
+}
+
+$('csvFileInput').onchange=async e=>{
+ const file=e.target.files[0];if(!file)return;
+ try{
+   const text=await file.text();
+   const lines=text.split(/?
+/).map(l=>l.trim()).filter(Boolean);
+   if(lines.length<2)throw new Error('O ficheiro CSV parece estar vazio.');
+   const sample=lines.slice(0,5).join('
+');
+   const sep=(sample.match(/;/g)||[]).length>=(sample.match(/,/g)||[]).length?';':',';
+   let headerIdx=0;
+   for(let i=0;i<Math.min(10,lines.length);i++){
+     const cols=parseCsvLine(lines[i],sep).map(c=>c.toLocaleLowerCase('pt-PT'));
+     if(cols.some(c=>c.includes('data')||c.includes('date'))&&cols.some(c=>c.includes('desc')||c.includes('movimento')||c.includes('valor')||c.includes('montante')||c.includes('amount')||c.includes('débito')||c.includes('debito'))){
+       headerIdx=i;break;
+     }
+   }
+   const headers=parseCsvLine(lines[headerIdx],sep).map(h=>h.toLocaleLowerCase('pt-PT'));
+   let dateCol=headers.findIndex(h=>h.includes('data mov')||h.includes('data valor')||h==='data'||h==='date'||h.includes('data'));
+   let descCol=headers.findIndex(h=>h.includes('descri')||h.includes('movimento')||h.includes('designa')||h.includes('detalhe')||h.includes('description'));
+   let valCol=headers.findIndex(h=>h.includes('montante')||h.includes('valor')||h.includes('import')||h.includes('amount'));
+   let debCol=headers.findIndex(h=>h.includes('débito')||h.includes('debito')||h.includes('saída'));
+   let credCol=headers.findIndex(h=>h.includes('crédito')||h.includes('credito')||h.includes('entrada'));
+
+   if(dateCol<0)dateCol=0;
+   if(descCol<0)descCol=headers.length>2?1:0;
+
+   parsedCsvRows=[];
+   for(let i=headerIdx+1;i<lines.length;i++){
+     const cols=parseCsvLine(lines[i],sep);
+     if(cols.length<2)continue;
+     const dt=normalizeCsvDate(cols[dateCol]);
+     if(!dt)continue;
+     const desc=String(cols[descCol]||'Movimento bancário').replace(/\s+/g,' ').trim();
+     let amt=NaN;
+     if(valCol>=0&&cols[valCol]!==undefined&&cols[valCol]!==''){
+       amt=normalizeCsvAmount(cols[valCol]);
+     }else if(debCol>=0||credCol>=0){
+       const dVal=debCol>=0?normalizeCsvAmount(cols[debCol]):NaN;
+       const cVal=credCol>=0?normalizeCsvAmount(cols[credCol]):NaN;
+       if(Number.isFinite(dVal)&&dVal!==0)amt=-Math.abs(dVal);
+       else if(Number.isFinite(cVal)&&cVal!==0)amt=Math.abs(cVal);
+     }
+     if(!Number.isFinite(amt)||amt===0)continue;
+     const isIncome=amt>0;
+     parsedCsvRows.push({
+       selected:true,
+       date:dt,
+       description:desc,
+       type:isIncome?'income':'expense',
+       category:isIncome?'Rendimento':guessCategory(desc),
+       amount:Math.abs(amt)
+     });
+   }
+   if(!parsedCsvRows.length)throw new Error('Não foi possível identificar movimentos válidos (Data, Descrição e Valor) neste CSV.');
+   renderCsvPreview();
+ }catch(err){
+   alert(err.message||'Erro ao ler o ficheiro CSV.');
+ }
+ e.target.value='';
+};
+
+function renderCsvPreview(){
+ $('csvPreviewContainer').hidden=false;
+ $('csvSummaryAlert').textContent=`Foram detetados ${parsedCsvRows.length} movimento(s). Revê as categorias e desmarca os que não queres importar.`;
+ const catOpts=db.settings.categories.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
+ $('csvPreviewBody').innerHTML=parsedCsvRows.map((r,idx)=>`<tr>
+   <td><input type="checkbox" data-csv-check="${idx}" ${r.selected?'checked':''}></td>
+   <td style="white-space:nowrap">${esc(r.date)}</td>
+   <td><input type="text" data-csv-desc="${idx}" value="${esc(r.description)}"></td>
+   <td><select data-csv-type="${idx}"><option value="expense" ${r.type==='expense'?'selected':''}>Despesa</option><option value="income" ${r.type==='income'?'selected':''}>Rendimento</option><option value="saving" ${r.type==='saving'?'selected':''}>Poupança</option></select></td>
+   <td><select data-csv-cat="${idx}" ${r.type!=='expense'?'disabled':''}>${catOpts}</select></td>
+   <td style="white-space:nowrap;font-weight:700" class="${r.type==='income'?'plus':'minus'}">${r.type==='income'?'+':'−'} ${eur(r.amount)}</td>
+ </tr>`).join('');
+ parsedCsvRows.forEach((r,idx)=>{
+   const sel=$('csvPreviewBody').querySelector(`[data-csv-cat="${idx}"]`);
+   if(sel&&r.type==='expense')sel.value=r.category;
+ });
+}
+
+$('csvToggleAll').onchange=e=>{
+ const checked=e.target.checked;
+ parsedCsvRows.forEach(r=>r.selected=checked);
+ $('csvPreviewBody').querySelectorAll('[data-csv-check]').forEach(cb=>cb.checked=checked);
+};
+
+$('csvPreviewBody').addEventListener('change',e=>{
+ const cb=e.target.closest('[data-csv-check]');
+ if(cb){parsedCsvRows[+cb.dataset.csvCheck].selected=cb.checked;return;}
+ const tp=e.target.closest('[data-csv-type]');
+ if(tp){
+   const i=+tp.dataset.csvType;
+   parsedCsvRows[i].type=tp.value;
+   renderCsvPreview();return;
+ }
+ const ct=e.target.closest('[data-csv-cat]');
+ if(ct){parsedCsvRows[+ct.dataset.csvCat].category=ct.value;return;}
+ const ds=e.target.closest('[data-csv-desc]');
+ if(ds){parsedCsvRows[+ds.dataset.csvDesc].description=ds.value.trim()||'Movimento';}
+});
+
+$('csvCancelImportBtn').onclick=()=>{parsedCsvRows=[];$('csvPreviewContainer').hidden=true;};
+$('csvConfirmImportBtn').onclick=()=>{
+ const toImport=parsedCsvRows.filter(r=>r.selected);
+ if(!toImport.length){alert('Seleciona pelo menos um movimento para importar.');return;}
+ const person=$('csvDefaultPerson').value||'Conta conjunta';
+ toImport.forEach((r,idx)=>{
+   const entry={
+     id:'csv-'+Date.now()+'-'+idx+'-'+Math.random().toString(36).slice(2,5),
+     date:r.date,
+     type:r.type,
+     description:r.description,
+     amount:Number(r.amount.toFixed(2)),
+     category:r.type==='expense'?r.category:r.type==='saving'?'Poupança':'Rendimento',
+     person
+   };
+   if(r.type==='income')entry.countsForCycle=true;
+   db.transactions.push(entry);
+ });
+ parsedCsvRows=[];
+ $('csvPreviewContainer').hidden=true;
+ persist();
+ alert(`${toImport.length} movimento(s) importado(s) com sucesso!`);
+};
 
 function drawChart(){
  const c=$('chart'),ctx=c.getContext('2d'),w=c.width,h=c.height;
@@ -407,16 +713,23 @@ function showDay(d){
  document.querySelectorAll('[data-day]').forEach(b=>b.classList.toggle('selected',b.dataset.day===d));
 }
 
-document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
- document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('active',x===b));
- document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id===b.dataset.tab));
-});
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
 
 $('calendarMonth').value=cur;$('calendarMonth').onchange=()=>{selected=$('calendarMonth').value+'-01';drawCalendar()};
 $('date').value=iso(now);
 $('cycleSelect').onchange=()=>{selectedCycleKey=$('cycleSelect').value;render()};
 $('filter').onchange=renderTransactions;
 $('movementCycle').onchange=renderTransactions;
+$('filterCategory').onchange=renderTransactions;
+$('filterPerson').onchange=renderTransactions;
+$('filterSearch').oninput=renderTransactions;
+$('resetFiltersBtn').onclick=()=>{
+ $('filter').value='all';
+ $('filterCategory').value='all';
+ $('filterPerson').value='all';
+ $('filterSearch').value='';
+ renderTransactions();
+};
 $('type').onchange=updateTxFormVisibility;
 
 // Eventos dos botões de impressão
@@ -431,20 +744,71 @@ $('txForm').onsubmit=e=>{
  e.preventDefault();
  let a=+$('amount').value;if(a<=0)return;
  let t=$('type').value;
+ const editId=$('txEditId').value;
  const catLabel=t==='expense'?$('category').value:t==='saving'?'Poupança':t==='saving_withdraw'?'Resgate de poupança':'Rendimento';
- let entry={id:Date.now()+'-'+Math.random().toString(36).slice(2,6),date:$('date').value,type:t,description:$('desc').value.trim(),amount:a,category:catLabel,person:$('person').value};
+ const desc=$('desc').value.trim();
+ const baseDate=$('date').value;
+ const person=$('person').value;
+
+ if(editId){
+   const existing=db.transactions.find(x=>String(x.id)===String(editId));
+   if(existing){
+     existing.date=baseDate;
+     existing.type=t;
+     existing.description=desc;
+     existing.amount=Number(a.toFixed(2));
+     existing.category=catLabel;
+     existing.person=person;
+     if(t==='income')existing.countsForCycle=$('incomeCountsForCycle').checked;
+     else delete existing.countsForCycle;
+     if(t==='saving'||t==='saving_withdraw'){
+       if($('savingGoal').value)existing.goalId=$('savingGoal').value;
+       else delete existing.goalId;
+     }else{
+       delete existing.goalId;
+     }
+   }
+   resetTxForm();
+   persist();
+   return;
+ }
+
+ if(t==='expense'&&$('isInstallment').checked){
+   const count=Math.max(2,Math.min(60,Math.round(Number($('installmentCount').value)||3)));
+   const mode=$('installmentAmountMode').value;
+   const totalCents=mode==='total'?Math.round(a*100):Math.round(a*100*count);
+   const baseCents=Math.floor(totalCents/count);
+   const remainder=totalCents-(baseCents*count);
+   const groupId='inst-'+Date.now().toString(36);
+   for(let i=0;i<count;i++){
+     const cents=baseCents+(i<remainder?1:0);
+     db.transactions.push({
+       id:groupId+'-'+(i+1),
+       date:addMonthsClamp(baseDate,i),
+       type:'expense',
+       description:`${desc} (${i+1}/${count})`,
+       amount:cents/100,
+       category:catLabel,
+       person,
+       installmentGroupId:groupId
+     });
+   }
+   resetTxForm();
+   persist();
+   return;
+ }
+
+ let entry={id:Date.now()+'-'+Math.random().toString(36).slice(2,6),date:baseDate,type:t,description:desc,amount:Number(a.toFixed(2)),category:catLabel,person};
  if(t==='income')entry.countsForCycle=$('incomeCountsForCycle').checked;
  if((t==='saving'||t==='saving_withdraw')&&$('savingGoal').value)entry.goalId=$('savingGoal').value;
  db.transactions.push(entry);
- e.target.reset();
- $('date').value=iso(now);
- $('incomeCountsForCycle').checked=true;
- updateTxFormVisibility();
+ resetTxForm();
  persist();
 };
 
 document.addEventListener('click',e=>{
- let b=e.target.closest('[data-del]');if(b&&confirm('Apagar este movimento?')){const target=db.transactions.find(t=>String(t.id)===b.dataset.del);if(target?.status==='pending'&&target.occurrenceKey)target.status='skipped';else db.transactions=db.transactions.filter(t=>String(t.id)!==b.dataset.del);persist()}
+ let ed=e.target.closest('[data-edit-tx]');if(ed){startEditTransaction(ed.dataset.editTx);return;}
+ let b=e.target.closest('[data-del]');if(b&&confirm('Apagar este movimento?')){const target=db.transactions.find(t=>String(t.id)===b.dataset.del);if(target?.status==='pending'&&target.occurrenceKey)target.status='skipped';else db.transactions=db.transactions.filter(t=>String(t.id)!==b.dataset.del);if($('txEditId').value===b.dataset.del)resetTxForm();persist()}
  let c=e.target.closest('[data-confirm-rec]');if(c){let t=db.transactions.find(x=>String(x.id)===c.dataset.confirmRec);if(t&&t.status==='pending'){t.status='confirmed';t.confirmedAt=iso(new Date());persist()}}
  let sk=e.target.closest('[data-skip-rec]');if(sk){let t=db.transactions.find(x=>String(x.id)===sk.dataset.skipRec);if(t&&t.status==='pending'&&confirm('Ignorar esta ocorrência? Não será contabilizada como despesa.')){t.status='skipped';persist()}}
  let d=e.target.closest('[data-day]');if(d)showDay(d.dataset.day);

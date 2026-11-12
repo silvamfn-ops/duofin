@@ -27,13 +27,15 @@ h2{font-size:17px;margin:0 0 12px}
 label{display:block;font-weight:650;font-size:13px;margin:10px 0 5px}
 label.checkbox-row{display:flex;align-items:center;gap:8px;font-weight:600;margin:10px 0 4px;cursor:pointer}
 label.checkbox-row input[type="checkbox"]{width:18px;height:18px;min-height:18px;margin:0;accent-color:var(--g)}
-input,select{width:100%;min-height:42px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font:inherit}
+input,select,textarea{width:100%;min-height:42px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font:inherit}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
 button{cursor:pointer}
-.primary,.secondary,.danger{border:0;border-radius:10px;padding:10px 14px;font:inherit;font-weight:700}
+.primary,.secondary,.danger,.icon-btn{border:0;border-radius:10px;padding:10px 14px;font:inherit;font-weight:700}
 .primary{background:var(--g);color:#fff}
 .secondary{background:var(--surface);color:var(--g);border:1px solid var(--g)}
 .danger{background:#fff0ee;color:var(--red);padding:6px 10px}
+.icon-btn{background:var(--surface-2);color:var(--g);border:1px solid var(--line);padding:6px 9px}
 .actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
 .progress{height:12px;background:var(--surface-2);border-radius:99px;overflow:hidden;margin:9px 0}
 .progress i{display:block;height:100%;background:var(--g)}
@@ -66,6 +68,12 @@ footer{text-align:center;color:var(--muted);font-size:12px;padding:20px;padding-
 .install-instructions h3{font-size:14px;margin:14px 0 5px}
 .install-instructions ol{margin:5px 0 10px;padding-left:22px}
 .install-instructions li{margin:5px 0}
+.filter-bar{background:var(--surface-2);padding:12px;border-radius:12px;margin-bottom:10px;border:1px solid var(--line)}
+.csv-preview-box{max-height:320px;overflow:auto;border:1px solid var(--line);border-radius:10px;margin-top:10px;background:var(--surface)}
+.csv-table{width:100%;border-collapse:collapse;font-size:12px}
+.csv-table th,.csv-table td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left}
+.csv-table th{background:var(--surface-2);position:sticky;top:0}
+.csv-table select,.csv-table input{min-height:32px;padding:4px 6px;font-size:12px}
 
 /* ÁREA DE RELATÓRIOS PARA IMPRESSÃO */
 #printSheet{display:none}
@@ -129,8 +137,8 @@ html.density-detailed input,html.density-detailed select{min-height:47px;padding
   .stats{grid-template-columns:repeat(4,1fr)}
   .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 }
-@media(max-width:480px){
+@media(max-width:560px){
   .brandmark{width:35px;height:35px}
-  .grid{gap:8px}
+  .grid,.grid-3{grid-template-columns:1fr;gap:8px}
   .install-instructions{font-size:14px}
 }

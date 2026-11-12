@@ -13,7 +13,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png">
   <link rel="stylesheet" href="./styles.css">
-  <title>DuoFin v5.4.0 — Ciclos financeiros, objetivos e relatórios</title>
+  <title>DuoFin v5.5.0 — Ciclos, prestações, relatórios e importação CSV</title>
 </head>
 <body>
   <header>
@@ -69,9 +69,13 @@
     </section>
 
     <section id="movimentos" class="view">
-      <div class="card">
-        <h2>Adicionar movimento</h2>
+      <div class="card" id="txFormCard">
+        <div class="row">
+          <h2 id="txFormTitle">Adicionar movimento</h2>
+          <span class="pill" id="txEditBadge" hidden>Modo de edição</span>
+        </div>
         <form id="txForm">
+          <input id="txEditId" type="hidden">
           <div class="grid">
             <div><label for="date">Data</label><input id="date" type="date" required></div>
             <div>
@@ -87,7 +91,7 @@
           <label for="desc">Descrição</label>
           <input id="desc" required>
           <div class="grid">
-            <div><label for="amount">Valor (€)</label><input id="amount" type="number" min=".01" step=".01" required></div>
+            <div><label for="amount" id="amountLabel">Valor (€)</label><input id="amount" type="number" min=".01" step=".01" required></div>
             <div id="categoryField">
               <label for="category">Categoria</label>
               <select id="category"></select>
@@ -95,6 +99,28 @@
                 <button class="secondary" type="button" id="txCategoryAdd">+ Nova</button>
                 <button class="secondary" type="button" id="txCategoryEdit">Editar selecionada</button>
               </div>
+            </div>
+          </div>
+          <div id="installmentsField">
+            <label class="checkbox-row" for="isInstallment">
+              <input id="isInstallment" type="checkbox">
+              <span>Dividir em prestações mensais (ex.: 3x, 6x, 12x)</span>
+            </label>
+            <div id="installmentsOptions" class="inline-editor" hidden>
+              <div class="grid">
+                <div>
+                  <label for="installmentCount">Número de prestações</label>
+                  <input id="installmentCount" type="number" min="2" max="60" step="1" value="3">
+                </div>
+                <div>
+                  <label for="installmentAmountMode">O valor acima é:</label>
+                  <select id="installmentAmountMode">
+                    <option value="total">O valor TOTAL da compra (a dividir)</option>
+                    <option value="each">O valor de CADA prestação</option>
+                  </select>
+                </div>
+              </div>
+              <p class="small" id="installmentSummary" style="margin-bottom:0">A 1.ª prestação fica registada na data escolhida e as seguintes nos meses subsequentes (com arredondamento exato aos cêntimos).</p>
             </div>
           </div>
           <div id="incomeCycleField" hidden>
@@ -111,7 +137,10 @@
           </div>
           <label for="person">Quem pagou / movimentou</label>
           <select id="person"><option>Adulto 1</option><option>Adulto 2</option><option>Conta conjunta</option></select>
-          <div class="actions"><button class="primary">Guardar movimento</button></div>
+          <div class="actions">
+            <button class="primary" type="submit" id="txSaveBtn">Guardar movimento</button>
+            <button class="secondary" type="button" id="txCancelEditBtn" hidden>Cancelar edição</button>
+          </div>
         </form>
         <div id="txCategoryEditor" class="inline-editor" hidden>
           <h3 id="txCategoryEditorTitle">Categoria</h3>
@@ -131,17 +160,37 @@
           <h2>Histórico de movimentos</h2>
           <button class="secondary" type="button" id="printMovementsBtn">🖨️ Imprimir movimentos</button>
         </div>
-        <div class="grid">
-          <div><label for="movementCycle">Ciclo financeiro</label><select id="movementCycle"></select></div>
-          <div>
-            <label for="filter">Tipo de movimento</label>
-            <select id="filter">
-              <option value="all">Todos</option>
-              <option value="expense">Despesas</option>
-              <option value="income">Rendimentos</option>
-              <option value="saving">Poupança transferida</option>
-              <option value="saving_withdraw">Poupança utilizada / resgate</option>
-            </select>
+        <div class="filter-bar">
+          <div class="grid">
+            <div><label for="movementCycle" style="margin-top:0">Ciclo financeiro</label><select id="movementCycle"></select></div>
+            <div>
+              <label for="filter" style="margin-top:0">Tipo de movimento</label>
+              <select id="filter">
+                <option value="all">Todos os tipos</option>
+                <option value="expense">Despesas</option>
+                <option value="income">Rendimentos</option>
+                <option value="saving">Poupança transferida</option>
+                <option value="saving_withdraw">Poupança utilizada / resgate</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid-3">
+            <div>
+              <label for="filterSearch">Pesquisar descrição</label>
+              <input id="filterSearch" type="search" placeholder="Ex.: Continente, oficina, IRS...">
+            </div>
+            <div>
+              <label for="filterCategory">Categoria</label>
+              <select id="filterCategory"><option value="all">Todas as categorias</option></select>
+            </div>
+            <div>
+              <label for="filterPerson">Quem movimentou</label>
+              <select id="filterPerson"><option value="all">Todos</option></select>
+            </div>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <span class="small" id="filterCountLabel"></span>
+            <button class="secondary" type="button" id="resetFiltersBtn" style="padding:5px 10px;font-size:12px" hidden>Limpar filtros</button>
           </div>
         </div>
         <div id="transactions"></div>
@@ -255,6 +304,33 @@
     </section>
 
     <section id="dados" class="view">
+      <div class="card">
+        <h2>Importar extrato bancário (CSV)</h2>
+        <p class="small">Carrega um ficheiro CSV exportado do teu banco (CGD, Millennium bcp, Santander, BPI, Novo Banco, ActivoBank, Moey, Revolut, etc.). Podes rever e ajustar as categorias antes de confirmar a importação.</p>
+        <div class="grid">
+          <div>
+            <label for="csvDefaultPerson">Responsável por defeito</label>
+            <select id="csvDefaultPerson"><option>Conta conjunta</option></select>
+          </div>
+          <div style="display:flex;align-items:end">
+            <label class="secondary" style="margin:0;text-align:center;cursor:pointer">📂 Escolher ficheiro CSV<input id="csvFileInput" type="file" accept=".csv,text/csv,text/plain" hidden></label>
+          </div>
+        </div>
+        <div id="csvPreviewContainer" hidden>
+          <div class="alert good" id="csvSummaryAlert" style="margin-top:12px"></div>
+          <div class="csv-preview-box">
+            <table class="csv-table">
+              <thead><tr><th style="width:30px"><input type="checkbox" id="csvToggleAll" checked></th><th>Data</th><th>Descrição</th><th>Tipo</th><th>Categoria</th><th>Valor</th></tr></thead>
+              <tbody id="csvPreviewBody"></tbody>
+            </table>
+          </div>
+          <div class="actions">
+            <button class="primary" type="button" id="csvConfirmImportBtn">Importar movimentos selecionados</button>
+            <button class="secondary" type="button" id="csvCancelImportBtn">Cancelar</button>
+          </div>
+        </div>
+      </div>
+
       <div class="card">
         <h2>Relatórios e impressão (PDF / A4)</h2>
         <p class="small">Gera relatórios formatados para impressão em papel ou gravação como PDF diretamente a partir do navegador.</p>
@@ -384,7 +460,7 @@
     <!-- Folha dedicada exclusivamente à impressão A4 / PDF -->
     <div id="printSheet" aria-hidden="true"></div>
 
-    <footer>DuoFin · V5.4.0 · Gestão financeira a dois</footer>
+    <footer>DuoFin · V5.5.0 · Gestão financeira a dois</footer>
   </div>
   <script src="./app.js"></script>
 </body>
