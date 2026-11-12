@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#142b45">
+  <meta name="theme-color" content="#142b45" id="metaThemeColor">
   <meta name="description" content="DuoFin — gestão financeira a dois, simples, partilhada e disponível offline.">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -13,39 +13,44 @@
   <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png">
   <link rel="stylesheet" href="./styles.css">
-  <title>DuoFin v5.5.0 — Ciclos, prestações, relatórios e importação CSV</title>
+  <title>DuoFin v5.6.0 — Gestão financeira a dois</title>
 </head>
 <body>
   <header>
-    <div class="wrap">
-      <div class="brandline"><span class="brandmark" aria-hidden="true">DF</span><h1>DuoFin</h1></div>
-      <p>As nossas finanças. O nosso equilíbrio.</p>
+    <div class="wrap header-inner">
+      <div>
+        <div class="brandline"><span class="brandmark" aria-hidden="true">DF</span><h1>DuoFin</h1></div>
+        <p>As nossas finanças. O nosso equilíbrio.</p>
+      </div>
+      <span class="version-badge">v5.6</span>
     </div>
   </header>
   <div class="wrap">
-    <nav>
-      <button class="active" data-tab="resumo">Resumo</button>
-      <button data-tab="movimentos">Movimentos</button>
-      <button data-tab="recorrentes">Recorrentes</button>
-      <button data-tab="calendario">Calendário</button>
-      <button data-tab="orcamento">Orçamento</button>
-      <button data-tab="objetivo">Objetivos</button>
-      <button data-tab="dados">Dados</button>
-    </nav>
+    <div class="nav-wrapper" id="navWrapper">
+      <nav id="mainNav" aria-label="Navegação principal">
+        <button class="active" data-tab="resumo">Resumo</button>
+        <button data-tab="movimentos">Movimentos</button>
+        <button data-tab="recorrentes">Recorrentes</button>
+        <button data-tab="calendario">Calendário</button>
+        <button data-tab="orcamento">Orçamento</button>
+        <button data-tab="objetivo">Objetivos</button>
+        <button data-tab="dados">Dados</button>
+      </nav>
+    </div>
 
     <section id="resumo" class="view active">
-      <div class="row">
+      <div class="row cycle-header">
         <div>
           <b id="monthTitle">Ciclo financeiro</b>
           <div id="cycleRange" class="small"></div>
         </div>
         <select id="cycleSelect" aria-label="Selecionar ciclo financeiro" style="max-width:270px"></select>
       </div>
-      <div class="stats" style="margin-top:10px">
-        <div class="stat"><span>Total de rendimentos</span><b id="inc"></b></div>
-        <div class="stat"><span>Despesas pagas</span><b id="exp"></b></div>
-        <div class="stat"><span>Saldo do ciclo</span><b id="bal"></b></div>
-        <div class="stat"><span>Poupança líquida</span><b id="savm"></b></div>
+      <div class="stats" style="margin-top:12px">
+        <div class="stat stat-inc"><span>Total de rendimentos</span><b id="inc" class="plus"></b></div>
+        <div class="stat stat-exp"><span>Despesas pagas</span><b id="exp" class="minus"></b></div>
+        <div class="stat stat-bal" id="balCard"><span>Saldo do ciclo</span><b id="bal"></b></div>
+        <div class="stat stat-sav"><span>Poupança líquida</span><b id="savm"></b></div>
       </div>
       <div class="actions">
         <button class="secondary" type="button" id="printFullReportBtn">🖨️ Imprimir relatório completo (ciclo + objetivos)</button>
@@ -61,7 +66,9 @@
       </div>
       <div class="card">
         <h2>Evolução da poupança acumulada por ciclo</h2>
-        <canvas id="chart" width="700" height="220"></canvas>
+        <div class="chart-wrap">
+          <canvas id="chart"></canvas>
+        </div>
         <p class="small">Saldo acumulado das transferências de poupança menos resgates registados em cada ciclo.</p>
       </div>
       <div class="card"><h2>Objetivos e prazos</h2><div id="forecastText"></div></div>
@@ -96,8 +103,8 @@
               <label for="category">Categoria</label>
               <select id="category"></select>
               <div class="actions category-actions">
-                <button class="secondary" type="button" id="txCategoryAdd">+ Nova</button>
-                <button class="secondary" type="button" id="txCategoryEdit">Editar selecionada</button>
+                <button class="ghost" type="button" id="txCategoryAdd">+ Nova categoria</button>
+                <button class="ghost" type="button" id="txCategoryEdit">Editar selecionada</button>
               </div>
             </div>
           </div>
@@ -139,7 +146,7 @@
           <select id="person"><option>Adulto 1</option><option>Adulto 2</option><option>Conta conjunta</option></select>
           <div class="actions">
             <button class="primary" type="submit" id="txSaveBtn">Guardar movimento</button>
-            <button class="secondary" type="button" id="txCancelEditBtn" hidden>Cancelar edição</button>
+            <button class="ghost" type="button" id="txCancelEditBtn" hidden>Cancelar edição</button>
           </div>
         </form>
         <div id="txCategoryEditor" class="inline-editor" hidden>
@@ -150,7 +157,7 @@
           </div>
           <div class="actions">
             <button class="primary" type="button" id="txCategorySave">Guardar categoria</button>
-            <button class="secondary" type="button" id="txCategoryCancel">Cancelar</button>
+            <button class="ghost" type="button" id="txCategoryCancel">Cancelar</button>
           </div>
         </div>
       </div>
@@ -190,7 +197,7 @@
           </div>
           <div class="row" style="margin-top:8px">
             <span class="small" id="filterCountLabel"></span>
-            <button class="secondary" type="button" id="resetFiltersBtn" style="padding:5px 10px;font-size:12px" hidden>Limpar filtros</button>
+            <button class="ghost" type="button" id="resetFiltersBtn" style="padding:5px 10px;font-size:12px" hidden>Limpar filtros</button>
           </div>
         </div>
         <div id="transactions"></div>
@@ -219,7 +226,7 @@
           <p class="small">A despesa é criada como pendente na data prevista. Os dias 29, 30 e 31 passam para o último dia dos meses mais curtos.</p>
           <div class="actions">
             <button class="primary" type="submit" id="recurrenceSave">Guardar recorrência</button>
-            <button class="secondary" type="button" id="recurrenceCancel" hidden>Cancelar edição</button>
+            <button class="ghost" type="button" id="recurrenceCancel" hidden>Cancelar edição</button>
           </div>
         </form>
       </div>
@@ -233,9 +240,18 @@
 
     <section id="calendario" class="view">
       <div class="card">
-        <div class="row"><button class="secondary" id="prev">‹</button><h2 id="calTitle"></h2><button class="secondary" id="next">›</button></div>
-        <label for="calendarMonth">Mês do calendário</label>
-        <input id="calendarMonth" type="month" style="max-width:190px">
+        <div class="row"><button class="secondary" id="prev" aria-label="Mês anterior">‹</button><h2 id="calTitle" style="margin:0"></h2><button class="secondary" id="next" aria-label="Mês seguinte">›</button></div>
+        <div class="row" style="margin-top:10px;flex-wrap:wrap">
+          <div style="min-width:170px">
+            <label for="calendarMonth" style="margin-top:0">Mês do calendário</label>
+            <input id="calendarMonth" type="month">
+          </div>
+          <div class="cal-legend">
+            <span><i class="dot dot-exp"></i> Despesa</span>
+            <span><i class="dot dot-inc"></i> Rendimento</span>
+            <span><i class="dot dot-sav"></i> Poupança</span>
+          </div>
+        </div>
         <div id="calendar" class="calendar"></div>
       </div>
       <div class="card"><h2 id="dayTitle">Movimentos do dia</h2><div id="dayItems"></div></div>
@@ -247,7 +263,7 @@
         <p class="small">Comparação com as despesas pagas do ciclo selecionado. Avisos aos 85% e quando ultrapassar o limite.</p>
         <form id="budgetForm">
           <div id="budgetFields"></div>
-          <div class="row"><b>Total planeado</b><b id="budgetTotal"></b></div>
+          <div class="row" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)"><b>Total planeado</b><b id="budgetTotal"></b></div>
           <div class="actions"><button class="primary">Guardar limites</button></div>
         </form>
         <div class="divider" style="height:1px;background:var(--line);margin:18px 0"></div>
@@ -295,7 +311,7 @@
           </div>
           <div class="actions">
             <button class="primary" id="goalSave" type="submit">Guardar objetivo</button>
-            <button class="secondary" id="goalCancel" type="button" hidden>Cancelar edição</button>
+            <button class="ghost" id="goalCancel" type="button" hidden>Cancelar edição</button>
           </div>
         </form>
       </div>
@@ -326,7 +342,7 @@
           </div>
           <div class="actions">
             <button class="primary" type="button" id="csvConfirmImportBtn">Importar movimentos selecionados</button>
-            <button class="secondary" type="button" id="csvCancelImportBtn">Cancelar</button>
+            <button class="ghost" type="button" id="csvCancelImportBtn">Cancelar</button>
           </div>
         </div>
       </div>
@@ -435,8 +451,8 @@
           <div id="inviteResult" class="alert good" hidden></div>
           <div class="actions">
             <button class="primary" id="syncNow">Sincronizar agora</button>
-            <button class="secondary" id="cloudPull">Carregar versão partilhada</button>
-            <button class="secondary" id="cloudPush">Enviar versão deste telemóvel</button>
+            <button class="ghost" id="cloudPull">Carregar versão partilhada</button>
+            <button class="ghost" id="cloudPush">Enviar versão deste telemóvel</button>
           </div>
           <p class="small">A aplicação verifica alterações enquanto está aberta (aproximadamente a cada 15 segundos). Novos movimentos e regras criados nos dois dispositivos são fundidos automaticamente.</p>
         </div>
@@ -457,10 +473,13 @@
       </div>
     </section>
 
+    <!-- Botão flutuante de acesso rápido -->
+    <button type="button" class="fab" id="quickAddFab" title="Novo movimento" aria-label="Adicionar novo movimento">+</button>
+
     <!-- Folha dedicada exclusivamente à impressão A4 / PDF -->
     <div id="printSheet" aria-hidden="true"></div>
 
-    <footer>DuoFin · V5.5.0 · Gestão financeira a dois</footer>
+    <footer>DuoFin · V5.6.0 · Gestão financeira a dois</footer>
   </div>
   <script src="./app.js"></script>
 </body>
