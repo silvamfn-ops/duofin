@@ -1,109 +1,57 @@
-DUOFIN — VERSÃO 4
-==================
+DUOFIN V5.2 — GUIA DE ATUALIZAÇÃO
+================================
 
-Gestão financeira a dois. Identidade visual moderna e elegante.
+ANTES DE ATUALIZAR
+------------------
+1. Abrir a DuoFin atual em cada dispositivo.
+2. Em Dados > Cópias de segurança, exportar um ficheiro JSON em cada dispositivo.
+3. Guardar as cópias separadamente e confirmar qual é o orçamento partilhado
+   correto no Supabase.
+4. Não executar novamente `supabase/setup.sql`. Esta atualização não exige SQL.
 
-CONTEÚDO
+PUBLICAR
 --------
-- index.html: aplicação.
-- manifest.webmanifest: manifesto PWA.
-- sw.js: cache offline e atualização versionada.
-- icons/: ícones DuoFin para Android e iPhone.
-- supabase/setup.sql: estrutura de sincronização partilhada com autenticação e RLS.
-- CHECKLIST.txt: lista de verificação antes da publicação.
+1. Descompactar o ZIP.
+2. Publicar o conteúdo da pasta `duofin_v5_browser` no mesmo alojamento HTTPS e
+   no mesmo caminho da versão atual, substituindo os ficheiros da aplicação.
+3. Manter a pasta `icons/`, `supabase/`, `manifest.webmanifest` e `sw.js`.
+4. Não apagar nem alterar o projeto Supabase existente.
+5. Abrir o mesmo endereço HTTPS em cada dispositivo. Fechar e reabrir a página;
+   se necessário, fazer atualização forçada do navegador para obter a nova cache.
+6. Confirmar o estado da sincronização antes de introduzir movimentos novos.
 
-O QUE MUDA NA VERSÃO 4
-----------------------
-1. Marca DuoFin: cabeçalho, cores azul profundo/dourado discreto, manifesto e ícones renovados.
-2. Categorias no formulário de despesas: «+ Nova» e «Editar selecionada» permitem criar ou alterar nome/limite sem sair do registo. A lista atualiza imediatamente. Nomes vazios/duplicados e limites negativos são rejeitados. Ao mudar o nome, os movimentos existentes são atualizados; não são apagados.
-3. Aparência: tema claro, escuro ou automático (segue o sistema); densidade compacta, equilibrada ou detalhada.
-4. As preferências de aparência usam uma chave local separada (`duofin-ui-preferences-v1`), não entram no objeto financeiro, nas cópias JSON nem na sincronização.
-5. PWA: suporte iOS/Safari com `apple-touch-icon` 180×180 e meta tags Apple; mantém os ícones Android 192×192 e 512×512 e cache versionada.
+COMO USAR OS CICLOS FINANCEIROS
+------------------------------
+- Registar os ordenados como movimentos do tipo «Rendimento» na data real em
+  que entraram.
+- O painel procura esses rendimentos entre os dias 20 e 22.
+- Se houver dois vencimentos no mesmo mês, o ciclo fecha na data mais tardia.
+- Se faltar o registo de um mês, é usada uma estimativa baseada no último dia
+  de vencimento conhecido (ou dia 22 se ainda não houver histórico).
+- O seletor de mês no Resumo escolhe o mês em que termina o ciclo financeiro.
 
-COMPATIBILIDADE E PRESERVAÇÃO DE DADOS
---------------------------------------
-A versão 4 parte do ZIP v3 fornecido e mantém a chave de armazenamento financeiro `orcamento-plus-v1` e a estrutura `settings` + `transactions`. Não é necessária migração do formato financeiro para esta atualização. Os movimentos, categorias, calendário, orçamento, nomes, metas, cópias e configuração de sincronização permanecem na mesma estrutura.
-
-Por precaução, antes de substituir a publicação:
-1. Abra a versão atual em cada telemóvel.
-2. Vá a Dados > Cópias de segurança > Exportar cópia.
-3. Guarde os ficheiros JSON em local seguro, identificando a que telemóvel pertencem.
-4. Publique a versão 4 no mesmo endereço HTTPS e caminho da versão anterior, se possível.
-5. Abra a aplicação e confirme movimentos, categorias e objetivo.
-6. Se for necessário recuperar dados, use Dados > Importar cópia no dispositivo correto. Importar substitui os dados financeiros locais desse dispositivo.
-
-As preferências visuais são independentes por dispositivo e não são migradas nem sincronizadas. O armazenamento local pertence ao navegador/instalação; não confies nele como única cópia de segurança.
-
-PUBLICAÇÃO PWA (OBRIGATÓRIA PARA INSTALAÇÃO)
---------------------------------------------
-1. Descompacte o ZIP mantendo a estrutura de pastas.
-2. Publique todos os ficheiros, incluindo `icons/` e `supabase/`, num alojamento web com HTTPS válido.
-3. Mantenha `index.html`, `manifest.webmanifest` e `sw.js` no mesmo diretório, e a pasta `icons/` nesse mesmo nível.
-4. Abra o endereço HTTPS com ligação à internet pelo menos uma vez. O service worker instala os recursos principais para utilização offline.
-5. Se publicar numa subpasta, publique a pasta inteira sem alterar isoladamente os caminhos relativos.
-6. Após atualizar uma versão, feche e volte a abrir a aplicação; o service worker novo usa a cache `duofin-v4-20261110`.
-
-ANDROID — INSTALAR NO CHROME
-----------------------------
-1. Abra o endereço HTTPS da DuoFin no Google Chrome (não num navegador incorporado noutra aplicação).
-2. Aguarde alguns segundos pela deteção do manifesto e do service worker.
-3. Abra o menu ⋮ e escolha «Instalar aplicação» ou «Adicionar ao ecrã principal».
-4. Confirme. Se surgir o botão «Instalar aplicação» na secção Dados, também o pode usar.
-5. Se a opção não aparecer, confirme HTTPS, manifesto, ícones 192×192/512×512 e `sw.js`, atualize a página e tente novamente pelo menu do Chrome.
-
-IPHONE — INSTALAR PELO SAFARI
+COMO USAR OBJETIVOS MÚLTIPLOS
 -----------------------------
-1. Abra o endereço HTTPS da DuoFin diretamente no Safari do iPhone.
-2. Toque no botão «Partilhar» (quadrado com seta para cima).
-3. Na folha de partilha, deslize para baixo e selecione «Adicionar ao ecrã principal». Se não estiver visível, percorra as ações disponíveis/«Editar ações».
-4. Confirme o nome «DuoFin» e toque em «Adicionar».
-5. Abra a DuoFin pelo ícone criado no ecrã principal.
+1. Abrir «Objetivos» e criar, por exemplo, «Liquidar crédito».
+2. Criar outro objetivo chamado «Férias».
+3. Ao registar uma «Poupança transferida», escolher o objetivo associado.
+4. Consultar o progresso no Resumo ou na secção Objetivos.
+5. Editar, pausar/retomar ou concluir cada objetivo independentemente.
 
-A aplicação usa o ícone Apple Touch de 180×180 e as meta tags `apple-mobile-web-app-capable`, `apple-mobile-web-app-title` e `apple-mobile-web-app-status-bar-style`. No iOS, o fluxo de instalação é pelo Safari; o evento de instalação automática usado pelo Chrome Android não é disponibilizado da mesma forma. O comportamento e algumas capacidades variam conforme a versão do iOS. A PWA não é uma aplicação nativa, não está publicada na App Store e não passa a ter capacidades nativas só por ser adicionada ao ecrã principal. Não foi implementado envio de notificações push nem sincronização em segundo plano garantida. O modo offline depende de uma primeira visita com internet e de o sistema manter a cache.
+PRESERVAÇÃO DO HISTÓRICO
+------------------------
+A primeira abertura cria a estrutura de objetivos a partir do objetivo único
+antigo. As transferências de poupança já existentes, que não têm associação,
+continuam a contar para o objetivo principal. Os movimentos não são duplicados
+nem apagados. O novo campo `goalId` só identifica reforços novos ou editados.
 
-SINCRONIZAÇÃO PARTILHADA — CONFIGURAÇÃO EXTERNA PENDENTE
--------------------------------------------------------
-A sincronização não fica operacional apenas por publicar o ZIP. É necessário configurar um projeto Supabase do casal:
+A sincronização usa o payload JSON existente e a revisão CAS já configurada.
+Se os dois dispositivos tiverem alterações simultâneas, a DuoFin continua a
+pedir resolução explícita do conflito; não faz fusão automática.
 
-1. Crie um projeto no Supabase e aguarde pela disponibilidade da base de dados.
-2. No painel do projeto, abra o SQL Editor e execute integralmente `supabase/setup.sql`.
-3. Em Project Settings / API (ou API Keys, conforme a versão do painel), copie:
-   - Project URL, no formato `https://<project-ref>.supabase.co`;
-   - a chave pública `publishable` ou `anon` (legada).
-4. Na DuoFin, em Dados > Sincronização, introduza o Project URL e a chave pública nos dois telemóveis e guarde.
-5. Nas definições de Authentication / URL Configuration do Supabase, configure o Site URL e inclua nos Redirect URLs o endereço HTTPS exato da aplicação (incluindo subpasta, se existir). A inscrição acrescenta o URL atual como destino de redirecionamento.
-6. Cada adulto cria a sua própria conta e inicia sessão. Se a confirmação por email estiver ativa, confirme o email.
-7. No primeiro telemóvel, crie o orçamento partilhado e gere um convite.
-8. No segundo telemóvel, inicie sessão, introduza o código e escolha «Associar a este orçamento».
-9. Antes de carregar ou substituir uma versão durante a associação ou resolução de conflitos, exporte uma cópia de segurança de ambos os dispositivos.
-
-A aplicação usa autenticação Supabase, funções RPC e Row Level Security para limitar a leitura/escrita aos membros do orçamento. O código de convite é temporário e de utilização única. Se ambos alterarem os dados antes de sincronizar, a aplicação deteta a revisão divergente e pede uma decisão explícita: carregar a versão partilhada ou enviar a versão deste dispositivo. Não faz fusão automática de movimentos.
-
-SEGURANÇA
----------
-- Use apenas a chave pública `publishable`/`anon` no navegador.
-- Nunca introduza, publique ou partilhe a chave `service_role`, passwords de base de dados ou outros segredos no HTML/JavaScript.
-- A chave pública não substitui as políticas RLS. Execute o SQL fornecido e não desative RLS.
-- A configuração, domínio autorizado, autenticação e estado do projeto Supabase são responsabilidade do proprietário do projeto.
-- Sem projeto, SQL, URL, chave pública e contas configuradas, a sincronização permanece indisponível; os dados continuam locais.
-
-CÓPIAS DE SEGURANÇA E PRIVACIDADE
----------------------------------
-- Exporte regularmente uma cópia JSON em Dados > Cópias de segurança.
-- Os dados locais de cada navegador/instalação são independentes.
-- O tema e a densidade são locais e não são partilhados.
-- A sincronização só ocorre quando configurada, com sessão válida, ligação à internet e aplicação ativa. A verificação periódica ocorre enquanto a aplicação está aberta; não há garantia de sincronização em segundo plano.
-- A exportação inclui os dados financeiros locais, não as preferências visuais nem tokens de autenticação.
-
-TESTES E LIMITAÇÕES DESTA ENTREGA
----------------------------------
-Foram feitas verificações estáticas ao ZIP, manifesto JSON, existência e dimensões dos ícones, referências locais do HTML, presença do service worker e sintaxe JavaScript. Estas verificações não substituem testes em dispositivos reais.
-
-Não foram executados nesta entrega:
-- teste funcional completo em Chrome Android, Safari iOS ou outros navegadores;
-- teste de instalação real em dispositivos;
-- teste de funcionamento offline em dispositivos reais;
-- teste de autenticação, convites, RLS ou sincronização contra um projeto Supabase configurado;
-- auditoria de segurança independente ou publicação num domínio HTTPS.
-
-A sincronização de produção depende dos passos externos acima. A DuoFin v4 não está publicada numa loja de aplicações.
+LIMITAÇÕES E TESTES
+-------------------
+A validação automatizada e as limitações conhecidas estão em
+`VALIDACAO_V5_2.txt` e `ALTERACOES_V5_2.txt`. Antes de utilização diária,
+recomenda-se testar primeiro com um movimento de rendimento e uma poupança de
+baixo valor, e confirmar a sincronização nos dois dispositivos.

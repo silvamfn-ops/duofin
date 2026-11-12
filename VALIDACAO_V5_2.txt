@@ -1,0 +1,32 @@
+DUOFIN V5.2 — RELATÓRIO DE VALIDAÇÃO
+===================================
+
+VALIDAÇÕES EXECUTADAS
+---------------------
+- Sintaxe JavaScript do index.html: `node --check` sem erros.
+- Inicialização/renderização: teste de smoke com DOM simulado em Node.js.
+- Migração do objetivo antigo: o objetivo principal é criado e apresentado.
+- Objetivos: teste de criação, edição, associação de reforço e pausa.
+- Reforços antigos sem goalId: continuam atribuídos ao objetivo principal.
+- Reforços com goalId: separados por objetivo; movimentos pendentes excluídos.
+- Ciclo março: 21-02-2026 a 22-03-2026 com entradas de vencimento a
+  20-02-2026 e 20/22-03-2026.
+- Ciclo abril: 23-03-2026 a 21-04-2026 com vencimento de abril a 21-04-2026.
+- Mês sem entrada de vencimento: data estimada pelo último dia conhecido.
+- IDs HTML: 112 IDs verificados, sem duplicados.
+- Manifesto PWA: JSON válido.
+- Service worker: cache versionada para evitar servir o index antigo.
+- ZIP final: teste de integridade efetuado.
+
+NÃO EXECUTADO / NECESSITA DE TESTE REAL
+--------------------------------------
+- Navegação e interação completa em Safari iPhone, Chrome Android e Edge/Chrome
+  Windows.
+- Sincronização de dados entre dois utilizadores no projeto Supabase real.
+- Testes de RLS, autenticação, convites e conflitos de revisão.
+- Teste de atualização da cache em alojamento HTTPS real.
+- Teste de exportação/importação de cópias reais do utilizador.
+
+A aplicação não foi publicada no domínio do utilizador. Esta entrega é um pacote
+preparado e validado por testes locais/automatizados; não é uma confirmação de
+funcionamento no Supabase ou nos dispositivos de produção.

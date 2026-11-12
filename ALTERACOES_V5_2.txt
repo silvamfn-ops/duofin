@@ -1,0 +1,63 @@
+DUOFIN V5.2 — CICLOS FINANCEIROS E OBJETIVOS MÚLTIPLOS
+=====================================================
+
+1. CICLOS FINANCEIROS ASSOCIADOS AOS VENCIMENTOS
+-------------------------------------------------
+O mês escolhido no painel principal passa a representar um ciclo financeiro,
+e não o mês civil. A aplicação procura movimentos do tipo «Rendimento» com
+data entre os dias 20 e 22 do mês. Se existirem vários vencimentos nesse
+intervalo, usa a data mais tardia como fecho do ciclo.
+
+O ciclo começa no dia seguinte à data de vencimento do mês anterior e termina
+na data de vencimento do mês selecionado. Exemplo: vencimento em 20 de fevereiro
+e em 22 de março = ciclo de março de 21 de fevereiro a 22 de março; ciclo de
+abril começa em 23 de março e termina no vencimento registado em abril.
+
+Se não houver um rendimento registado entre os dias 20 e 22 de um mês, a data
+é estimada usando o dia do último vencimento conhecido; se não existir nenhum
+registo anterior, usa o dia 22. A estimativa é apresentada no painel. Para que
+o ciclo acompanhe as datas reais, registar cada ordenado como movimento do tipo
+«Rendimento» na data em que entrou.
+
+Os totais de rendimento, despesas, saldo, poupança, despesas por categoria,
+despesas por adulto, avisos de orçamento e série mensal do gráfico usam o ciclo
+financeiro. O calendário e as datas individuais dos movimentos continuam a
+mostrar datas civis reais.
+
+2. VÁRIOS OBJETIVOS DE POUPANÇA
+-------------------------------
+É possível criar objetivos independentes (por exemplo, «Liquidar crédito» e
+«Férias»), com nome, montante, data de início e data-limite opcional. Cada um
+mostra o valor acumulado e percentagem de progresso. Os objetivos podem ser
+editados, pausados, retomados, concluídos e reabertos.
+
+Ao registar um movimento «Poupança transferida», escolher o objetivo a que o
+reforço pertence. Os reforços são movimentos existentes e recebem apenas um
+campo adicional `goalId`; não se cria uma segunda cópia do valor financeiro.
+
+3. MIGRAÇÃO E COMPATIBILIDADE
+-----------------------------
+- Mantém a chave local `orcamento-plus-v1`.
+- Mantém `settings`, `transactions`, `recurringExpenses` e o formato de payload
+  usado em `household_data`.
+- A lista `goals` é acrescentada ao payload, sem remover campos antigos.
+- Se o payload antigo não tiver `goals`, é criado o objetivo «Objetivo
+  principal» com os valores antigos de `settings.target`, `settings.start` e
+  `settings.deadline`.
+- Movimentos de poupança antigos sem `goalId` continuam a contar para o
+  objetivo principal (primeiro objetivo), preservando o histórico.
+- Não é necessária alteração nem nova execução do SQL Supabase.
+- Despesas recorrentes, preferências locais e configuração de cloud são
+  preservadas. A versão da cache PWA foi incrementada para `duofin-v5-2-20261112`.
+
+4. LIMITAÇÕES
+-------------
+- A deteção automática do vencimento usa movimentos «Rendimento» datados entre
+  20 e 22. Outros rendimentos dentro desse intervalo também podem ser tratados
+  como vencimento; não existe classificação separada de salário nesta versão.
+- Quando falta um registo mensal, usa-se uma data estimada, não uma confirmação
+  bancária. Corrigir a data do movimento de rendimento atualiza o ciclo.
+- A sincronização continua a usar a revisão CAS existente. Não há fusão
+  automática de alterações concorrentes.
+- Não foram realizados testes contra o projeto Supabase real nem em telemóveis
+  físicos nesta entrega.
