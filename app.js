@@ -518,7 +518,7 @@ function printReport(mode){
  $('printSheet').innerHTML=`
    <div class="print-header">
      <div><h1>DuoFin · ${esc(title)}</h1><div class="small">${esc(peopleNames)}</div></div>
-     <div class="print-meta">Emitido em ${esc(emitted)}<br>DuoFin V5.7.0</div>
+     <div class="print-meta">Emitido em ${esc(emitted)}<br>DuoFin V5.7.1</div>
    </div>
    ${bodyHtml}
    <div class="print-footer"><span>DuoFin — Gestão Financeira a Dois</span><span>Documento gerado localmente no dispositivo</span></div>
@@ -641,8 +641,34 @@ function parseCsvLine(line, sep){
  return res;
 }
 
+const PT_MONTHS = {
+  jan:'01', janeiro:'01',
+  fev:'02', fevereiro:'02',
+  mar:'03', marco:'03', 'março':'03',
+  abr:'04', abril:'04',
+  mai:'05', maio:'05',
+  jun:'06', junho:'06',
+  jul:'07', julho:'07',
+  ago:'08', agosto:'08',
+  set:'09', setembro:'09',
+  out:'10', outubro:'10',
+  nov:'11', novembro:'11', 'πον':'11',
+  dez:'12', dezembro:'12'
+};
+
 function normalizeCsvDate(raw, fallbackYear){
- const s=String(raw||'').trim().split(' ')[0];
+ let s=String(raw||'').trim();
+ if(!s)return null;
+ // Formatos por extenso em PT: "12 nov. 2026", "02 πον 2026", "30 out. 2026", "12 nov"
+ const ptMatch=s.match(/^(\d{1,2})\s+([a-zA-ZçÇ\u0370-\u03FF]{3,10})\.?(?:\s+(\d{4}))?$/);
+ if(ptMatch){
+   const d=+ptMatch[1];
+   const mKey=ptMatch[2].toLocaleLowerCase('pt-PT');
+   const mo=PT_MONTHS[mKey];
+   const y=ptMatch[3]||fallbackYear;
+   if(mo&&y&&d>=1&&d<=31)return `${y}-${mo}-${String(d).padStart(2,'0')}`;
+ }
+ s=s.split(' ')[0];
  if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s;
  let m=s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
  if(m){
@@ -682,14 +708,14 @@ function normalizeCsvAmount(raw){
 function guessCategory(desc){
  const d=desc.toLocaleLowerCase('pt-PT');
  const rules=[
-   ['Supermercado',['continente','pingo doce','lidl','aldi','auchan','intermarche','mercadona','minipreco','talho','padaria','mercearia']],
+   ['Supermercado',['continente','pingo doce','lidl','aldi','auchan','intermarche','mercadona','minipreco','supercor','talho','padaria','mercearia']],
    ['Transportes',['galp','repsol','bp ','cepsa','prio','via verde','uber','bolt','cp ','carris','metro','estacionamento','parque','auto','oficina','pneus']],
    ['Água, luz e gás',['edp','endesa','goldenergy','iberdrola','galp energia','epal','aguas','saneamento']],
-   ['Telecomunicações',['meo','nos ','vodafone','digi','nowo']],
-   ['Saúde e farmácia',['farmacia','hospital','clinica','cuf','lusiadas','medico','dentista','optica','wells']],
-   ['Restaurantes e lazer',['restaurante','cafe','pastelaria','mcdonald','burger','pizza','uber eats','glovo','cinema','bilhete','spotify','netflix','hbo','disney']],
-   ['Habitação',['renda','condominio','ikea','leroy','bricomarche','imov']],
-   ['Vestuário e pessoal',['zara','hm ','primark','decathlon','sport zone','cabeleireiro','barbeiro']]
+   ['Telecomunicações',['meo','nos ','vodafone','digi','nowo','altice']],
+   ['Saúde e farmácia',['farmacia','hospital','clinica','cuf','lusiadas','medico','dentista','optica','wells','medicare']],
+   ['Restaurantes e lazer',['restaurante','cafe','cafes','pastelaria','mcdonald','burger','pizza','uber eats','glovo','cinema','bilhete','spotify','netflix','hbo','disney','vinhos']],
+   ['Habitação',['renda','condominio','ikea','leroy','bricomarche','imov','habitacao','credito habitacao','multi-riscos','seguro de vida']],
+   ['Vestuário e pessoal',['zara','hm ','primark','decathlon','sport zone','cabeleireiro','barbeiro','springfield']]
  ];
  const avail=new Set(db.settings.categories.map(c=>c.name));
  for(const [catName,keywords] of rules){
@@ -703,11 +729,18 @@ function parseStatementTextLines(lines){
  const yearMatches=fullText.match(/\b(20\d{2})\b/g);
  const fallbackYear=yearMatches&&yearMatches.length?yearMatches[0]:String(now.getFullYear());
 
+ // Deteta e processa extratos estilo Santander (com linhas "D. valor: ...")
+ if(/D[:.]?\s*valor/i.test(fullText)){
+   const santanderRows=parseSantanderLines(lines,fallbackYear);
+   if(santanderRows.length)return santanderRows;
+ }
+
  const rows=[];
- const dateStartRe=/^(\d{4}-\d{2}-\d{2}|\d{1,2}[\/.-]\d{1,2}(?:[\/.-]\d{4})?)\b\s*(.*)$/;
- const secondDateRe=/^(\d{4}-\d{2}-\d{2}|\d{1,2}[\/.-]\d{1,2}(?:[\/.-]\d{4})?)\b\s*(.*)$/;
+ const datePatternStr='(\\d{4}-\\d{2}-\\d{2}|\\d{1,2}[\\/.-]\\d{1,2}(?:[\\/.-]\\d{4})?|\\d{1,2}\\s+[a-zA-ZçÇ\\u0370-\\u03FF]{3,10}\\.?(?:\\s+\\d{4})?)';
+ const dateStartRe=new RegExp('^'+datePatternStr+'\\b\\s*(.*)$');
+ const secondDateRe=new RegExp('^'+datePatternStr+'\\b\\s*(.*)$');
  const amountTokenRe=/([+-]?\s*(?:\d{1,3}(?:[.\s\u00A0]\d{3})+|\d+),\d{2}|[+-]?\s*(?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2})\s*[€$£]?/g;
- const skipLineRe=/^(saldo\s+(inicial|final|anterior|disponível|contabilístico|autorizado)|total\s+(de\s+)?(débitos|créditos|movimentos)|data\s+mov|descrição|página\s+\d)/i;
+ const skipLineRe=/^(saldo\s+(inicial|final|anterior|disponível|contabilístico|autorizado)|total\s+(de\s+)?(débitos|créditos|movimentos)|data\s+(mov|da\s+operação)|descrição|operação|página\s+\d|titular:|conta:|documento\s+com\s+data|para\s+pesquisas)/i;
 
  let pendingEntry=null;
 
@@ -732,7 +765,7 @@ function parseStatementTextLines(lines){
 
  for(const rawLine of lines){
    const line=rawLine.trim();
-   if(!line||skipLineRe.test(line))continue;
+   if(!line||skipLineRe.test(line)||/^D[:.]?\s*valor/i.test(line))continue;
 
    const dm=line.match(dateStartRe);
    if(dm){
@@ -754,7 +787,7 @@ function parseStatementTextLines(lines){
        if(/^D\b|^DEB/i.test(trailingText)&&amt>0)amt=-amt;
        if(/^C\b|^CRED/i.test(trailingText)&&amt<0)amt=Math.abs(amt);
        if(!/[+-]/.test(chosenMatch[1])&&amt>0){
-         if(amtMatches.length===1&&/\b(transf\.?\s*receb|ordenado|vencimento|salário|reembolso|crédito|depósito|juros\s+cred)\b/i.test(descPart)){
+         if(amtMatches.length===1&&/\b(transf\.?\s*receb|trf\.?\s*mb\s*way\s*de|ordenado|vencimento|salário|reembolso|crédito|depósito|juros\s+cred)\b/i.test(descPart)){
            amt=Math.abs(amt);
          }else if(amtMatches.length===1){
            amt=-Math.abs(amt);
@@ -772,7 +805,7 @@ function parseStatementTextLines(lines){
        const extraDesc=line.slice(0,amtMatches[0].index).trim();
        if(extraDesc)pendingEntry.description+=' '+extraDesc;
        if(!/[+-]/.test(chosenMatch[1])&&amt>0&&amtMatches.length===1){
-         if(!/\b(transf\.?\s*receb|ordenado|vencimento|salário|reembolso|crédito|depósito)\b/i.test(pendingEntry.description)){
+         if(!/\b(transf\.?\s*receb|trf\.?\s*mb\s*way\s*de|ordenado|vencimento|salário|reembolso|crédito|depósito)\b/i.test(pendingEntry.description)){
            amt=-Math.abs(amt);
          }
        }
@@ -784,6 +817,88 @@ function parseStatementTextLines(lines){
  }
  flushPending();
  return rows;
+}
+
+function parseSantanderLines(lines, fallbackYear){
+ const dateOnlyRe=/^(\d{1,2}\s+[a-zA-ZçÇ\u0370-\u03FF]{3,10}\.?(?:\s+\d{4})?|\d{1,2}[\/.-]\d{1,2}[\/.-]\d{4})$/;
+ const dValorRe=/^D[:.]?\s*valor[:.]?\s*(.+)$/i;
+ const amountTokenRe=/([+-]?\s*(?:\d{1,3}(?:[.\s\u00A0]\d{3})+|\d+),\d{2})\s*€/g;
+ const skipHeaderRe=/^(santander|titular:|conta:|saldo\s+disponível|movimentos\s+da\s+sua\s+conta|operação|data\s+da\s+operação|documento\s+com\s+data|página\s+\d|para\s+pesquisas)/i;
+
+ const cleanLines=lines.map(l=>l.trim()).filter(l=>l&&!skipHeaderRe.test(l));
+ const blocks=[];
+ let curBlock=[];
+ for(const l of cleanLines){
+   if(dValorRe.test(l)){
+     curBlock.push(l);
+     blocks.push(curBlock);
+     curBlock=[];
+   }else{
+     const amts=[...l.matchAll(amountTokenRe)];
+     if(curBlock.length>0&&amts.length>=1&&!curBlock.some(x=>dValorRe.test(x))){
+       // Linha de valores pertence ao bloco anterior que já teve D. valor
+       if(blocks.length>0&&!blocks[blocks.length-1].hasAmounts){
+         blocks[blocks.length-1].push(l);
+         blocks[blocks.length-1].hasAmounts=true;
+         continue;
+       }
+     }
+     curBlock.push(l);
+   }
+ }
+ if(curBlock.length&&blocks.length&&!blocks[blocks.length-1].hasAmounts){
+   blocks[blocks.length-1].push(...curBlock);
+ }
+
+ const results=[];
+ let lastValidDate=null;
+ for(const blk of blocks){
+   let dt=null,descParts=[],amounts=[];
+   for(const item of blk){
+     const dv=item.match(dValorRe);
+     if(dv){
+       const parsedDv=normalizeCsvDate(dv[1].replace(/^D(\d)/,'0$1').trim(),fallbackYear);
+       if(!dt&&parsedDv)dt=parsedDv;
+       continue;
+     }
+     const parsedDate=normalizeCsvDate(item,fallbackYear);
+     if(parsedDate&&dateOnlyRe.test(item)){
+       if(!dt)dt=parsedDate;
+       continue;
+     }
+     const amts=[...item.matchAll(amountTokenRe)];
+     if(amts.length>0){
+       const idxFirst=amts[0].index;
+       const prefixText=item.slice(0,idxFirst).replace(/\|/g,'').trim();
+       if(prefixText)descParts.push(prefixText);
+       for(const m of amts){
+         const v=normalizeCsvAmount(m[1]);
+         if(Number.isFinite(v))amounts.push(v);
+       }
+     }else{
+       const txt=item.replace(/\|/g,'').trim();
+       if(txt)descParts.push(txt);
+     }
+   }
+   if(!dt)dt=lastValidDate;
+   if(dt)lastValidDate=dt;
+   if(!dt||!amounts.length)continue;
+
+   // Quando existem 2 valores na mesma linha/bloco (Valor e Saldo), o penúltimo é o Valor do movimento
+   const movAmount=amounts.length>=2?amounts[amounts.length-2]:amounts[0];
+   if(!Number.isFinite(movAmount)||movAmount===0)continue;
+   const description=descParts.join(' ').replace(/\s+/g,' ').trim()||'Movimento Santander';
+   const isIncome=movAmount>0;
+   results.push({
+     selected:true,
+     date:dt,
+     description,
+     type:isIncome?'income':'expense',
+     category:isIncome?'Rendimento':guessCategory(description),
+     amount:Math.abs(movAmount)
+   });
+ }
+ return results;
 }
 
 function parseCsvContent(text){
