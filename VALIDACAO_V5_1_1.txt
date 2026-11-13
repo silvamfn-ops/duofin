@@ -1,5 +1,0 @@
-DUOFIN V5.1.1 — VALIDAÇÃO DA CORREÇÃO
-- JavaScript do index.html analisado pelo Node.js: sintaxe válida.
-- Verificados os controlos de edição, suspensão/retoma e eliminação no código.
-- A versão da cache do service worker foi incrementada para evitar servir o index.html antigo.
-- Não foi possível validar o comportamento em dispositivos físicos nem sincronização com a instância Supabase do utilizador nesta sessão. Recomenda-se testar com uma regra de baixo valor antes da utilização diária.
