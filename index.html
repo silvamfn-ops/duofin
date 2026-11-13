@@ -13,7 +13,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png">
   <link rel="stylesheet" href="./styles.css">
-  <title>DuoFin v5.7.1.1 — Gestão financeira a dois</title>
+  <title>DuoFin v5.7.2 — Gestão financeira a dois</title>
 </head>
 <body>
   <header>
@@ -22,7 +22,7 @@
         <div class="brandline"><span class="brandmark" aria-hidden="true">DF</span><h1>DuoFin</h1></div>
         <p>As nossas finanças. O nosso equilíbrio.</p>
       </div>
-      <span class="version-badge">v5.7.1</span>
+      <span class="version-badge">v5.7.2</span>
     </div>
   </header>
   <div class="wrap">
@@ -343,12 +343,11 @@
         </div>
         <div id="csvPreviewContainer" hidden>
           <div class="alert good" id="csvSummaryAlert" style="margin-top:12px"></div>
-          <div class="csv-preview-box">
-            <table class="csv-table">
-              <thead><tr><th style="width:30px"><input type="checkbox" id="csvToggleAll" checked></th><th>Data</th><th>Descrição</th><th>Tipo</th><th>Categoria</th><th>Valor</th></tr></thead>
-              <tbody id="csvPreviewBody"></tbody>
-            </table>
+          <div class="row" style="margin:8px 0 4px">
+            <label class="checkbox-row" style="margin:0"><input type="checkbox" id="csvToggleAll" checked><span>Selecionar todos</span></label>
+            <span class="small">Toca num movimento para ver/editar detalhe</span>
           </div>
+          <div class="csv-preview-box" id="csvPreviewList"></div>
           <div class="actions">
             <button class="primary" type="button" id="csvConfirmImportBtn">Importar movimentos selecionados</button>
             <button class="ghost" type="button" id="csvCancelImportBtn">Cancelar</button>
@@ -488,7 +487,50 @@
     <!-- Folha dedicada exclusivamente à impressão A4 / PDF -->
     <div id="printSheet" aria-hidden="true"></div>
 
-    <footer>DuoFin · V5.7.1 · Gestão financeira a dois</footer>
+    <!-- Modal de detalhe de movimento importado -->
+    <div id="importDetailModal" class="modal-backdrop" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="importModalTitle">
+        <div class="row" style="margin-bottom:10px">
+          <h2 id="importModalTitle" style="margin:0">Detalhe do movimento</h2>
+          <button type="button" class="icon-btn" id="closeImportModalBtn" aria-label="Fechar">✕</button>
+        </div>
+        <div id="importDupWarning" class="alert" hidden>⚠ Já existe um movimento na mesma data com este valor. Confirma se não é duplicado antes de importar.</div>
+        <input type="hidden" id="impEditIdx">
+        <label class="checkbox-row" for="impEditSelected">
+          <input type="checkbox" id="impEditSelected">
+          <span>Incluir este movimento na importação definitiva</span>
+        </label>
+        <div class="grid">
+          <div><label for="impEditDate">Data</label><input type="date" id="impEditDate"></div>
+          <div><label for="impEditAmount">Valor (€)</label><input type="number" step="0.01" min="0.01" id="impEditAmount"></div>
+        </div>
+        <label for="impEditDesc">Descrição completa</label>
+        <textarea id="impEditDesc" rows="2"></textarea>
+        <div class="grid">
+          <div>
+            <label for="impEditType">Tipo</label>
+            <select id="impEditType">
+              <option value="expense">Despesa</option>
+              <option value="income">Rendimento</option>
+              <option value="saving">Poupança</option>
+            </select>
+          </div>
+          <div id="impEditCatWrap">
+            <label for="impEditCat">Categoria</label>
+            <select id="impEditCat"></select>
+          </div>
+        </div>
+        <div class="actions" style="justify-content:space-between;margin-top:16px">
+          <div class="row" style="gap:6px">
+            <button type="button" class="ghost" id="impPrevBtn" title="Anterior">‹ Anterior</button>
+            <button type="button" class="ghost" id="impNextBtn" title="Seguinte">Seguinte ›</button>
+          </div>
+          <button type="button" class="primary" id="saveImportDetailBtn">Aplicar e fechar</button>
+        </div>
+      </div>
+    </div>
+
+    <footer>DuoFin · V5.7.2 · Gestão financeira a dois</footer>
   </div>
   <script src="./app.js"></script>
 </body>

@@ -518,7 +518,7 @@ function printReport(mode){
  $('printSheet').innerHTML=`
    <div class="print-header">
      <div><h1>DuoFin · ${esc(title)}</h1><div class="small">${esc(peopleNames)}</div></div>
-     <div class="print-meta">Emitido em ${esc(emitted)}<br>DuoFin V5.7.1</div>
+     <div class="print-meta">Emitido em ${esc(emitted)}<br>DuoFin V5.7.2</div>
    </div>
    ${bodyHtml}
    <div class="print-footer"><span>DuoFin — Gestão Financeira a Dois</span><span>Documento gerado localmente no dispositivo</span></div>
@@ -998,43 +998,124 @@ $('csvFileInput').onchange=async e=>{
  e.target.value='';
 };
 
+function isDuplicateMovement(row){
+ const amt=Number(row.amount);
+ return db.transactions.some(t=>t.date===row.date&&Math.abs((Number(t.amount)||0)-amt)<0.005&&t.type===row.type);
+}
+
 function renderCsvPreview(){
  $('csvPreviewContainer').hidden=false;
- $('csvSummaryAlert').textContent=`Foram detetados ${parsedCsvRows.length} movimento(s). Revê as categorias e desmarca os que não queres importar.`;
- const catOpts=db.settings.categories.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
- $('csvPreviewBody').innerHTML=parsedCsvRows.map((r,idx)=>`<tr>
-   <td><input type="checkbox" data-csv-check="${idx}" ${r.selected?'checked':''}></td>
-   <td style="white-space:nowrap">${esc(r.date)}</td>
-   <td><input type="text" data-csv-desc="${idx}" value="${esc(r.description)}"></td>
-   <td><select data-csv-type="${idx}"><option value="expense" ${r.type==='expense'?'selected':''}>Despesa</option><option value="income" ${r.type==='income'?'selected':''}>Rendimento</option><option value="saving" ${r.type==='saving'?'selected':''}>Poupança</option></select></td>
-   <td><select data-csv-cat="${idx}" ${r.type!=='expense'?'disabled':''}>${catOpts}</select></td>
-   <td style="white-space:nowrap;font-weight:700" class="${r.type==='income'?'plus':'minus'}">${r.type==='income'?'+':'−'} ${eur(r.amount)}</td>
- </tr>`).join('');
- parsedCsvRows.forEach((r,idx)=>{
-   const sel=$('csvPreviewBody').querySelector(`[data-csv-cat="${idx}"]`);
-   if(sel&&r.type==='expense')sel.value=r.category;
+ parsedCsvRows.forEach(r=>{
+   if(r._checkedDup===undefined){
+     r.isDup=isDuplicateMovement(r);
+     if(r.isDup)r.selected=false;
+     r._checkedDup=true;
+   }
  });
+ const selCount=parsedCsvRows.filter(r=>r.selected).length;
+ $('csvSummaryAlert').textContent=`${parsedCsvRows.length} movimento(s) detetado(s) · ${selCount} selecionado(s) para importar.`;
+ $('csvToggleAll').checked=selCount>0&&selCount===parsedCsvRows.length;
+
+ $('csvPreviewList').innerHTML=parsedCsvRows.map((r,idx)=>{
+   const typeBadge=r.type==='income'?'Rendimento':r.type==='saving'?'Poupança':r.category;
+   const sign=r.type==='income'?'+':r.type==='saving'?'↗':'−';
+   const amtCls=r.type==='income'?'plus':r.type==='saving'?'neutral':'minus';
+   return `<div class="imp-item ${r.selected?'':'is-unselected'}" data-imp-open="${idx}">
+     <input type="checkbox" data-csv-check="${idx}" ${r.selected?'checked':''} aria-label="Selecionar movimento">
+     <div class="imp-body">
+       <div class="imp-desc">${esc(r.description)}</div>
+       <div class="imp-meta">
+         <span>${esc(fmtDate(r.date))}</span>
+         <span class="imp-tag">${esc(typeBadge)}</span>
+         ${r.isDup?'<span class="imp-tag dup">⚠ Possível duplicado</span>':''}
+       </div>
+     </div>
+     <div class="imp-right">
+       <b class="amount ${amtCls}">${sign} ${eur(r.amount)}</b>
+       <span class="imp-chevron">Detalhe ›</span>
+     </div>
+   </div>`;
+ }).join('');
 }
+
+function openImportDetailModal(idx){
+ const r=parsedCsvRows[idx];
+ if(!r)return;
+ $('impEditIdx').value=String(idx);
+ $('importModalTitle').textContent=`Movimento ${idx+1} de ${parsedCsvRows.length}`;
+ $('impEditSelected').checked=!!r.selected;
+ $('impEditDate').value=r.date;
+ $('impEditAmount').value=Number(r.amount).toFixed(2);
+ $('impEditDesc').value=r.description;
+ $('impEditType').value=r.type;
+ $('impEditCat').innerHTML=db.settings.categories.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
+ if([...$('impEditCat').options].some(o=>o.value===r.category))$('impEditCat').value=r.category;
+ $('impEditCatWrap').hidden=r.type!=='expense';
+ $('importDupWarning').hidden=!r.isDup;
+ $('impPrevBtn').disabled=idx<=0;
+ $('impNextBtn').disabled=idx>=parsedCsvRows.length-1;
+ $('importDetailModal').hidden=false;
+}
+
+function saveCurrentImportModal(){
+ const idx=Number($('impEditIdx').value);
+ const r=parsedCsvRows[idx];
+ if(!r)return;
+ r.selected=$('impEditSelected').checked;
+ if(validDate($('impEditDate').value))r.date=$('impEditDate').value;
+ const v=parseFloat($('impEditAmount').value);
+ if(Number.isFinite(v)&&v>0)r.amount=Number(v.toFixed(2));
+ r.description=$('impEditDesc').value.trim()||'Movimento bancário';
+ r.type=$('impEditType').value;
+ if(r.type==='expense')r.category=$('impEditCat').value;
+ r.isDup=isDuplicateMovement(r);
+ renderCsvPreview();
+}
+
+$('impEditType').onchange=()=>{
+ $('impEditCatWrap').hidden=$('impEditType').value!=='expense';
+};
+$('closeImportModalBtn').onclick=()=>{$('importDetailModal').hidden=true;};
+$('saveImportDetailBtn').onclick=()=>{
+ saveCurrentImportModal();
+ $('importDetailModal').hidden=true;
+};
+$('impPrevBtn').onclick=()=>{
+ const idx=Number($('impEditIdx').value);
+ saveCurrentImportModal();
+ if(idx>0)openImportDetailModal(idx-1);
+};
+$('impNextBtn').onclick=()=>{
+ const idx=Number($('impEditIdx').value);
+ saveCurrentImportModal();
+ if(idx<parsedCsvRows.length-1)openImportDetailModal(idx+1);
+};
+$('importDetailModal').addEventListener('click',e=>{
+ if(e.target===$('importDetailModal')){
+   saveCurrentImportModal();
+   $('importDetailModal').hidden=true;
+ }
+});
 
 $('csvToggleAll').onchange=e=>{
  const checked=e.target.checked;
  parsedCsvRows.forEach(r=>r.selected=checked);
- $('csvPreviewBody').querySelectorAll('[data-csv-check]').forEach(cb=>cb.checked=checked);
+ renderCsvPreview();
 };
 
-$('csvPreviewBody').addEventListener('change',e=>{
+$('csvPreviewList').addEventListener('click',e=>{
  const cb=e.target.closest('[data-csv-check]');
- if(cb){parsedCsvRows[+cb.dataset.csvCheck].selected=cb.checked;return;}
- const tp=e.target.closest('[data-csv-type]');
- if(tp){
-   const i=+tp.dataset.csvType;
-   parsedCsvRows[i].type=tp.value;
-   renderCsvPreview();return;
+ if(cb){
+   e.stopPropagation();
+   const idx=+cb.dataset.csvCheck;
+   parsedCsvRows[idx].selected=cb.checked;
+   renderCsvPreview();
+   return;
  }
- const ct=e.target.closest('[data-csv-cat]');
- if(ct){parsedCsvRows[+ct.dataset.csvCat].category=ct.value;return;}
- const ds=e.target.closest('[data-csv-desc]');
- if(ds){parsedCsvRows[+ds.dataset.csvDesc].description=ds.value.trim()||'Movimento';}
+ const card=e.target.closest('[data-imp-open]');
+ if(card){
+   openImportDetailModal(+card.dataset.impOpen);
+ }
 });
 
 $('csvCancelImportBtn').onclick=()=>{parsedCsvRows=[];$('csvPreviewContainer').hidden=true;};
@@ -1058,7 +1139,7 @@ $('csvConfirmImportBtn').onclick=()=>{
  parsedCsvRows=[];
  $('csvPreviewContainer').hidden=true;
  persist();
- alert(`${toImport.length} movimento(s) importado(s) com sucesso!`);
+ alert(`${toImport.length} movimento(s) importado(s) com sucesso para a base de dados!`);
 };
 
 function drawChart(){

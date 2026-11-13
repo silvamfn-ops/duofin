@@ -189,7 +189,36 @@ footer{text-align:center;color:var(--muted);font-size:12px;padding:20px;padding-
 .install-instructions ol{margin:5px 0 10px;padding-left:22px}
 .install-instructions li{margin:5px 0}
 .filter-bar{background:var(--surface-2);padding:12px;border-radius:12px;margin-bottom:10px;border:1px solid var(--line)}
-.csv-preview-box{max-height:320px;overflow:auto;border:1px solid var(--line);border-radius:10px;margin-top:10px;background:var(--surface)}
+
+/* Pré-visualização de importação otimizada para telemóvel e Modal */
+.csv-preview-box{max-height:380px;overflow-y:auto;border:1px solid var(--line);border-radius:12px;margin-top:8px;background:var(--surface)}
+.imp-item{display:flex;align-items:flex-start;gap:10px;padding:11px 12px;border-bottom:1px solid var(--line);cursor:pointer;transition:background-color .15s}
+.imp-item:last-child{border-bottom:0}
+.imp-item:hover,.imp-item:active{background:var(--surface-2)}
+.imp-item.is-unselected{opacity:0.55}
+.imp-item input[type="checkbox"]{width:20px;height:20px;min-height:20px;margin:2px 0 0;flex:0 0 auto;accent-color:var(--g)}
+.imp-body{flex:1;min-width:0}
+.imp-desc{font-weight:650;font-size:14px;line-height:1.35;word-break:break-word;color:var(--ink)}
+.imp-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:4px;font-size:12px;color:var(--muted)}
+.imp-tag{background:var(--p);color:var(--g);padding:2px 7px;border-radius:6px;font-weight:600;font-size:11px}
+.imp-tag.dup{background:var(--warning-bg);color:var(--warning-ink)}
+.imp-right{text-align:right;flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.imp-chevron{font-size:12px;color:var(--muted)}
+
+.modal-backdrop{
+  position:fixed;inset:0;background:rgba(15,25,36,0.62);z-index:100;
+  display:flex;align-items:flex-end;justify-content:center;padding:12px;
+  backdrop-filter:blur(2px);
+}
+.modal-backdrop[hidden]{display:none}
+.modal-card{
+  background:var(--surface);border:1px solid var(--line);border-radius:18px;
+  width:100%;max-width:480px;padding:18px;box-shadow:var(--shadow-md);
+  max-height:90vh;overflow-y:auto;animation:slideUp .18s ease-out;
+}
+@media(min-width:600px){.modal-backdrop{align-items:center}}
+@keyframes slideUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+
 .csv-table{width:100%;border-collapse:collapse;font-size:12px}
 .csv-table th,.csv-table td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left}
 .csv-table th{background:var(--surface-2);position:sticky;top:0;z-index:2}
