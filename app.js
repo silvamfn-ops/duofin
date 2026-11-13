@@ -27,7 +27,7 @@ function normalizeDb(x){
 
 function load(){try{const raw=JSON.parse(localStorage.getItem(KEY));if(raw?.settings&&Array.isArray(raw.transactions)){const n=normalizeDb(raw);dbNeedsSync=n.changed;if(n.changed)localStorage.setItem(KEY,JSON.stringify(n.db));return n.db;}}catch(e){}return fresh();}
 let db=load(),selected=iso(now),selectedCycleKey=null,analyticsCycleKey=null,activeCycle=null,activeCycles=[];
-const eur=n=>new Intl.NumberFormat('pt-PT',{style:'currency',currency:'EUR'}).format(+n||0),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const eur=n=>new Intl.NumberFormat('pt-PT',{style:'currency',currency:'EUR'}).format(+n||0),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&','<':'<','>':'>','"':'"',"'":'''}[c]));
 const sum=a=>a.reduce((s,t)=>s+(Number(t.amount)||0),0),isPaid=t=>t.status!=='pending'&&t.status!=='skipped',mName=m=>{const s=new Date(m+'-02T12:00:00').toLocaleDateString('pt-PT',{month:'long',year:'numeric'});return s.charAt(0).toUpperCase()+s.slice(1);};
 const DAY_MS=86400000,dateMs=s=>Date.parse(s+'T00:00:00Z'),validDate=s=>/^\d{4}-\d{2}-\d{2}$/.test(String(s||''))&&Number.isFinite(dateMs(s)),addDays=(s,n)=>new Date(dateMs(s)+n*DAY_MS).toISOString().slice(0,10),daysBetween=(a,b)=>Math.round((dateMs(b)-dateMs(a))/DAY_MS),monthLast=m=>{const [y,mo]=m.split('-').map(Number);return `${m}-${String(new Date(y,mo,0).getDate()).padStart(2,'0')}`},fmtDate=d=>new Date(d+'T12:00:00').toLocaleDateString('pt-PT',{day:'2-digit',month:'short',year:'numeric'});
 const isSavingTx=t=>t&&(t.type==='saving'||t.type==='saving_withdraw');
@@ -683,7 +683,8 @@ function renderAnalytics(){
       const bw=Math.max(3,(it.value/maxVal)*plotW);
       ctx.fillStyle=it.color;
       ctx.beginPath();
-      ctx.roundRect(padLeft,yCenter-barH/2,bw,barH,4);
+      if(ctx.roundRect)ctx.roundRect(padLeft,yCenter-barH/2,bw,barH,4);
+      else ctx.rect(padLeft,yCenter-barH/2,bw,barH);
       ctx.fill();
 
       ctx.fillStyle=mutedCol;
@@ -720,7 +721,8 @@ function renderAnalytics(){
       const ch=Math.max(3,(it.value/maxVal)*plotH);
       ctx.fillStyle=it.color;
       ctx.beginPath();
-      ctx.roundRect(xCenter-colW/2,padTop+plotH-ch,colW,ch,[4,4,0,0]);
+      if(ctx.roundRect)ctx.roundRect(xCenter-colW/2,padTop+plotH-ch,colW,ch,[4,4,0,0]);
+      else ctx.rect(xCenter-colW/2,padTop+plotH-ch,colW,ch);
       ctx.fill();
 
       ctx.fillStyle=mutedCol;
@@ -1180,14 +1182,14 @@ const PT_MONTHS = {
   ago:'08', agosto:'08',
   set:'09', setembro:'09',
   out:'10', outubro:'10',
-  nov:'11', novembro:'11', 'πον':'11',
+  nov:'11', novembro:'11',
   dez:'12', dezembro:'12'
 };
 
 function normalizeCsvDate(raw, fallbackYear){
   let s=String(raw||'').trim();
   if(!s)return null;
-  const ptMatch=s.match(/^(\d{1,2})\s+([a-zA-ZçÇͰ-Ͽ]{3,10})\.?(?:\s+(\d{4}))?$/);
+  const ptMatch=s.match(/^(\d{1,2})\s+([a-zA-ZçÇáàâãéêíóôõúüÁÀÂÃÉÊÍÓÔÕÚÜ]{3,10})\.?(?:\s+(\d{4}))?$/);
   if(ptMatch){
     const d=+ptMatch[1];
     const mKey=ptMatch[2].toLocaleLowerCase('pt-PT');
@@ -1216,7 +1218,7 @@ function normalizeCsvDate(raw, fallbackYear){
 }
 
 function normalizeCsvAmount(raw){
-  let s=String(raw||'').replace(/[€$£\s ]/g,'').trim();
+  let s=String(raw||'').replace(/[€$£\s]/g,'').trim();
   if(!s)return NaN;
   let neg=false;
   if(s.startsWith('(')&&s.endsWith(')')){neg=true;s=s.slice(1,-1);}
@@ -1262,10 +1264,10 @@ function parseStatementTextLines(lines){
   }
 
   const rows=[];
-  const datePatternStr='(\\d{4}-\\d{2}-\\d{2}|\\d{1,2}[\\/.-]\\d{1,2}(?:[\\/.-]\\d{4})?|\\d{1,2}\\s+[a-zA-ZçÇ\\u0370-\\u03FF]{3,10}\\.?(?:\\s+\\d{4})?)';
+  const datePatternStr='(\\d{4}-\\d{2}-\\d{2}|\\d{1,2}[\\/.-]\\d{1,2}(?:[\\/.-]\\d{4})?|\\d{1,2}\\s+[a-zA-ZçÇáàâãéêíóôõúüÁÀÂÃÉÊÍÓÔÕÚÜ]{3,10}\\.?(?:\\s+\\d{4})?)';
   const dateStartRe=new RegExp('^'+datePatternStr+'\\b\\s*(.*)$');
   const secondDateRe=new RegExp('^'+datePatternStr+'\\b\\s*(.*)$');
-  const amountTokenRe=/([+-]?\s*(?:\d{1,3}(?:[.\s ]\d{3})+|\d+),\d{2}|[+-]?\s*(?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2})\s*[€$£]?/g;
+  const amountTokenRe=/([+-]?\s*(?:\d{1,3}(?:[.\s]\d{3})+|\d+),\d{2}|[+-]?\s*(?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2})\s*[€$£]?/g;
   const skipLineRe=/^(saldo\s+(inicial|final|anterior|disponível|contabilístico|autorizado)|total\s+(de\s+)?(débitos|créditos|movimentos)|data\s+(mov|da\s+operação)|descrição|operação|página\s+\d|titular:|conta:|documento\s+com\s+data|para\s+pesquisas)/i;
 
   let pendingEntry=null;
@@ -1346,9 +1348,9 @@ function parseStatementTextLines(lines){
 }
 
 function parseSantanderLines(lines, fallbackYear){
-  const dateOnlyRe=/^(\d{1,2}\s+[a-zA-ZçÇͰ-Ͽ]{3,10}\.?(?:\s+\d{4})?|\d{1,2}[\/.-]\d{1,2}[\/.-]\d{4})$/;
+  const dateOnlyRe=/^(\d{1,2}\s+[a-zA-ZçÇáàâãéêíóôõúüÁÀÂÃÉÊÍÓÔÕÚÜ]{3,10}\.?(?:\s+\d{4})?|\d{1,2}[\/.-]\d{1,2}[\/.-]\d{4})$/;
   const dValorRe=/^D[:.]?\s*valor[:.]?\s*(.+)$/i;
-  const amountTokenRe=/([+-]?\s*(?:\d{1,3}(?:[.\s ]\d{3})+|\d+),\d{2})\s*€/g;
+  const amountTokenRe=/([+-]?\s*(?:\d{1,3}(?:[.\s]\d{3})+|\d+),\d{2})\s*€/g;
   const skipHeaderRe=/^(santander|titular:|conta:|saldo\s+disponível|movimentos\s+da\s+sua\s+conta|operação|data\s+da\s+operação|documento\s+com\s+data|página\s+\d|para\s+pesquisas)/i;
 
   const cleanLines=lines.map(l=>l.trim()).filter(l=>l&&!skipHeaderRe.test(l));
