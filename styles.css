@@ -121,12 +121,7 @@ button:active{transform:scale(0.98)}
 .date-group-header:first-child{margin-top:4px}
 .item{border-top:1px solid var(--line);padding:11px 0}
 .item:first-child,.date-group-header + .item{border-top:0}
-.tx-clickable{
-  cursor:pointer;border-radius:10px;padding:11px 6px;margin:0 -6px;
-  transition:background-color .15s;
-}
-.tx-clickable:hover,.tx-clickable:active{background:var(--surface-2)}
-.tx-left{display:flex;align-items:center;gap:11px;min-width:0;flex:1}
+.tx-left{display:flex;align-items:center;gap:11px;min-width:0}
 .tx-badge{
   width:34px;height:34px;border-radius:10px;display:inline-flex;align-items:center;
   justify-content:center;font-size:15px;flex:0 0 auto;background:var(--surface-2);
@@ -134,50 +129,12 @@ button:active{transform:scale(0.98)}
 }
 .tx-badge.is-inc{background:#e8f2ed;border-color:#c6e0d4}
 .tx-badge.is-sav{background:#f7f2e7;border-color:#e6d7b8}
-.tx-info{min-width:0;flex:1}
+.tx-info{min-width:0}
 .tx-info b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tx-right{display:flex;align-items:center;gap:6px;flex:0 0 auto}
 .amount{font-weight:750;white-space:nowrap}
 .plus{color:var(--green)}
 .minus{color:var(--red)}
 .neutral{color:var(--g)}
-
-/* Detalhe do movimento no Modal */
-.tx-detail-hero{
-  text-align:center;padding:14px 10px;background:var(--surface-2);
-  border-radius:14px;border:1px solid var(--line);margin-bottom:12px;
-}
-.tx-detail-badge{
-  width:46px;height:46px;border-radius:14px;background:var(--surface);border:1px solid var(--line);
-  display:inline-flex;align-items:center;justify-content:center;font-size:22px;margin-bottom:6px;
-}
-.tx-detail-amount{font-size:26px;font-weight:800;letter-spacing:-0.4px;margin:2px 0}
-.tx-detail-desc{
-  font-size:15px;font-weight:650;line-height:1.4;padding:11px 12px;
-  background:var(--surface);border:1px solid var(--line);border-radius:12px;
-  margin-bottom:10px;word-break:break-word;white-space:pre-wrap;
-}
-.tx-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.tx-detail-field{
-  background:var(--surface-2);padding:9px 11px;border-radius:10px;border:1px solid var(--line);
-}
-.tx-detail-field span{display:block;font-size:11px;color:var(--muted);margin-bottom:2px}
-.tx-detail-field b{font-size:13px;word-break:break-word}
-
-/* Separador de Gráficos */
-.analytics-canvas-wrap{
-  width:100%;height:290px;position:relative;margin-top:14px;
-  background:var(--surface-2);border:1px solid var(--line);border-radius:14px;padding:10px;
-}
-.analytics-legend{
-  display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;
-}
-.legend-chip{
-  display:inline-flex;align-items:center;gap:6px;padding:5px 10px;
-  background:var(--surface-2);border:1px solid var(--line);border-radius:99px;
-  font-size:12px;font-weight:600;
-}
-.legend-swatch{width:10px;height:10px;border-radius:50%;flex:0 0 auto}
 
 /* Barras de categoria */
 .barline{display:flex;align-items:center;gap:9px;margin:10px 0;font-size:12px}
@@ -262,6 +219,11 @@ footer{text-align:center;color:var(--muted);font-size:12px;padding:20px;padding-
 @media(min-width:600px){.modal-backdrop{align-items:center}}
 @keyframes slideUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
 
+.csv-table{width:100%;border-collapse:collapse;font-size:12px}
+.csv-table th,.csv-table td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left}
+.csv-table th{background:var(--surface-2);position:sticky;top:0;z-index:2}
+.csv-table select,.csv-table input{min-height:32px;padding:4px 6px;font-size:12px}
+
 /* ÁREA DE RELATÓRIOS PARA IMPRESSÃO */
 #printSheet{display:none}
 .print-header{border-bottom:2px solid #142b45;padding-bottom:12px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:flex-end}
@@ -286,7 +248,7 @@ footer{text-align:center;color:var(--muted);font-size:12px;padding:20px;padding-
 @media print{
   @page{size:A4;margin:14mm}
   body{background:#fff !important;color:#0f172a !important;font-size:12px}
-  header,.nav-wrapper,.view,.fab,footer,.modal-backdrop{display:none !important}
+  header,.nav-wrapper,.view,.fab,footer{display:none !important}
   .wrap{max-width:100%;padding:0;margin:0}
   #printSheet{display:block !important}
   .print-table tr{page-break-inside:avoid}
@@ -337,5 +299,4 @@ html.density-detailed input,html.density-detailed select{min-height:47px;padding
   .grid,.grid-3{grid-template-columns:1fr;gap:8px}
   .install-instructions{font-size:14px}
   .barline-name{width:95px}
-  .analytics-canvas-wrap{height:260px}
 }

@@ -13,7 +13,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png">
   <link rel="stylesheet" href="./styles.css">
-  <title>DuoFin v5.9.0 — Gestão financeira a dois</title>
+  <title>DuoFin v5.7.2.1 — Gestão financeira a dois</title>
 </head>
 <body>
   <header>
@@ -22,7 +22,7 @@
         <div class="brandline"><span class="brandmark" aria-hidden="true">DF</span><h1>DuoFin</h1></div>
         <p>As nossas finanças. O nosso equilíbrio.</p>
       </div>
-      <span class="version-badge">v5.9.0</span>
+      <span class="version-badge">v5.7.2.1</span>
     </div>
   </header>
   <div class="wrap">
@@ -30,7 +30,6 @@
       <nav id="mainNav" aria-label="Navegação principal">
         <button class="active" data-tab="resumo">Resumo</button>
         <button data-tab="movimentos">Movimentos</button>
-        <button data-tab="graficos">Gráficos</button>
         <button data-tab="recorrentes">Recorrentes</button>
         <button data-tab="calendario">Calendário</button>
         <button data-tab="orcamento">Orçamento</button>
@@ -73,13 +72,7 @@
         <p class="small">Saldo acumulado das transferências de poupança menos resgates registados em cada ciclo.</p>
       </div>
       <div class="card"><h2>Objetivos e prazos</h2><div id="forecastText"></div></div>
-      <div class="card">
-        <div class="row">
-          <h2>Movimentos recentes deste ciclo</h2>
-          <span class="small">Toca para ver/editar</span>
-        </div>
-        <div id="recent"></div>
-      </div>
+      <div class="card"><h2>Movimentos recentes deste ciclo</h2><div id="recent"></div></div>
     </section>
 
     <section id="movimentos" class="view">
@@ -142,7 +135,7 @@
               <input id="incomeCountsForCycle" type="checkbox" checked>
               <span>Este rendimento define o ciclo financeiro (ex.: vencimento)</span>
             </label>
-            <p class="small">Aplicável no modo automático por vencimentos. No modo mensal fixo (dia 21 a 20), os ciclos seguem o calendário.</p>
+            <p class="small">Desmarca se for um rendimento extra pontual (ex.: reembolso de IRS, venda ou prémio) que não deve fechar o ciclo atual.</p>
           </div>
           <div id="savingGoalField" hidden>
             <label for="savingGoal" id="savingGoalLabel">Associar a objetivo (opcional)</label>
@@ -176,7 +169,7 @@
         </div>
         <div class="filter-bar">
           <div class="grid">
-            <div><label for="movementCycle" style="margin-top:0">Ciclo / âmbito</label><select id="movementCycle"></select></div>
+            <div><label for="movementCycle" style="margin-top:0">Ciclo financeiro</label><select id="movementCycle"></select></div>
             <div>
               <label for="filter" style="margin-top:0">Tipo de movimento</label>
               <select id="filter">
@@ -186,16 +179,6 @@
                 <option value="saving">Poupança transferida</option>
                 <option value="saving_withdraw">Poupança utilizada / resgate</option>
               </select>
-            </div>
-          </div>
-          <div class="grid">
-            <div>
-              <label for="filterDateFrom">De (data inicial)</label>
-              <input id="filterDateFrom" type="date">
-            </div>
-            <div>
-              <label for="filterDateTo">Até (data final)</label>
-              <input id="filterDateTo" type="date">
             </div>
           </div>
           <div class="grid-3">
@@ -217,52 +200,7 @@
             <button class="ghost" type="button" id="resetFiltersBtn" style="padding:5px 10px;font-size:12px" hidden>Limpar filtros</button>
           </div>
         </div>
-        <p class="small" style="margin:6px 0 4px">Toca num movimento para ver os detalhes completos ou editar.</p>
         <div id="transactions"></div>
-      </div>
-    </section>
-
-    <section id="graficos" class="view">
-      <div class="card">
-        <div class="row" style="flex-wrap:wrap">
-          <div>
-            <h2 style="margin:0">Análise visual do ciclo</h2>
-            <div id="analyticsCycleLabel" class="small"></div>
-          </div>
-          <select id="analyticsCycleSelect" aria-label="Ciclo a analisar" style="max-width:270px"></select>
-        </div>
-
-        <div class="grid" style="margin-top:8px">
-          <div>
-            <label for="analyticsMetric">O que analisar</label>
-            <select id="analyticsMetric">
-              <option value="categories">Despesas por categoria</option>
-              <option value="budget_vs_actual">Orçamento planeado vs. Gasto real</option>
-              <option value="people">Despesas por adulto / conta</option>
-              <option value="cashflow">Rendimentos, Despesas e Poupança</option>
-              <option value="daily_cumulative">Evolução diária de despesas no ciclo</option>
-            </select>
-          </div>
-          <div>
-            <label for="analyticsChartType">Tipo de gráfico</label>
-            <select id="analyticsChartType">
-              <option value="bar">Barras horizontais</option>
-              <option value="column">Colunas verticais</option>
-              <option value="donut">Circular (Anel / Donut)</option>
-              <option value="line">Linha / Área evolutiva</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="analytics-canvas-wrap">
-          <canvas id="analyticsCanvas"></canvas>
-        </div>
-        <div id="analyticsLegend" class="analytics-legend"></div>
-      </div>
-
-      <div class="card">
-        <h2>Resumo numérico da seleção</h2>
-        <div id="analyticsTable"></div>
       </div>
     </section>
 
@@ -397,7 +335,7 @@
         </div>
         <div id="pasteExtractBox" class="inline-editor" hidden>
           <label for="pasteExtractText" style="margin-top:0">Colar texto copiado do extrato PDF</label>
-          <textarea id="pasteExtractText" rows="5" placeholder="Cola aqui as linhas copiadas do extrato bancário (ex.: 10-11-2026 COMPRA CONTINENTE -45,20 €)..."></textarea>
+          <textarea id="pasteExtractText" rows="5" placeholder="Cola aqui as linhas copiadas do extrato bancário (ex.: 10-11-2026  COMPRA CONTINENTE  -45,20 €)..."></textarea>
           <div class="actions">
             <button class="secondary" type="button" id="parsePastedTextBtn">Analisar texto colado</button>
             <button class="ghost" type="button" id="cancelPasteTextBtn">Fechar</button>
@@ -452,19 +390,9 @@
 
       <div class="card">
         <h2>Definição dos ciclos financeiros</h2>
-        <label for="cycleMode">Regra de apuramento de ciclos</label>
-        <select id="cycleMode">
-          <option value="fixed_21_20">Mensal fixo (dia 21 do mês anterior a dia 20 do mês)</option>
-          <option value="income">Automático pelas entradas de vencimento</option>
-        </select>
-        <div id="fixedCycleHint" class="small" style="margin-top:8px">
-          Cada mês corresponde a um ciclo fixo: por exemplo, ao selecionar <strong>Setembro 2026</strong>, o painel apresenta todas as operações entre <strong>21 ago 2026</strong> e <strong>20 set 2026</strong>.
-        </div>
-        <div id="incomeCycleOptions" style="margin-top:8px" hidden>
-          <label for="cycleGroupingDays">Janela para agrupar entradas de rendimento (dias)</label>
-          <input id="cycleGroupingDays" type="number" min="0" max="20" step="1" value="14">
-          <p class="small">Entradas de rendimento marcadas como definidoras de ciclo separadas por até este número de dias são agrupadas no mesmo recebimento conjunto.</p>
-        </div>
+        <label for="cycleGroupingDays">Janela para agrupar entradas de rendimento (dias)</label>
+        <input id="cycleGroupingDays" type="number" min="0" max="20" step="1" value="14">
+        <p class="small">Entradas de rendimento marcadas como definidoras de ciclo separadas por até este número de dias são agrupadas no mesmo recebimento conjunto. O ciclo inicia no primeiro vencimento do grupo e fecha antes do próximo recebimento.</p>
         <div class="actions"><button class="secondary" id="saveCycleGrouping">Guardar definição</button></div>
       </div>
 
@@ -559,85 +487,6 @@
     <!-- Folha dedicada exclusivamente à impressão A4 / PDF -->
     <div id="printSheet" aria-hidden="true"></div>
 
-    <!-- Modal de detalhe e edição de movimento registado -->
-    <div id="txDetailModal" class="modal-backdrop" hidden>
-      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="txModalTitle">
-        <div class="row" style="margin-bottom:10px">
-          <h2 id="txModalTitle" style="margin:0">Detalhe do movimento</h2>
-          <button type="button" class="icon-btn" id="closeTxModalBtn" aria-label="Fechar">✕</button>
-        </div>
-
-        <!-- Modo Visualização -->
-        <div id="txModalViewMode">
-          <div class="tx-detail-hero">
-            <div class="tx-detail-badge" id="txViewIcon">🧾</div>
-            <div class="tx-detail-amount" id="txViewAmount">0,00 €</div>
-            <div class="small" id="txViewTypePill">Despesa</div>
-          </div>
-
-          <div class="tx-detail-desc" id="txViewDesc"></div>
-
-          <div class="tx-detail-grid">
-            <div class="tx-detail-field"><span>Data</span><b id="txViewDate">—</b></div>
-            <div class="tx-detail-field"><span>Categoria</span><b id="txViewCategory">—</b></div>
-            <div class="tx-detail-field"><span>Quem movimentou</span><b id="txViewPerson">—</b></div>
-            <div class="tx-detail-field"><span>Estado / Ciclo</span><b id="txViewStatus">—</b></div>
-          </div>
-
-          <div class="actions" style="justify-content:space-between;margin-top:16px">
-            <button type="button" class="danger" id="txModalDeleteBtn">🗑️ Apagar</button>
-            <div class="row" style="gap:8px">
-              <button type="button" class="ghost" id="txModalCloseFooterBtn">Fechar</button>
-              <button type="button" class="primary" id="txModalSwitchEditBtn">✎ Editar movimento</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Modo Edição -->
-        <form id="txModalEditForm" hidden>
-          <input type="hidden" id="txModalEditId">
-          <div class="grid">
-            <div><label for="txModalDate">Data</label><input type="date" id="txModalDate" required></div>
-            <div><label for="txModalAmount">Valor (€)</label><input type="number" step="0.01" min="0.01" id="txModalAmount" required></div>
-          </div>
-          <label for="txModalDesc">Descrição completa</label>
-          <textarea id="txModalDesc" rows="2" required></textarea>
-          <div class="grid">
-            <div>
-              <label for="txModalType">Tipo</label>
-              <select id="txModalType">
-                <option value="expense">Despesa</option>
-                <option value="income">Rendimento</option>
-                <option value="saving">Poupança transferida</option>
-                <option value="saving_withdraw">Poupança utilizada / resgate</option>
-              </select>
-            </div>
-            <div id="txModalCatWrap">
-              <label for="txModalCat">Categoria</label>
-              <select id="txModalCat"></select>
-            </div>
-          </div>
-          <div id="txModalIncomeCycleWrap" hidden>
-            <label class="checkbox-row" for="txModalCountsForCycle">
-              <input type="checkbox" id="txModalCountsForCycle">
-              <span>Este rendimento define o ciclo financeiro</span>
-            </label>
-          </div>
-          <div id="txModalGoalWrap" hidden>
-            <label for="txModalGoal">Objetivo de poupança</label>
-            <select id="txModalGoal"><option value="">Sem objetivo</option></select>
-          </div>
-          <label for="txModalPerson">Quem pagou / movimentou</label>
-          <select id="txModalPerson"></select>
-
-          <div class="actions" style="justify-content:space-between;margin-top:16px">
-            <button type="button" class="ghost" id="txModalCancelEditBtn">Voltar aos detalhes</button>
-            <button type="submit" class="primary">Guardar alterações</button>
-          </div>
-        </form>
-      </div>
-    </div>
-
     <!-- Modal de detalhe de movimento importado -->
     <div id="importDetailModal" class="modal-backdrop" hidden>
       <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="importModalTitle">
@@ -681,7 +530,7 @@
       </div>
     </div>
 
-    <footer>DuoFin · V5.9.0 · Gestão financeira a dois</footer>
+    <footer>DuoFin · V5.7.2.1 · Gestão financeira a dois</footer>
   </div>
   <script src="./app.js"></script>
 </body>
