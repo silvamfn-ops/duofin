@@ -1,0 +1,23 @@
+DUOFIN V5.9.0 — ATUALIZAÇÃO DE CICLOS FIXOS (DIA 21 A DIA 20)
+==============================================================
+
+NOVIDADE PRINCIPAL
+------------------
+- Regra de Ciclo Mensal Fixo (dia 21 do mês anterior a dia 20 do mês selecionado) ativada por defeito:
+  * Exemplo: ao selecionar "Setembro 2026" no painel de Resumo (ou nos Gráficos / Movimentos), a aplicação contabiliza automaticamente todas as operações registadas entre 21 de agosto de 2026 e 20 de setembro de 2026.
+  * Todos os indicadores do Resumo (Total de rendimentos, Despesas pagas, Saldo do ciclo, Poupança líquida, alertas de limites, despesas por categoria/adulto e movimentos recentes) passam a refletir este intervalo exato.
+- Flexibilidade mantida:
+  * Caso pretendas regressar ao comportamento anterior (ciclos fechados automaticamente pelas datas dos vencimentos), basta ir a Dados -> Definição dos ciclos financeiros e alterar a regra para "Automático pelas entradas de vencimento".
+
+FICHEIROS INCLUÍDOS NESTE PACOTE DE ATUALIZAÇÃO
+-----------------------------------------------
+- index.html
+- app.js
+- sw.js (cache atualizada para duofin-v5-9-0-20261113)
+- NOTAS_V5_9_0.txt
+
+COMO ATUALIZAR NO ALOJAMENTO (GITHUB PAGES / NETLIFY / VERCEL / ETC.)
+---------------------------------------------------------------------
+1. Antes de substituir os ficheiros, exporta uma cópia JSON em Dados -> Exportar cópia (por precaução).
+2. Substitui os ficheiros index.html, app.js e sw.js na pasta da tua aplicação DuoFin (mantendo a pasta icons/, styles.css e manifest.webmanifest da versão anterior).
+3. Abre a DuoFin no navegador e recarrega a página para ativar a versão v5.9.0.

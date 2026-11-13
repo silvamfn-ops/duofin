@@ -13,7 +13,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png">
   <link rel="stylesheet" href="./styles.css">
-  <title>DuoFin v5.8.0 — Gestão financeira a dois</title>
+  <title>DuoFin v5.9.0 — Gestão financeira a dois</title>
 </head>
 <body>
   <header>
@@ -22,7 +22,7 @@
         <div class="brandline"><span class="brandmark" aria-hidden="true">DF</span><h1>DuoFin</h1></div>
         <p>As nossas finanças. O nosso equilíbrio.</p>
       </div>
-      <span class="version-badge">v5.8.0</span>
+      <span class="version-badge">v5.9.0</span>
     </div>
   </header>
   <div class="wrap">
@@ -142,7 +142,7 @@
               <input id="incomeCountsForCycle" type="checkbox" checked>
               <span>Este rendimento define o ciclo financeiro (ex.: vencimento)</span>
             </label>
-            <p class="small">Desmarca se for um rendimento extra pontual (ex.: reembolso de IRS, venda ou prémio) que não deve fechar o ciclo atual.</p>
+            <p class="small">Aplicável no modo automático por vencimentos. No modo mensal fixo (dia 21 a 20), os ciclos seguem o calendário.</p>
           </div>
           <div id="savingGoalField" hidden>
             <label for="savingGoal" id="savingGoalLabel">Associar a objetivo (opcional)</label>
@@ -397,7 +397,7 @@
         </div>
         <div id="pasteExtractBox" class="inline-editor" hidden>
           <label for="pasteExtractText" style="margin-top:0">Colar texto copiado do extrato PDF</label>
-          <textarea id="pasteExtractText" rows="5" placeholder="Cola aqui as linhas copiadas do extrato bancário (ex.: 10-11-2026  COMPRA CONTINENTE  -45,20 €)..."></textarea>
+          <textarea id="pasteExtractText" rows="5" placeholder="Cola aqui as linhas copiadas do extrato bancário (ex.: 10-11-2026 COMPRA CONTINENTE -45,20 €)..."></textarea>
           <div class="actions">
             <button class="secondary" type="button" id="parsePastedTextBtn">Analisar texto colado</button>
             <button class="ghost" type="button" id="cancelPasteTextBtn">Fechar</button>
@@ -452,9 +452,19 @@
 
       <div class="card">
         <h2>Definição dos ciclos financeiros</h2>
-        <label for="cycleGroupingDays">Janela para agrupar entradas de rendimento (dias)</label>
-        <input id="cycleGroupingDays" type="number" min="0" max="20" step="1" value="14">
-        <p class="small">Entradas de rendimento marcadas como definidoras de ciclo separadas por até este número de dias são agrupadas no mesmo recebimento conjunto. O ciclo inicia no primeiro vencimento do grupo e fecha antes do próximo recebimento.</p>
+        <label for="cycleMode">Regra de apuramento de ciclos</label>
+        <select id="cycleMode">
+          <option value="fixed_21_20">Mensal fixo (dia 21 do mês anterior a dia 20 do mês)</option>
+          <option value="income">Automático pelas entradas de vencimento</option>
+        </select>
+        <div id="fixedCycleHint" class="small" style="margin-top:8px">
+          Cada mês corresponde a um ciclo fixo: por exemplo, ao selecionar <strong>Setembro 2026</strong>, o painel apresenta todas as operações entre <strong>21 ago 2026</strong> e <strong>20 set 2026</strong>.
+        </div>
+        <div id="incomeCycleOptions" style="margin-top:8px" hidden>
+          <label for="cycleGroupingDays">Janela para agrupar entradas de rendimento (dias)</label>
+          <input id="cycleGroupingDays" type="number" min="0" max="20" step="1" value="14">
+          <p class="small">Entradas de rendimento marcadas como definidoras de ciclo separadas por até este número de dias são agrupadas no mesmo recebimento conjunto.</p>
+        </div>
         <div class="actions"><button class="secondary" id="saveCycleGrouping">Guardar definição</button></div>
       </div>
 
@@ -671,7 +681,7 @@
       </div>
     </div>
 
-    <footer>DuoFin · V5.8.0 · Gestão financeira a dois</footer>
+    <footer>DuoFin · V5.9.0 · Gestão financeira a dois</footer>
   </div>
   <script src="./app.js"></script>
 </body>

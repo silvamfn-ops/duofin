@@ -1,4 +1,4 @@
-const CACHE_NAME = 'duofin-v5-8-0-20261113';
+const CACHE_NAME = 'duofin-v5-9-0-20261113';
 const CORE_ASSETS = [
   './',
   './index.html',
