@@ -121,7 +121,12 @@ button:active{transform:scale(0.98)}
 .date-group-header:first-child{margin-top:4px}
 .item{border-top:1px solid var(--line);padding:11px 0}
 .item:first-child,.date-group-header + .item{border-top:0}
-.tx-left{display:flex;align-items:center;gap:11px;min-width:0}
+.tx-clickable{
+  cursor:pointer;border-radius:10px;padding:11px 8px;margin:0 -8px;
+  transition:background-color .14s;
+}
+.tx-clickable:hover,.tx-clickable:active{background:var(--surface-2)}
+.tx-left{display:flex;align-items:center;gap:11px;min-width:0;flex:1}
 .tx-badge{
   width:34px;height:34px;border-radius:10px;display:inline-flex;align-items:center;
   justify-content:center;font-size:15px;flex:0 0 auto;background:var(--surface-2);
@@ -129,7 +134,7 @@ button:active{transform:scale(0.98)}
 }
 .tx-badge.is-inc{background:#e8f2ed;border-color:#c6e0d4}
 .tx-badge.is-sav{background:#f7f2e7;border-color:#e6d7b8}
-.tx-info{min-width:0}
+.tx-info{min-width:0;flex:1}
 .tx-info b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .amount{font-weight:750;white-space:nowrap}
 .plus{color:var(--green)}
@@ -169,6 +174,45 @@ button:active{transform:scale(0.98)}
 canvas{width:100%;height:100%;display:block}
 .empty{text-align:center;color:var(--muted);padding:20px;font-size:13px}
 footer{text-align:center;color:var(--muted);font-size:12px;padding:20px;padding-bottom:calc(28px + env(safe-area-inset-bottom))}
+
+/* Separador Gráficos */
+.analytics-canvas-box{
+  width:100%;height:280px;position:relative;margin-top:14px;
+  background:var(--surface-2);border:1px solid var(--line);border-radius:14px;padding:10px;
+}
+.analytics-legend{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));
+  gap:8px;margin-top:12px;
+}
+.legend-pill{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  background:var(--surface-2);border:1px solid var(--line);border-radius:10px;
+  padding:7px 10px;font-size:12px;
+}
+.legend-left{display:flex;align-items:center;gap:7px;min-width:0}
+.legend-swatch{width:11px;height:11px;border-radius:3px;flex:0 0 auto}
+.legend-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+
+/* Modal de Detalhe de Movimento */
+.tx-modal-hero{
+  text-align:center;padding:14px 10px;background:var(--surface-2);
+  border-radius:14px;border:1px solid var(--line);margin-bottom:12px;
+}
+.tx-modal-icon{
+  width:46px;height:46px;border-radius:14px;background:var(--surface);
+  border:1px solid var(--line);display:inline-flex;align-items:center;
+  justify-content:center;font-size:22px;margin-bottom:6px;
+}
+.tx-modal-amount{font-size:26px;font-weight:800;letter-spacing:-0.5px;margin:2px 0}
+.tx-modal-desc{font-size:15px;font-weight:650;color:var(--ink);word-break:break-word;margin-top:4px;line-height:1.35}
+.tx-modal-specs{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.tx-spec-row{
+  display:flex;justify-content:space-between;align-items:center;gap:12px;
+  padding:10px 12px;border-bottom:1px solid var(--line);font-size:13.5px;
+}
+.tx-spec-row:last-child{border-bottom:0}
+.tx-spec-row span{color:var(--muted)}
+.tx-spec-row b{text-align:right;word-break:break-word}
 
 /* Botão flutuante (FAB) */
 .fab{
@@ -248,7 +292,7 @@ footer{text-align:center;color:var(--muted);font-size:12px;padding:20px;padding-
 @media print{
   @page{size:A4;margin:14mm}
   body{background:#fff !important;color:#0f172a !important;font-size:12px}
-  header,.nav-wrapper,.view,.fab,footer{display:none !important}
+  header,.nav-wrapper,.view,.fab,footer,.modal-backdrop{display:none !important}
   .wrap{max-width:100%;padding:0;margin:0}
   #printSheet{display:block !important}
   .print-table tr{page-break-inside:avoid}
@@ -299,4 +343,5 @@ html.density-detailed input,html.density-detailed select{min-height:47px;padding
   .grid,.grid-3{grid-template-columns:1fr;gap:8px}
   .install-instructions{font-size:14px}
   .barline-name{width:95px}
+  .analytics-canvas-box{height:250px}
 }

@@ -28,6 +28,7 @@ function load(){try{const raw=JSON.parse(localStorage.getItem(KEY));if(raw?.sett
 let db=load(),selected=iso(now),selectedCycleKey=null,activeCycle=null,activeCycles=[];
 const eur=n=>new Intl.NumberFormat('pt-PT',{style:'currency',currency:'EUR'}).format(+n||0),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const sum=a=>a.reduce((s,t)=>s+(Number(t.amount)||0),0),isPaid=t=>t.status!=='pending'&&t.status!=='skipped',mName=m=>new Date(m+'-02T12:00:00').toLocaleDateString('pt-PT',{month:'long',year:'numeric'});
+const capFirst=s=>s?s.charAt(0).toUpperCase()+s.slice(1):'';
 const DAY_MS=86400000,dateMs=s=>Date.parse(s+'T00:00:00Z'),validDate=s=>/^\d{4}-\d{2}-\d{2}$/.test(String(s||''))&&Number.isFinite(dateMs(s)),addDays=(s,n)=>new Date(dateMs(s)+n*DAY_MS).toISOString().slice(0,10),daysBetween=(a,b)=>Math.round((dateMs(b)-dateMs(a))/DAY_MS),monthLast=m=>{const [y,mo]=m.split('-').map(Number);return `${m}-${String(new Date(y,mo,0).getDate()).padStart(2,'0')}`},fmtDate=d=>new Date(d+'T12:00:00').toLocaleDateString('pt-PT',{day:'2-digit',month:'short',year:'numeric'});
 const isSavingTx=t=>t&&(t.type==='saving'||t.type==='saving_withdraw');
 const savingSigned=t=>t.type==='saving_withdraw'?-(Number(t.amount)||0):(Number(t.amount)||0);
@@ -78,12 +79,44 @@ function addMonthsClamp(dateStr, monthsToAdd){
  return `${ny}-${String(nm).padStart(2,'0')}-${String(Math.min(d,lastDay)).padStart(2,'0')}`;
 }
 
+// Calcula o mês de referência de cada ciclo financeiro (ex.: ciclo 21 ago a 20 set -> Setembro de 2026)
+function computeCycleReferenceMonth(c){
+ if(c.fallback)return capFirst(mName(c.key.slice(6)));
+ if(c.preCycle)return 'Período inicial ('+capFirst(mName(c.end.slice(0,7)))+')';
+ const [sy,sm,sd]=c.start.split('-').map(Number);
+ // Se o vencimento que abre o ciclo ocorre a partir do dia 15, o ciclo financia o mês seguinte (ex.: 21 ago -> Setembro)
+ let refY=sy,refM=sm;
+ if(sd>=15){
+   refM+=1;
+   if(refM>12){refM=1;refY+=1;}
+ }
+ const refKey=`${refY}-${String(refM).padStart(2,'0')}`;
+ return capFirst(mName(refKey));
+}
+
+function assignCycleMonthLabels(cycles){
+ const counts={};
+ cycles.forEach(c=>{
+   const base=computeCycleReferenceMonth(c);
+   c.monthLabel=base;
+   counts[base]=(counts[base]||0)+1;
+ });
+ const seen={};
+ cycles.forEach(c=>{
+   if(counts[c.monthLabel]>1){
+     seen[c.monthLabel]=(seen[c.monthLabel]||0)+1;
+     c.monthLabel=`${c.monthLabel} (${seen[c.monthLabel]}.º)`;
+   }
+ });
+ return cycles;
+}
+
 function buildCycles(){
  const today=iso(now),validTx=db.transactions.filter(t=>validDate(t.date)&&t.date<=today);
  const cycleIncomes=validTx.filter(t=>t.type==='income'&&isPaid(t)&&t.countsForCycle!==false).sort((a,b)=>a.date.localeCompare(b.date)||String(a.id).localeCompare(String(b.id)));
  if(!cycleIncomes.length){
    const monthKeys=[...new Set([...validTx.map(t=>t.date.slice(0,7)),cur])].sort();
-   return monthKeys.map(m=>({key:'month:'+m,start:m+'-01',end:monthLast(m),fallback:true,preCycle:false,open:false,incomeDates:[],label:mName(m)}));
+   return assignCycleMonthLabels(monthKeys.map(m=>({key:'month:'+m,start:m+'-01',end:monthLast(m),fallback:true,preCycle:false,open:false,incomeDates:[],label:mName(m)})));
  }
  const maxGap=Math.max(0,Math.min(20,Math.round(Number(db.settings.cycleGroupingDays??14))));
  const groups=[];
@@ -110,7 +143,7 @@ function buildCycles(){
      cycles.push({key:'open:'+start,start,end:maxEnd,anchor:g.lastDate,open:true,fallback:false,preCycle:false,incomeDates:g.items.map(t=>t.date),incomeCount:g.items.length});
    }
  }
- return cycles;
+ return assignCycleMonthLabels(cycles);
 }
 
 function currentCycle(cycles){
@@ -118,15 +151,19 @@ function currentCycle(cycles){
  return cycles.find(c=>c.start<=today&&c.end>=today&&!c.preCycle)||cycles.find(c=>c.start<=today&&c.end>=today)||cycles.slice(-1)[0];
 }
 function cycleName(c){
- if(c.fallback)return `${mName(c.key.slice(6))} · período mensal provisório`;
- if(c.preCycle)return `${fmtDate(c.start)} – ${fmtDate(c.end)} · anterior ao 1.º vencimento`;
- return `${fmtDate(c.start)} – ${fmtDate(c.end)}${c.open?' · em curso':' · fechado'}`;
+ const mTag=c.monthLabel||computeCycleReferenceMonth(c);
+ if(c.fallback)return `${mTag} · período provisório`;
+ if(c.preCycle)return `${mTag} (${fmtDate(c.start)} – ${fmtDate(c.end)})`;
+ return `${mTag} (${fmtDate(c.start)} – ${fmtDate(c.end)})${c.open?' · em curso':''}`;
 }
 function cycleTransactions(c){return db.transactions.filter(t=>validDate(t.date)&&t.date>=c.start&&t.date<=c.end);}
 function getSelectedCycle(){
  const cycles=buildCycles();
  let c=cycles.find(x=>x.key===selectedCycleKey)||currentCycle(cycles);
- if(!c)c={key:'month:'+cur,start:cur+'-01',end:monthLast(cur),fallback:true,preCycle:false,open:false};
+ if(!c){
+   c={key:'month:'+cur,start:cur+'-01',end:monthLast(cur),fallback:true,preCycle:false,open:false};
+   c.monthLabel=computeCycleReferenceMonth(c);
+ }
  selectedCycleKey=c.key;activeCycle=c;activeCycles=cycles;
  return {cycles,cycle:c};
 }
@@ -138,6 +175,7 @@ function switchTab(tabId){
  const fab=$('quickAddFab');
  if(fab)fab.hidden=tabId!=='resumo';
  if(tabId==='resumo')requestAnimationFrame(drawChart);
+ if(tabId==='graficos')requestAnimationFrame(drawAnalyticsChart);
 }
 
 function line(t, omitDate=false){
@@ -156,15 +194,24 @@ function line(t, omitDate=false){
  const badgeCls=t.type==='income'?'is-inc':isSavingTx(t)?'is-sav':'';
  const prefix=t.type==='income'?'+':t.type==='saving'?'↗':t.type==='saving_withdraw'?'↙':'−';
  const datePrefix=omitDate?'':`${t.date} · `;
- return `<div class="item row"><div class="tx-left"><span class="tx-badge ${badgeCls}" aria-hidden="true">${categoryIcon(t)}</span><div class="tx-info"><b>${esc(t.description)}</b><div class="small">${datePrefix}${esc(t.category)} · ${esc(t.person)}${state}</div></div></div><div class="row"><b class="amount ${cls}">${prefix} ${eur(t.amount)}</b>${actions}<button class="icon-btn" type="button" data-edit-tx="${esc(String(t.id))}" title="Editar movimento" aria-label="Editar movimento">✎</button><button class="danger" type="button" data-del="${esc(String(t.id))}" title="Apagar movimento" aria-label="Apagar movimento">×</button></div></div>`;
+ return `<div class="item row tx-clickable" data-open-tx="${esc(String(t.id))}"><div class="tx-left"><span class="tx-badge ${badgeCls}" aria-hidden="true">${categoryIcon(t)}</span><div class="tx-info"><b>${esc(t.description)}</b><div class="small">${datePrefix}${esc(t.category)} · ${esc(t.person)}${state}</div></div></div><div class="row" style="gap:6px;flex-shrink:0"><b class="amount ${cls}">${prefix} ${eur(t.amount)}</b>${actions}<button class="icon-btn" type="button" data-edit-tx="${esc(String(t.id))}" title="Ver ou editar movimento" aria-label="Ver ou editar movimento">✎</button><button class="danger" type="button" data-del="${esc(String(t.id))}" title="Apagar movimento" aria-label="Apagar movimento">×</button></div></div>`;
 }
 
 function render(){
  const {cycles,cycle}=getSelectedCycle();
- $('monthTitle').textContent=cycle.fallback?'Período provisório sem vencimentos':cycle.preCycle?'Período inicial anterior ao 1.º vencimento':cycle.open?'Ciclo financeiro em curso':'Ciclo financeiro';
- $('cycleRange').textContent=cycleName(cycle)+(cycle.fallback?' · regista um rendimento para começar a definir ciclos reais':'');
+ const mLabel=cycle.monthLabel||computeCycleReferenceMonth(cycle);
+ $('monthTitle').textContent=cycle.fallback?`${mLabel} · período provisório`:cycle.preCycle?mLabel:`Ciclo de ${mLabel}${cycle.open?' (em curso)':''}`;
+ $('cycleRange').textContent=`Período: ${fmtDate(cycle.start)} a ${fmtDate(cycle.end)}`+(cycle.fallback?' · regista um rendimento para ciclos reais':'');
  $('cycleSelect').innerHTML=cycles.slice().reverse().map(c=>`<option value="${esc(c.key)}">${esc(cycleName(c))}</option>`).join('');
  $('cycleSelect').value=cycle.key;
+
+ // Sincroniza seletor de ciclos do separador Gráficos
+ const aSel=$('analyticsCycleSelect');
+ if(aSel){
+   const prevA=aSel.value;
+   aSel.innerHTML=cycles.slice().reverse().map(c=>`<option value="${esc(c.key)}">${esc(cycleName(c))}</option>`).join('');
+   aSel.value=prevA&&[...aSel.options].some(o=>o.value===prevA)?prevA:cycle.key;
+ }
 
  const today=iso(now);
  const tx=cycleTransactions(cycle).filter(t=>t.date<=today);
@@ -214,7 +261,7 @@ function render(){
  $('categoryManager').innerHTML=db.settings.categories.map((c,i)=>`<div class="item" data-category-row="${i}"><div class="grid"><div><label>Nome da categoria</label><input data-cat-name="${i}" maxlength="50" value="${esc(c.name)}"></div><div><label>Limite por ciclo (€)</label><input data-cat-budget="${i}" type="number" min="0" step=".01" value="${Number(c.budget)||0}"></div></div><div class="actions"><button class="secondary" type="button" data-cat-save="${i}">Guardar alterações</button><button class="danger" type="button" data-cat-delete="${i}">Eliminar</button></div></div>`).join('')||'<div class="empty">Ainda não existem categorias.</div>';
 
  const move=$('movementCycle'),oldMove=move.value;
- move.innerHTML='<option value="selected">Ciclo selecionado</option><option value="all">Todos os movimentos</option><option value="future">Prestações / movimentos futuros</option>'+cycles.slice().reverse().map(c=>`<option value="${esc(c.key)}">${esc(cycleName(c))}</option>`).join('');
+ move.innerHTML='<option value="selected">Ciclo selecionado no Resumo</option><option value="all">Todos os movimentos (sem limite de ciclo)</option><option value="future">Prestações / movimentos futuros</option>'+cycles.slice().reverse().map(c=>`<option value="${esc(c.key)}">${esc(cycleName(c))}</option>`).join('');
  move.value=oldMove&&[...move.options].some(o=>o.value===oldMove)?oldMove:'selected';
 
  const fCat=$('filterCategory'),oldFCat=fCat.value;
@@ -240,6 +287,7 @@ function render(){
  }).join(''):'<div class="empty">Ainda não existem objetivos ativos.</div>';
 
  drawChart();
+ drawAnalyticsChart();
  drawCalendar();
  renderRecurrences();
  updateTxFormVisibility();
@@ -248,6 +296,7 @@ function render(){
 
 function getFilteredMovements(){
  const f=$('filter').value,period=$('movementCycle').value,search=$('filterSearch').value.trim().toLocaleLowerCase('pt-PT'),cat=$('filterCategory').value,per=$('filterPerson').value;
+ const dFrom=$('filterDateFrom').value,dTo=$('filterDateTo').value;
  const today=iso(now);
  let list=[...db.transactions],periodLabel='Todos os movimentos';
 
@@ -262,6 +311,12 @@ function getFilteredMovements(){
    if(c){list=list.filter(t=>t.date>=c.start&&t.date<=c.end);periodLabel=cycleName(c);}
  }
 
+ if(dFrom){list=list.filter(t=>t.date>=dFrom);}
+ if(dTo){list=list.filter(t=>t.date<=dTo);}
+ if(dFrom||dTo){
+   periodLabel+=` · Datas: ${dFrom?fmtDate(dFrom):'início'} até ${dTo?fmtDate(dTo):'hoje'}`;
+ }
+
  if(f!=='all')list=list.filter(t=>t.type===f);
  if(cat!=='all')list=list.filter(t=>t.category===cat);
  if(per!=='all')list=list.filter(t=>t.person===per);
@@ -270,10 +325,11 @@ function getFilteredMovements(){
  list.sort((a,b)=>b.date.localeCompare(a.date));
  const typeLabels={all:'Todos os tipos',expense:'Despesas',income:'Rendimentos',saving:'Poupança transferida',saving_withdraw:'Resgates de poupança'};
  let filterParts=[typeLabels[f]||'Todos os tipos'];
+ if(dFrom||dTo)filterParts.push(`De ${dFrom||'…'} a ${dTo||'…'}`);
  if(cat!=='all')filterParts.push('Cat.: '+cat);
  if(per!=='all')filterParts.push('Resp.: '+per);
  if(search)filterParts.push('Pesquisa: "'+$('filterSearch').value.trim()+'"');
- const hasExtraFilters=f!=='all'||cat!=='all'||per!=='all'||search.length>0;
+ const hasExtraFilters=f!=='all'||cat!=='all'||per!=='all'||search.length>0||!!dFrom||!!dTo;
  return {list,periodLabel,typeLabel:filterParts.join(' · '),hasExtraFilters};
 }
 
@@ -283,6 +339,430 @@ function renderTransactions(){
  $('resetFiltersBtn').hidden=!hasExtraFilters;
  $('transactions').innerHTML=list.length?renderGroupedTransactions(list):'<div class="empty">Sem movimentos que correspondam aos filtros selecionados.</div>';
 }
+
+// POP-UP (MODAL) DE VISUALIZAÇÃO E EDIÇÃO DE MOVIMENTOS
+function openTransactionDetailModal(id, startInEdit=false){
+ const t=db.transactions.find(x=>String(x.id)===String(id));
+ if(!t)return;
+ $('modalTxId').value=String(t.id);
+ $('txModalTitle').textContent=startInEdit?'Editar movimento':'Detalhe do movimento';
+ $('txModalSubtitle').textContent=friendlyDateHeading(t.date);
+
+ // Preencher vista de leitura
+ $('txModalIcon').textContent=categoryIcon(t);
+ const cls=t.type==='income'?'plus':t.type==='saving_withdraw'?'neutral':'minus';
+ const prefix=t.type==='income'?'+':t.type==='saving'?'↗':t.type==='saving_withdraw'?'↙':'−';
+ const amtEl=$('txModalAmountDisplay');
+ amtEl.textContent=`${prefix} ${eur(t.amount)}`;
+ amtEl.className='tx-modal-amount '+cls;
+ $('txModalDescDisplay').textContent=t.description;
+ $('txModalDateDisplay').textContent=fmtDate(t.date);
+ $('txModalTypeDisplay').textContent=txTypeLabel(t);
+ $('txModalCatRow').hidden=t.type!=='expense';
+ $('txModalCatDisplay').textContent=t.category||'—';
+ $('txModalPersonDisplay').textContent=t.person||'—';
+
+ let extraInfo='';
+ if(t.status==='pending')extraInfo='Pendente de confirmação';
+ else if(t.status==='skipped')extraInfo='Ignorada';
+ else if(t.date>iso(now))extraInfo='Agendado (futuro)';
+ else if(t.type==='income')extraInfo=t.countsForCycle===false?'Rendimento extra (não fecha ciclo)':'Define o início do ciclo financeiro';
+ else if(isSavingTx(t)&&t.goalId){
+   const g=(db.savingsGoals||[]).find(x=>x.id===t.goalId);
+   if(g)extraInfo='Objetivo: '+g.name;
+ }
+ $('txModalExtraRow').hidden=!extraInfo;
+ $('txModalExtraDisplay').textContent=extraInfo;
+
+ // Preencher formulário de edição no pop-up
+ $('modalEditDate').value=t.date;
+ $('modalEditType').value=t.type;
+ $('modalEditDesc').value=t.description;
+ $('modalEditAmount').value=Number(t.amount)||'';
+ $('modalEditCat').innerHTML=db.settings.categories.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
+ if([...$('modalEditCat').options].some(o=>o.value===t.category))$('modalEditCat').value=t.category;
+ $('modalEditPerson').innerHTML=[...db.settings.people,'Conta conjunta'].map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('');
+ if([...$('modalEditPerson').options].some(o=>o.value===t.person))$('modalEditPerson').value=t.person;
+ $('modalEditCountsCycle').checked=t.countsForCycle!==false;
+ const goals=(db.savingsGoals||[]).filter(g=>g.status==='active'||g.id===t.goalId);
+ $('modalEditGoal').innerHTML='<option value="">Sem objetivo</option>'+goals.map(g=>`<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('');
+ $('modalEditGoal').value=t.goalId||'';
+
+ syncModalEditVisibility();
+ $('txModalReadView').hidden=startInEdit;
+ $('txModalEditForm').hidden=!startInEdit;
+ $('txDetailModal').hidden=false;
+ if(startInEdit)setTimeout(()=>$('modalEditDesc').focus(),100);
+}
+
+function syncModalEditVisibility(){
+ const tp=$('modalEditType').value;
+ $('modalEditCatWrap').hidden=tp!=='expense';
+ $('modalEditIncomeCycleWrap').hidden=tp!=='income';
+ $('modalEditGoalWrap').hidden=tp!=='saving'&&tp!=='saving_withdraw';
+}
+
+$('modalEditType').onchange=syncModalEditVisibility;
+$('closeTxModalBtn').onclick=()=>{$('txDetailModal').hidden=true;};
+$('txDetailModal').addEventListener('click',e=>{
+ if(e.target===$('txDetailModal'))$('txDetailModal').hidden=true;
+});
+$('txModalSwitchEditBtn').onclick=()=>{
+ $('txModalTitle').textContent='Editar movimento';
+ $('txModalReadView').hidden=true;
+ $('txModalEditForm').hidden=false;
+ syncModalEditVisibility();
+ $('modalEditDesc').focus();
+};
+$('txModalCancelEditBtn').onclick=()=>{
+ const id=$('modalTxId').value;
+ openTransactionDetailModal(id,false);
+};
+$('txModalDeleteBtn').onclick=()=>{
+ const id=$('modalTxId').value;
+ const target=db.transactions.find(t=>String(t.id)===String(id));
+ if(!target)return;
+ if(confirm('Apagar este movimento?')){
+   if(target.status==='pending'&&target.occurrenceKey)target.status='skipped';
+   else db.transactions=db.transactions.filter(t=>String(t.id)!==String(id));
+   if($('txEditId').value===String(id))resetTxForm();
+   $('txDetailModal').hidden=true;
+   persist();
+ }
+};
+$('txModalEditForm').onsubmit=e=>{
+ e.preventDefault();
+ const id=$('modalTxId').value;
+ const existing=db.transactions.find(x=>String(x.id)===String(id));
+ if(!existing)return;
+ const a=+$('modalEditAmount').value;
+ if(!Number.isFinite(a)||a<=0)return;
+ const tp=$('modalEditType').value;
+ const catLabel=tp==='expense'?$('modalEditCat').value:tp==='saving'?'Poupança':tp==='saving_withdraw'?'Resgate de poupança':'Rendimento';
+ existing.date=$('modalEditDate').value;
+ existing.type=tp;
+ existing.description=$('modalEditDesc').value.trim();
+ existing.amount=Number(a.toFixed(2));
+ existing.category=catLabel;
+ existing.person=$('modalEditPerson').value;
+ if(tp==='income')existing.countsForCycle=$('modalEditCountsCycle').checked;
+ else delete existing.countsForCycle;
+ if(tp==='saving'||tp==='saving_withdraw'){
+   if($('modalEditGoal').value)existing.goalId=$('modalEditGoal').value;
+   else delete existing.goalId;
+ }else{
+   delete existing.goalId;
+ }
+ $('txDetailModal').hidden=true;
+ persist();
+};
+
+// SEPARADOR GRÁFICOS: ANÁLISE VISUAL DE CICLOS
+const CHART_PALETTE=['#173653','#c5a56b','#245d49','#b54747','#396a94','#c97a1e','#5a4b81','#2e86ab','#7a8b99','#9c4f6e','#49796b','#b07d4f'];
+
+function buildAnalyticsDataset(cycle, metric){
+ const today=iso(now);
+ const tx=cycleTransactions(cycle).filter(t=>t.date<=today&&isPaid(t));
+ const exp=tx.filter(t=>t.type==='expense');
+ const inc=tx.filter(t=>t.type==='income');
+ const svIn=tx.filter(t=>t.type==='saving');
+ const svOut=tx.filter(t=>t.type==='saving_withdraw');
+
+ if(metric==='categories'){
+   const items=db.settings.categories.map((c,idx)=>({
+     label:c.name,
+     value:sum(exp.filter(t=>t.category===c.name)),
+     budget:Number(c.budget)||0,
+     color:CHART_PALETTE[idx%CHART_PALETTE.length]
+   })).filter(x=>x.value>0).sort((a,b)=>b.value-a.value);
+   return {title:'Despesas por categoria',items,supportsDonut:true,isComparison:false};
+ }
+
+ if(metric==='budget_vs_actual'){
+   const items=db.settings.categories.map((c,idx)=>({
+     label:c.name,
+     value:sum(exp.filter(t=>t.category===c.name)),
+     budget:Number(c.budget)||0,
+     color:CHART_PALETTE[idx%CHART_PALETTE.length]
+   })).filter(x=>x.value>0||x.budget>0);
+   return {title:'Orçamento planeado vs. Gasto real',items,supportsDonut:false,isComparison:true};
+ }
+
+ if(metric==='daily_flow'){
+   const endCap=cycle.end<today?cycle.end:today;
+   const days=Math.max(1,daysBetween(cycle.start,endCap)+1);
+   const step=days>35?Math.ceil(days/30):1;
+   const items=[];
+   let running=0;
+   for(let i=0;i<days;i++){
+     const d=addDays(cycle.start,i);
+     const dayExp=sum(exp.filter(t=>t.date===d));
+     running+=dayExp;
+     if(i%step===0||i===days-1){
+       items.push({
+         label:fmtDate(d).replace(/ \d{4}$/,''),
+         value:Number(running.toFixed(2)),
+         daySpent:dayExp,
+         color:'#173653'
+       });
+     }
+   }
+   return {title:'Despesa acumulada ao longo do ciclo',items,supportsDonut:false,isComparison:false};
+ }
+
+ if(metric==='person'){
+   const people=[...db.settings.people,'Conta conjunta'];
+   const items=people.map((p,idx)=>({
+     label:p,
+     value:sum(exp.filter(t=>t.person===p)),
+     color:CHART_PALETTE[idx%CHART_PALETTE.length]
+   })).filter(x=>x.value>0);
+   return {title:'Despesas por responsável',items,supportsDonut:true,isComparison:false};
+ }
+
+ // balance_summary
+ const netSav=Math.max(0,sum(svIn)-sum(svOut));
+ const items=[
+   {label:'Rendimentos',value:sum(inc),color:'#245d49'},
+   {label:'Despesas pagas',value:sum(exp),color:'#b54747'},
+   {label:'Poupança líquida',value:netSav,color:'#c5a56b'}
+ ].filter(x=>x.value>0);
+ return {title:'Rendimentos vs. Despesas vs. Poupança',items,supportsDonut:true,isComparison:false};
+}
+
+function drawAnalyticsChart(){
+ const canvas=$('analyticsCanvas');
+ if(!canvas)return;
+ const cycleKey=$('analyticsCycleSelect')?.value||selectedCycleKey;
+ const cycle=activeCycles.find(x=>x.key===cycleKey)||activeCycle;
+ if(!cycle)return;
+
+ const metric=$('analyticsMetric').value;
+ let chartType=$('analyticsChartType').value;
+ const dataset=buildAnalyticsDataset(cycle,metric);
+
+ // Se métrica não fizer sentido em Donut, muda automaticamente para barras
+ const donutOpt=$('analyticsChartType').querySelector('option[value="donut"]');
+ if(donutOpt)donutOpt.disabled=!dataset.supportsDonut;
+ if(!dataset.supportsDonut&&chartType==='donut'){
+   chartType='bar';
+   $('analyticsChartType').value='bar';
+ }
+
+ $('analyticsCycleSubtitle').textContent=cycleName(cycle);
+
+ const rect=canvas.getBoundingClientRect();
+ const dpr=Math.min(window.devicePixelRatio||1,2);
+ const w=Math.max(300,Math.round(rect.width||canvas.parentElement?.clientWidth||680));
+ const h=Math.max(220,Math.round(rect.height||260));
+ canvas.width=w*dpr;
+ canvas.height=h*dpr;
+ const ctx=canvas.getContext('2d');
+ ctx.setTransform(dpr,0,0,dpr,0,0);
+ ctx.clearRect(0,0,w,h);
+
+ const styles=getComputedStyle(document.documentElement);
+ const lineCol=styles.getPropertyValue('--line').trim()||'#dce4ec';
+ const mutedCol=styles.getPropertyValue('--muted').trim()||'#68798a';
+ const inkCol=styles.getPropertyValue('--ink').trim()||'#192838';
+ const surfaceCol=styles.getPropertyValue('--surface').trim()||'#ffffff';
+ const gCol=styles.getPropertyValue('--g').trim()||'#173653';
+ const goldCol=styles.getPropertyValue('--gold').trim()||'#c5a56b';
+
+ const items=dataset.items;
+ const totalVal=items.reduce((s,x)=>s+x.value,0);
+
+ if(!items.length){
+   ctx.fillStyle=mutedCol;
+   ctx.font='13px system-ui,sans-serif';
+   ctx.textAlign='center';
+   ctx.fillText('Sem dados suficientes neste ciclo para gerar o gráfico selecionado.',w/2,h/2);
+   $('analyticsLegend').innerHTML='';
+   $('analyticsSummaryTable').innerHTML='<div class="empty">Regista movimentos neste ciclo para visualizar estatísticas.</div>';
+   return;
+ }
+
+ if(chartType==='donut'){
+   const cx=w/2,cy=h/2,radius=Math.min(w,h)*0.38,innerR=radius*0.56;
+   let startAngle=-Math.PI/2;
+   items.forEach(item=>{
+     const slice=(item.value/totalVal)*Math.PI*2;
+     ctx.beginPath();
+     ctx.moveTo(cx,cy);
+     ctx.arc(cx,cy,radius,startAngle,startAngle+slice);
+     ctx.closePath();
+     ctx.fillStyle=item.color;
+     ctx.fill();
+     ctx.lineWidth=2;
+     ctx.strokeStyle=surfaceCol;
+     ctx.stroke();
+     startAngle+=slice;
+   });
+   // Recorte central
+   ctx.beginPath();
+   ctx.arc(cx,cy,innerR,0,Math.PI*2);
+   ctx.fillStyle=surfaceCol;
+   ctx.fill();
+
+   ctx.fillStyle=mutedCol;
+   ctx.font='11px system-ui,sans-serif';
+   ctx.textAlign='center';
+   ctx.fillText('TOTAL',cx,cy-6);
+   ctx.fillStyle=inkCol;
+   ctx.font='700 14px system-ui,sans-serif';
+   ctx.fillText(eur(totalVal),cx,cy+13);
+ }else if(chartType==='hbar'){
+   const visible=items.slice(0,9);
+   const padL=112,padR=54,padT=14,padB=16;
+   const plotW=w-padL-padR,plotH=h-padT-padB;
+   const maxVal=Math.max(10,...visible.map(x=>Math.max(x.value,x.budget||0)))*1.12;
+   const rowH=plotH/visible.length;
+   const barH=Math.min(22,rowH*0.62);
+
+   visible.forEach((item,idx)=>{
+     const y=padT+idx*rowH+(rowH-barH)/2;
+     ctx.fillStyle=inkCol;
+     ctx.font='11.5px system-ui,sans-serif';
+     ctx.textAlign='right';
+     const shortName=item.label.length>15?item.label.slice(0,14)+'…':item.label;
+     ctx.fillText(shortName,padL-8,y+barH*0.72);
+
+     if(dataset.isComparison&&item.budget>0){
+       const bw=(item.budget/maxVal)*plotW;
+       ctx.fillStyle='rgba(197,165,107,0.35)';
+       ctx.fillRect(padL,y,bw,barH);
+     }
+     const vw=(item.value/maxVal)*plotW;
+     ctx.fillStyle=dataset.isComparison&&item.budget>0&&item.value>item.budget?'#b54747':item.color;
+     ctx.beginPath();
+     ctx.roundRect(padL,y,Math.max(3,vw),barH,4);
+     ctx.fill();
+
+     ctx.fillStyle=mutedCol;
+     ctx.font='600 11px system-ui,sans-serif';
+     ctx.textAlign='left';
+     ctx.fillText(Math.round(item.value)+'€',padL+Math.max(3,vw)+6,y+barH*0.72);
+   });
+ }else if(chartType==='line'){
+   const padL=48,padR=20,padT=20,padB=32;
+   const plotW=w-padL-padR,plotH=h-padT-padB;
+   const maxVal=Math.max(10,...items.map(x=>Math.max(x.value,x.budget||0)))*1.15;
+
+   ctx.strokeStyle=lineCol;
+   ctx.lineWidth=1;
+   ctx.fillStyle=mutedCol;
+   ctx.font='10.5px system-ui,sans-serif';
+   ctx.textAlign='right';
+   for(let i=0;i<=4;i++){
+     const y=padT+plotH*i/4;
+     ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(w-padR,y);ctx.stroke();
+     ctx.fillText(Math.round(maxVal*(1-i/4))+'€',padL-6,y+3.5);
+   }
+
+   const pts=items.map((item,i)=>({
+     x:padL+plotW*(items.length===1?0.5:i/(items.length-1)),
+     y:padT+plotH*(1-item.value/maxVal),
+     item
+   }));
+
+   if(pts.length>1){
+     const grad=ctx.createLinearGradient(0,padTop=padT,0,padT+plotH);
+     grad.addColorStop(0,'rgba(57,106,148,0.28)');
+     grad.addColorStop(1,'rgba(57,106,148,0.0)');
+     ctx.fillStyle=grad;
+     ctx.beginPath();
+     ctx.moveTo(pts[0].x,padT+plotH);
+     pts.forEach(p=>ctx.lineTo(p.x,p.y));
+     ctx.lineTo(pts[pts.length-1].x,padT+plotH);
+     ctx.closePath();
+     ctx.fill();
+   }
+
+   ctx.strokeStyle=gCol;
+   ctx.lineWidth=2.8;
+   ctx.lineJoin='round';
+   ctx.beginPath();
+   pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));
+   ctx.stroke();
+
+   const labelStep=Math.max(1,Math.ceil(pts.length/6));
+   pts.forEach((p,i)=>{
+     ctx.fillStyle=surfaceCol;
+     ctx.strokeStyle=gCol;
+     ctx.lineWidth=2;
+     ctx.beginPath();ctx.arc(p.x,p.y,3.5,0,Math.PI*2);ctx.fill();ctx.stroke();
+     if(i%labelStep===0||i===pts.length-1){
+       ctx.fillStyle=mutedCol;
+       ctx.font='10px system-ui,sans-serif';
+       ctx.textAlign='center';
+       const lbl=p.item.label.length>9?p.item.label.slice(0,8)+'…':p.item.label;
+       ctx.fillText(lbl,p.x,h-10);
+     }
+   });
+ }else{
+   // Barras verticais (bar)
+   const visible=items.slice(0,10);
+   const padL=48,padR=16,padT=20,padB=36;
+   const plotW=w-padL-padR,plotH=h-padT-padB;
+   const maxVal=Math.max(10,...visible.map(x=>Math.max(x.value,x.budget||0)))*1.15;
+
+   ctx.strokeStyle=lineCol;
+   ctx.lineWidth=1;
+   ctx.fillStyle=mutedCol;
+   ctx.font='10.5px system-ui,sans-serif';
+   ctx.textAlign='right';
+   for(let i=0;i<=4;i++){
+     const y=padT+plotH*i/4;
+     ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(w-padR,y);ctx.stroke();
+     ctx.fillText(Math.round(maxVal*(1-i/4))+'€',padL-6,y+3.5);
+   }
+
+   const slotW=plotW/visible.length;
+   const barW=Math.min(34,slotW*0.62);
+
+   visible.forEach((item,i)=>{
+     const cx=padL+i*slotW+slotW/2;
+     if(dataset.isComparison&&item.budget>0){
+       const bh=(item.budget/maxVal)*plotH;
+       ctx.fillStyle='rgba(197,165,107,0.38)';
+       ctx.fillRect(cx-barW*0.6,padT+plotH-bh,barW*1.2,bh);
+     }
+     const vh=(item.value/maxVal)*plotH;
+     ctx.fillStyle=dataset.isComparison&&item.budget>0&&item.value>item.budget?'#b54747':item.color;
+     ctx.beginPath();
+     ctx.roundRect(cx-barW/2,padT+plotH-vh,barW,Math.max(2,vh),[5,5,0,0]);
+     ctx.fill();
+
+     ctx.fillStyle=mutedCol;
+     ctx.font='10px system-ui,sans-serif';
+     ctx.textAlign='center';
+     const shortLbl=item.label.length>8?item.label.slice(0,7)+'…':item.label;
+     ctx.fillText(shortLbl,cx,h-12);
+   });
+ }
+
+ // Legenda e tabela resumo abaixo do gráfico
+ if(metric==='daily_flow'){
+   $('analyticsLegend').innerHTML=`<div class="legend-pill"><div class="legend-left"><span class="legend-swatch" style="background:${gCol}"></span><span class="legend-label">Despesa acumulada</span></div><b>${eur(items[items.length-1]?.value||0)}</b></div>`;
+   const topDays=[...items].filter(x=>x.daySpent>0).sort((a,b)=>b.daySpent-a.daySpent).slice(0,5);
+   $('analyticsSummaryTable').innerHTML=topDays.length?topDays.map(d=>`<div class="item row"><span>Dia ${esc(d.label)}</span><b>${eur(d.daySpent)}</b></div>`).join(''):'<div class="empty">Sem despesas diárias registadas.</div>';
+ }else{
+   $('analyticsLegend').innerHTML=items.map(item=>{
+     const pct=totalVal>0?Math.round((item.value/totalVal)*100):0;
+     return `<div class="legend-pill"><div class="legend-left"><span class="legend-swatch" style="background:${item.color}"></span><span class="legend-label" title="${esc(item.label)}">${esc(item.label)}</span></div><b>${eur(item.value)} <span class="small">(${pct}%)</span></b></div>`;
+   }).join('');
+
+   $('analyticsSummaryTable').innerHTML=items.map(item=>{
+     const pct=totalVal>0?((item.value/totalVal)*100).toFixed(1):'0.0';
+     const extra=dataset.isComparison&&item.budget>0?` · Limite: ${eur(item.budget)}`:` · ${pct}% do total`;
+     return `<div class="item row"><div><b>${esc(item.label)}</b><div class="small">${extra}</div></div><b>${eur(item.value)}</b></div>`;
+   }).join('');
+ }
+}
+
+$('analyticsCycleSelect').onchange=drawAnalyticsChart;
+$('analyticsMetric').onchange=drawAnalyticsChart;
+$('analyticsChartType').onchange=drawAnalyticsChart;
 
 function goalTransactions(g){
  const legacy=new Set((g.legacyTransactionIds||[]).map(String));
@@ -317,30 +797,7 @@ function renderGoals(){
 
 // EDIÇÃO DE MOVIMENTOS & PRESTAÇÕES
 function startEditTransaction(id){
- const t=db.transactions.find(x=>String(x.id)===String(id));
- if(!t)return;
- switchTab('movimentos');
- $('txEditId').value=String(t.id);
- $('txFormTitle').textContent='Editar movimento';
- $('txEditBadge').hidden=false;
- $('txSaveBtn').textContent='Guardar alterações';
- $('txCancelEditBtn').hidden=false;
- $('date').value=t.date;
- $('type').value=t.type;
- $('desc').value=t.description;
- $('amount').value=Number(t.amount)||'';
- $('isInstallment').checked=false;
- $('installmentsOptions').hidden=true;
- updateTxFormVisibility();
- if(t.type==='expense'&&[...$('category').options].some(o=>o.value===t.category))$('category').value=t.category;
- if(t.type==='income')$('incomeCountsForCycle').checked=t.countsForCycle!==false;
- if(isSavingTx(t)){
-   updateSavingGoalOptions();
-   $('savingGoal').value=t.goalId||'';
- }
- if([...'person'].length&&[...$('person').options].some(o=>o.value===t.person))$('person').value=t.person;
- $('txFormCard').scrollIntoView({behavior:'smooth',block:'start'});
- $('desc').focus({preventScroll:true});
+ openTransactionDetailModal(id,true);
 }
 
 function resetTxForm(){
@@ -518,7 +975,7 @@ function printReport(mode){
  $('printSheet').innerHTML=`
    <div class="print-header">
      <div><h1>DuoFin · ${esc(title)}</h1><div class="small">${esc(peopleNames)}</div></div>
-     <div class="print-meta">Emitido em ${esc(emitted)}<br>DuoFin V5.7.2.1</div>
+     <div class="print-meta">Emitido em ${esc(emitted)}<br>DuoFin V5.8.0</div>
    </div>
    ${bodyHtml}
    <div class="print-footer"><span>DuoFin — Gestão Financeira a Dois</span><span>Documento gerado localmente no dispositivo</span></div>
@@ -659,7 +1116,6 @@ const PT_MONTHS = {
 function normalizeCsvDate(raw, fallbackYear){
  let s=String(raw||'').trim();
  if(!s)return null;
- // Formatos por extenso em PT: "12 nov. 2026", "02 πον 2026", "30 out. 2026", "12 nov"
  const ptMatch=s.match(/^(\d{1,2})\s+([a-zA-ZçÇ\u0370-\u03FF]{3,10})\.?(?:\s+(\d{4}))?$/);
  if(ptMatch){
    const d=+ptMatch[1];
@@ -729,7 +1185,6 @@ function parseStatementTextLines(lines){
  const yearMatches=fullText.match(/\b(20\d{2})\b/g);
  const fallbackYear=yearMatches&&yearMatches.length?yearMatches[0]:String(now.getFullYear());
 
- // Deteta e processa extratos estilo Santander (com linhas "D. valor: ...")
  if(/D[:.]?\s*valor/i.test(fullText)){
    const santanderRows=parseSantanderLines(lines,fallbackYear);
    if(santanderRows.length)return santanderRows;
@@ -836,7 +1291,6 @@ function parseSantanderLines(lines, fallbackYear){
    }else{
      const amts=[...l.matchAll(amountTokenRe)];
      if(curBlock.length>0&&amts.length>=1&&!curBlock.some(x=>dValorRe.test(x))){
-       // Linha de valores pertence ao bloco anterior que já teve D. valor
        if(blocks.length>0&&!blocks[blocks.length-1].hasAmounts){
          blocks[blocks.length-1].push(l);
          blocks[blocks.length-1].hasAmounts=true;
@@ -884,7 +1338,6 @@ function parseSantanderLines(lines, fallbackYear){
    if(dt)lastValidDate=dt;
    if(!dt||!amounts.length)continue;
 
-   // Quando existem 2 valores na mesma linha/bloco (Valor e Saldo), o penúltimo é o Valor do movimento
    const movAmount=amounts.length>=2?amounts[amounts.length-2]:amounts[0];
    if(!Number.isFinite(movAmount)||movAmount===0)continue;
    const description=descParts.join(' ').replace(/\s+/g,' ').trim()||'Movimento Santander';
@@ -1192,7 +1645,6 @@ function drawChart(){
    item
  }));
 
- // Área suave sob a linha
  if(pts.length>1){
    const grad=ctx.createLinearGradient(0,padTop,0,padTop+plotH);
    grad.addColorStop(0,'rgba(197,165,107,0.26)');
@@ -1206,7 +1658,6 @@ function drawChart(){
    ctx.fill();
  }
 
- // Linha principal
  ctx.strokeStyle=goldCol;
  ctx.lineWidth=3;
  ctx.lineJoin='round';
@@ -1215,7 +1666,6 @@ function drawChart(){
  pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));
  ctx.stroke();
 
- // Vértices e rótulos
  ctx.textAlign='center';
  pts.forEach((p,i)=>{
    ctx.fillStyle=surfaceCol;
@@ -1275,7 +1725,11 @@ function checkNavScroll(){
  wrap.classList.toggle('has-scroll',hasMore);
 }
 if($('mainNav'))$('mainNav').addEventListener('scroll',checkNavScroll,{passive:true});
-window.addEventListener('resize',()=>{checkNavScroll();if($('resumo').classList.contains('active'))drawChart();});
+window.addEventListener('resize',()=>{
+ checkNavScroll();
+ if($('resumo').classList.contains('active'))drawChart();
+ if($('graficos').classList.contains('active'))drawAnalyticsChart();
+});
 
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
 
@@ -1284,11 +1738,15 @@ $('date').value=iso(now);
 $('cycleSelect').onchange=()=>{selectedCycleKey=$('cycleSelect').value;render()};
 $('filter').onchange=renderTransactions;
 $('movementCycle').onchange=renderTransactions;
+$('filterDateFrom').onchange=renderTransactions;
+$('filterDateTo').onchange=renderTransactions;
 $('filterCategory').onchange=renderTransactions;
 $('filterPerson').onchange=renderTransactions;
 $('filterSearch').oninput=renderTransactions;
 $('resetFiltersBtn').onclick=()=>{
  $('filter').value='all';
+ $('filterDateFrom').value='';
+ $('filterDateTo').value='';
  $('filterCategory').value='all';
  $('filterPerson').value='all';
  $('filterSearch').value='';
@@ -1371,10 +1829,11 @@ $('txForm').onsubmit=e=>{
 };
 
 document.addEventListener('click',e=>{
- let ed=e.target.closest('[data-edit-tx]');if(ed){startEditTransaction(ed.dataset.editTx);return;}
- let b=e.target.closest('[data-del]');if(b&&confirm('Apagar este movimento?')){const target=db.transactions.find(t=>String(t.id)===b.dataset.del);if(target?.status==='pending'&&target.occurrenceKey)target.status='skipped';else db.transactions=db.transactions.filter(t=>String(t.id)!==b.dataset.del);if($('txEditId').value===b.dataset.del)resetTxForm();persist()}
- let c=e.target.closest('[data-confirm-rec]');if(c){let t=db.transactions.find(x=>String(x.id)===c.dataset.confirmRec);if(t&&t.status==='pending'){t.status='confirmed';t.confirmedAt=iso(new Date());persist()}}
- let sk=e.target.closest('[data-skip-rec]');if(sk){let t=db.transactions.find(x=>String(x.id)===sk.dataset.skipRec);if(t&&t.status==='pending'&&confirm('Ignorar esta ocorrência? Não será contabilizada como despesa.')){t.status='skipped';persist()}}
+ let ed=e.target.closest('[data-edit-tx]');if(ed){e.stopPropagation();openTransactionDetailModal(ed.dataset.editTx,true);return;}
+ let b=e.target.closest('[data-del]');if(b){e.stopPropagation();if(confirm('Apagar este movimento?')){const target=db.transactions.find(t=>String(t.id)===b.dataset.del);if(target?.status==='pending'&&target.occurrenceKey)target.status='skipped';else db.transactions=db.transactions.filter(t=>String(t.id)!==b.dataset.del);if($('txEditId').value===b.dataset.del)resetTxForm();persist()}return;}
+ let c=e.target.closest('[data-confirm-rec]');if(c){e.stopPropagation();let t=db.transactions.find(x=>String(x.id)===c.dataset.confirmRec);if(t&&t.status==='pending'){t.status='confirmed';t.confirmedAt=iso(new Date());persist()}return;}
+ let sk=e.target.closest('[data-skip-rec]');if(sk){e.stopPropagation();let t=db.transactions.find(x=>String(x.id)===sk.dataset.skipRec);if(t&&t.status==='pending'&&confirm('Ignorar esta ocorrência? Não será contabilizada como despesa.')){t.status='skipped';persist()}return;}
+ let openTx=e.target.closest('[data-open-tx]');if(openTx){openTransactionDetailModal(openTx.dataset.openTx,false);return;}
  let d=e.target.closest('[data-day]');if(d)showDay(d.dataset.day);
 });
 
@@ -1593,7 +2052,7 @@ function applyUiPrefs(){
   if(metaTheme)metaTheme.setAttribute('content',isDark?'#0f1924':'#142b45');
   if(uiPrefs.density==='compact')root.classList.add('density-compact');
   if(uiPrefs.density==='detailed')root.classList.add('density-detailed');
-  requestAnimationFrame(drawChart);
+  requestAnimationFrame(()=>{drawChart();drawAnalyticsChart();});
 }
 function saveUiPrefs(){uiPrefs.theme=$('themeMode').value;uiPrefs.density=$('densityMode').value;localStorage.setItem(UI_PREF_KEY,JSON.stringify(uiPrefs));applyUiPrefs();}
 $('themeMode').value=uiPrefs.theme;$('densityMode').value=uiPrefs.density;$('themeMode').onchange=saveUiPrefs;$('densityMode').onchange=saveUiPrefs;
