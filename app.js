@@ -1,6 +1,6 @@
 const $=id=>document.getElementById(id),KEY='orcamento-plus-v1',now=new Date(),iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'),cur=iso(now).slice(0,7);
 const defs=[['Habitação',850],['Supermercado',450],['Água, luz e gás',180],['Transportes',250],['Telecomunicações',70],['Saúde e farmácia',80],['Crianças e família',150],['Restaurantes e lazer',150],['Vestuário e pessoal',120],['Outros / imprevistos',300]];
-const fresh=()=>({settings:{income:3200,target:6000,start:'2026-11-01',deadline:'2027-08-31',cycleGroupingDays:14,people:['Adulto 1','Adulto 2'],categories:defs.map(([name,budget])=>({name,budget})),categoryRules:[]},transactions:[],recurringExpenses:[],savingsGoals:[],deletedIds:[]});
+const fresh=()=>({settings:{income:3200,target:6000,start:'2026-11-01',deadline:'2027-08-31',cycleGroupingDays:14,people:['Adulto 1','Adulto 2'],categories:defs.map(([name,budget])=>({name,budget})),categoryRules:[]},transactions:[],recurringExpenses:[],savingsGoals:[],deletedIds:[],handledCycleRollovers:[]});
 let dbNeedsSync=false;
 
 function normalizeDb(x){
@@ -11,12 +11,13 @@ function normalizeDb(x){
  if(!Array.isArray(x.settings.people)){x.settings.people=['Adulto 1','Adulto 2'];changed=true;}
  if(!Array.isArray(x.settings.categoryRules)){x.settings.categoryRules=[];changed=true;}
  if(!Array.isArray(x.deletedIds)){x.deletedIds=[];changed=true;}
+ if(!Array.isArray(x.handledCycleRollovers)){x.handledCycleRollovers=[];changed=true;}
  if(!Number.isFinite(Number(x.settings.cycleGroupingDays))){x.settings.cycleGroupingDays=14;changed=true;}
  x.settings.cycleGroupingDays=Math.max(0,Math.min(20,Math.round(Number(x.settings.cycleGroupingDays)||0)));
  if(!Array.isArray(x.savingsGoals)){
    const legacyIds=x.transactions.filter(t=>t&&(t.type==='saving'||t.type==='saving_withdraw')).map(t=>String(t.id));
    x.savingsGoals=[];
-   if(Number(x.settings.target)>0)x.savingsGoals.push({id:'goal-legacy',name:'Objetivo anterior',target:Number(x.settings.target),deadline:x.settings.deadline||null,status:'active',legacy:true,legacyTransactionIds:legacyIds});
+   if(Number(x.settings.target)>0)x.savingsGoals.push({id:'goal-legacy',name:'Objetivo anterior',target:Number(x.settings.target),deadline:x.settings.deadline||null,status:'active',legacy:true,legacyTransactionIds:legacyIds,updatedAt:Date.now()});
    changed=true;
  }
  x.savingsGoals.forEach(g=>{
@@ -158,12 +159,130 @@ function buildCycles(){
  return assignCycleMonthLabels(cycles);
 }
 
-// PROJEÇÃO DE FECHO DE CICLO (SALDO REAL VS. PREVISTO)
+// CÁLCULO DE SALDO DE UM CICLO ESPECÍFICO
+function computeCycleBalance(c, upToDate=iso(now)){
+ const tx=cycleTransactions(c).filter(t=>t.date<=upToDate);
+ const ex=tx.filter(t=>t.type==='expense'&&isPaid(t));
+ const inc=tx.filter(t=>t.type==='income'&&isPaid(t));
+ const svIn=tx.filter(t=>t.type==='saving'&&isPaid(t));
+ const svOut=tx.filter(t=>t.type==='saving_withdraw'&&isPaid(t));
+ return sum(inc)+sum(svOut)-sum(ex)-sum(svIn);
+}
+
+// GESTÃO INTERATIVA DE SOBRA DO CICLO ANTERIOR
+let pendingRolloverCandidate=null;
+
+function detectPreviousCycleRollover(cycles, selectedCycle){
+ const curCyc=currentCycle(cycles);
+ if(!curCyc||selectedCycle.key!==curCyc.key)return null;
+ const idx=cycles.findIndex(c=>c.key===curCyc.key);
+ if(idx<=0)return null;
+ const prevCycle=cycles[idx-1];
+ if(!prevCycle||prevCycle.fallback)return null;
+
+ const handled=Array.isArray(db.handledCycleRollovers)?db.handledCycleRollovers:[];
+ if(handled.some(h=>h&&h.cycleKey===prevCycle.key))return null;
+
+ const prevBal=Number(computeCycleBalance(prevCycle,prevCycle.end).toFixed(2));
+ if(prevBal<=0.009)return null;
+
+ return {
+   prevCycle,
+   currentCycle:curCyc,
+   amount:prevBal
+ };
+}
+
+function renderRolloverBanner(cycles, selectedCycle){
+ const banner=$('cycleRolloverBanner');
+ if(!banner)return;
+ const candidate=detectPreviousCycleRollover(cycles,selectedCycle);
+ pendingRolloverCandidate=candidate;
+ if(!candidate){
+   banner.hidden=true;
+   return;
+ }
+ const prevName=candidate.prevCycle.monthLabel||computeCycleReferenceMonth(candidate.prevCycle);
+ $('rolloverMessage').innerHTML=`O ciclo anterior (<strong>${esc(prevName)}</strong>) fechou com uma sobra de <span class="rollover-amount">${eur(candidate.amount)}</span>. O que pretendes fazer com este valor?`;
+ $('rolloverMainActions').hidden=false;
+ $('rolloverGoalPicker').hidden=true;
+ banner.hidden=false;
+}
+
+$('rolloverCarryBtn').onclick=()=>{
+ if(!pendingRolloverCandidate)return;
+ const {prevCycle,currentCycle:curCyc,amount}=pendingRolloverCandidate;
+ const prevName=prevCycle.monthLabel||computeCycleReferenceMonth(prevCycle);
+ const nowTs=Date.now();
+ const txId='rollover-in-'+nowTs.toString(36);
+ db.transactions.push({
+   id:txId,
+   date:curCyc.start,
+   type:'income',
+   description:`Saldo transitado · ${prevName}`,
+   amount:Number(amount.toFixed(2)),
+   category:'Rendimento',
+   person:'Conta conjunta',
+   countsForCycle:false,
+   updatedAt:nowTs
+ });
+ if(!Array.isArray(db.handledCycleRollovers))db.handledCycleRollovers=[];
+ db.handledCycleRollovers.push({cycleKey:prevCycle.key,action:'carry_forward',amount,txId,at:nowTs});
+ persist();
+};
+
+$('rolloverSaveStepBtn').onclick=()=>{
+ if(!pendingRolloverCandidate)return;
+ const goals=(db.savingsGoals||[]).filter(g=>g.status==='active');
+ const sel=$('rolloverGoalSelect');
+ sel.innerHTML='<option value="">Poupança geral (sem objetivo específico)</option>'+goals.map(g=>`<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('');
+ $('rolloverMainActions').hidden=true;
+ $('rolloverGoalPicker').hidden=false;
+};
+
+$('rolloverCancelSaveBtn').onclick=()=>{
+ $('rolloverGoalPicker').hidden=true;
+ $('rolloverMainActions').hidden=false;
+};
+
+$('rolloverConfirmSaveBtn').onclick=()=>{
+ if(!pendingRolloverCandidate)return;
+ const {prevCycle,amount}=pendingRolloverCandidate;
+ const prevName=prevCycle.monthLabel||computeCycleReferenceMonth(prevCycle);
+ const goalId=$('rolloverGoalSelect').value;
+ const goalObj=goalId?(db.savingsGoals||[]).find(g=>g.id===goalId):null;
+ const nowTs=Date.now();
+ const txId='rollover-sav-'+nowTs.toString(36);
+ const entry={
+   id:txId,
+   date:prevCycle.end,
+   type:'saving',
+   description:goalObj?`Sobra de ${prevName} → ${goalObj.name}`:`Sobra de ${prevName} → Poupança`,
+   amount:Number(amount.toFixed(2)),
+   category:'Poupança',
+   person:'Conta conjunta',
+   updatedAt:nowTs
+ };
+ if(goalObj)entry.goalId=goalObj.id;
+ db.transactions.push(entry);
+ if(!Array.isArray(db.handledCycleRollovers))db.handledCycleRollovers=[];
+ db.handledCycleRollovers.push({cycleKey:prevCycle.key,action:'saving',goalId:goalId||null,amount,txId,at:nowTs});
+ persist();
+};
+
+$('rolloverDismissBtn').onclick=()=>{
+ if(!pendingRolloverCandidate)return;
+ const {prevCycle,amount}=pendingRolloverCandidate;
+ if(!Array.isArray(db.handledCycleRollovers))db.handledCycleRollovers=[];
+ db.handledCycleRollovers.push({cycleKey:prevCycle.key,action:'dismissed',amount,at:Date.now()});
+ persist();
+};
+
+// PROJEÇÃO DE FECHO DE CICLO (SALDO REAL VS. PREVISTO INCLUINDO POUPANÇAS AGENDADAS)
 function computeCycleProjection(cycle, currentBalance){
  const today=iso(now);
  if(!cycle.open&&cycle.end<=today)return null;
 
- // Estima o fim do ciclo atual (aprox. 1 mês após o início ou a data final conhecida)
  const estimatedCycleEnd=cycle.open?addDays(addMonthsClamp(cycle.start,1),-1):cycle.end;
  const horizonEnd=estimatedCycleEnd>today?estimatedCycleEnd:today;
 
@@ -171,9 +290,13 @@ function computeCycleProjection(cycle, currentBalance){
  const pendingInCycle=cycleTransactions(cycle).filter(t=>t.type==='expense'&&t.status==='pending'&&t.date<=today);
 
  // 2. Despesas futuras já agendadas (ex.: prestações) dentro do horizonte do ciclo
- const scheduledFuture=db.transactions.filter(t=>t.type==='expense'&&t.status!=='skipped'&&t.date>today&&t.date<=horizonEnd);
+ const scheduledFutureExp=db.transactions.filter(t=>t.type==='expense'&&t.status!=='skipped'&&t.date>today&&t.date<=horizonEnd);
 
- // 3. Regras de despesas recorrentes ativas que ainda vão vencer entre amanhã e o fim estimado do ciclo
+ // 3. Transferências e resgates de poupança futuros já agendados no horizonte do ciclo
+ const scheduledFutureSavOut=db.transactions.filter(t=>t.type==='saving'&&t.status!=='skipped'&&t.date>today&&t.date<=horizonEnd);
+ const scheduledFutureSavIn=db.transactions.filter(t=>t.type==='saving_withdraw'&&t.status!=='skipped'&&t.date>today&&t.date<=horizonEnd);
+
+ // 4. Regras de despesas recorrentes ativas que ainda vão vencer entre amanhã e o fim estimado do ciclo
  const startYm=today.slice(0,7),endYm=horizonEnd.slice(0,7);
  const fromIdx=monthIndex(startYm),toIdx=monthIndex(endYm);
  let upcomingRulesTotal=0,upcomingRulesCount=0;
@@ -192,12 +315,12 @@ function computeCycleProjection(cycle, currentBalance){
    }
  });
 
- // Rendimentos futuros já agendados no mesmo horizonte (se houver)
+ // 5. Rendimentos futuros já agendados no mesmo horizonte
  const futureInc=db.transactions.filter(t=>t.type==='income'&&t.status!=='skipped'&&t.date>today&&t.date<=horizonEnd);
 
- const committedOut=sum(pendingInCycle)+sum(scheduledFuture)+upcomingRulesTotal;
- const committedIn=sum(futureInc);
- const totalItems=pendingInCycle.length+scheduledFuture.length+upcomingRulesCount+futureInc.length;
+ const committedOut=sum(pendingInCycle)+sum(scheduledFutureExp)+sum(scheduledFutureSavOut)+upcomingRulesTotal;
+ const committedIn=sum(futureInc)+sum(scheduledFutureSavIn);
+ const totalItems=pendingInCycle.length+scheduledFutureExp.length+scheduledFutureSavOut.length+scheduledFutureSavIn.length+upcomingRulesCount+futureInc.length;
  if(totalItems===0)return null;
 
  return {
@@ -260,6 +383,13 @@ function line(t, omitDate=false){
  return `<div class="item row tx-clickable" data-open-tx="${esc(String(t.id))}"><div class="tx-left"><span class="tx-badge ${badgeCls}" aria-hidden="true">${categoryIcon(t)}</span><div class="tx-info"><b>${esc(t.description)}</b><div class="small">${datePrefix}${esc(t.category)} · ${esc(t.person)}${state}</div></div></div><div class="row" style="gap:6px;flex-shrink:0"><b class="amount ${cls}">${prefix} ${eur(t.amount)}</b>${actions}<button class="icon-btn" type="button" data-edit-tx="${esc(String(t.id))}" title="Ver ou editar movimento" aria-label="Ver ou editar movimento">✎</button><button class="danger" type="button" data-del="${esc(String(t.id))}" title="Apagar movimento" aria-label="Apagar movimento">×</button></div></div>`;
 }
 
+function updateRecurrentsNavBadge(){
+ const btn=$('navRecorrentesBtn');
+ if(!btn)return;
+ const pendingCount=(db.transactions||[]).filter(t=>t.status==='pending'&&t.recurrenceId).length;
+ btn.innerHTML=pendingCount>0?`Recorrentes <span class="nav-badge">${pendingCount}</span>`:'Recorrentes';
+}
+
 function render(){
  const {cycles,cycle}=getSelectedCycle();
  const mLabel=cycle.monthLabel||computeCycleReferenceMonth(cycle);
@@ -267,6 +397,10 @@ function render(){
  $('cycleRange').textContent=`Período: ${fmtDate(cycle.start)} a ${fmtDate(cycle.end)}`+(cycle.fallback?' · regista um rendimento para ciclos reais':'');
  $('cycleSelect').innerHTML=cycles.slice().reverse().map(c=>`<option value="${esc(c.key)}">${esc(cycleName(c))}</option>`).join('');
  $('cycleSelect').value=cycle.key;
+
+ // Verificar se há sobra do ciclo anterior para tratar
+ renderRolloverBanner(cycles,cycle);
+ updateRecurrentsNavBadge();
 
  // Sincroniza seletor de ciclos e categorias do separador Gráficos
  const aSel=$('analyticsCycleSelect');
@@ -329,7 +463,10 @@ function render(){
  const recent=[...tx].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5);
  $('recent').innerHTML=recent.length?recent.map(t=>line(t,false)).join(''):'<div class="empty">Ainda sem movimentos neste ciclo.</div>';
 
+ const prevCatVal=$('category').value;
  $('category').innerHTML=db.settings.categories.map(c=>`<option>${esc(c.name)}</option>`).join('');
+ if(prevCatVal&&[...$('category').options].some(o=>o.value===prevCatVal))$('category').value=prevCatVal;
+
  $('incomePlan').value=db.settings.income??0;
  $('adult1').value=db.settings.people[0];
  $('adult2').value=db.settings.people[1];
@@ -478,7 +615,7 @@ function exportFilteredCsv(){
 $('exportCsvBtn').onclick=exportFilteredCsv;
 $('exportDadosCsvBtn').onclick=exportFilteredCsv;
 
-// POP-UP (MODAL) DE VISUALIZAÇÃO, EDIÇÃO E GESTÃO DE PRESTAÇÕES EM LOTE
+// POP-UP (MODAL) DE VISUALIZAÇÃO, DUPLICAÇÃO, EDIÇÃO E GESTÃO DE PRESTAÇÕES EM LOTE
 function openTransactionDetailModal(id, startInEdit=false){
  const t=db.transactions.find(x=>String(x.id)===String(id));
  if(!t)return;
@@ -570,6 +707,26 @@ $('txModalSwitchEditBtn').onclick=()=>{
  $('txModalEditForm').hidden=false;
  syncModalEditVisibility();
  $('modalEditDesc').focus();
+};
+$('txModalDuplicateBtn').onclick=()=>{
+ const id=$('modalTxId').value;
+ const t=db.transactions.find(x=>String(x.id)===String(id));
+ if(!t)return;
+ $('txDetailModal').hidden=true;
+ switchTab('movimentos');
+ resetTxForm();
+ $('date').value=iso(now);
+ $('type').value=t.type;
+ updateTxFormVisibility();
+ // Remove eventual sufixo de prestação ex.: " (1/3)"
+ $('desc').value=String(t.description||'').replace(/\s*\(\d+\/\d+\)\s*$/,'');
+ $('amount').value=Number(t.amount)||'';
+ if(t.type==='expense'&&[...$('category').options].some(o=>o.value===t.category))$('category').value=t.category;
+ if(t.type==='income')$('incomeCountsForCycle').checked=t.countsForCycle!==false;
+ if((t.type==='saving'||t.type==='saving_withdraw')&&t.goalId&&[...$('savingGoal').options].some(o=>o.value===t.goalId))$('savingGoal').value=t.goalId;
+ if([...$('person').options].some(o=>o.value===t.person))$('person').value=t.person;
+ $('txFormCard').scrollIntoView({behavior:'smooth',block:'start'});
+ setTimeout(()=>$('amount').focus(),200);
 };
 $('txModalCancelEditBtn').onclick=()=>{
  const id=$('modalTxId').value;
@@ -798,7 +955,7 @@ function drawAnalyticsChart(){
  }
 
  const rect=canvas.getBoundingClientRect();
- const dpr=Math.min(window.devicePixelRatio||1,2);
+ const dpr=window.devicePixelRatio||1;
  const w=Math.max(300,Math.round(rect.width||canvas.parentElement?.clientWidth||680));
  const h=Math.max(220,Math.round(rect.height||265));
  canvas.width=w*dpr;
@@ -853,13 +1010,11 @@ function drawAnalyticsChart(){
      const incH=(item.income/maxVal)*plotH;
      const expH=(item.expense/maxVal)*plotH;
 
-     // Barra Rendimentos
      ctx.fillStyle='#245d49';
      ctx.beginPath();
      ctx.roundRect(cx-barW-2,padT+plotH-incH,barW,Math.max(2,incH),[4,4,0,0]);
      ctx.fill();
 
-     // Barra Despesas
      ctx.fillStyle='#b54747';
      ctx.beginPath();
      ctx.roundRect(cx+2,padT+plotH-expH,barW,Math.max(2,expH),[4,4,0,0]);
@@ -961,7 +1116,6 @@ function drawAnalyticsChart(){
      ctx.fillText(Math.round(maxVal*(1-i/4))+'€',padL-6,y+3.5);
    }
 
-   // Linha de orçamento alvo na tendência de categoria
    if(metric==='category_trend'&&dataset.targetBudget>0){
      const by=padT+plotH*(1-dataset.targetBudget/maxVal);
      ctx.save();
@@ -1013,7 +1167,6 @@ function drawAnalyticsChart(){
      }
    });
  }else{
-   // Barras verticais (bar)
    const visible=items.slice(0,10);
    const padL=48,padR=16,padT=20,padB=36;
    const plotW=w-padL-padR,plotH=h-padT-padB;
@@ -1129,6 +1282,7 @@ function renderGoals(){
  }).join(''):'<div class="card empty">Ainda não existem objetivos. Usa o formulário acima para criar um.</div>';
 }
 
+let userTouchedCategory=false;
 function resetTxForm(){
  $('txForm').reset();
  $('txEditId').value='';
@@ -1141,8 +1295,30 @@ function resetTxForm(){
  $('isInstallment').checked=false;
  $('installmentsOptions').hidden=true;
  $('amountLabel').textContent='Valor (€)';
+ userTouchedCategory=false;
+ if($('categoryAutoHint'))$('categoryAutoHint').textContent='';
  updateTxFormVisibility();
 }
+
+// Sugestão automática de categoria ao escrever descrição no formulário manual
+$('category').addEventListener('change',()=>{
+ userTouchedCategory=true;
+ if($('categoryAutoHint'))$('categoryAutoHint').textContent='';
+});
+$('desc').addEventListener('input',()=>{
+ if(userTouchedCategory||$('type').value!=='expense')return;
+ const txt=$('desc').value.trim();
+ if(txt.length<3){
+   if($('categoryAutoHint'))$('categoryAutoHint').textContent='';
+   return;
+ }
+ const suggested=guessCategory(txt);
+ const fallbackCat=db.settings.categories.some(c=>c.name==='Outros / imprevistos')?'Outros / imprevistos':(db.settings.categories[0]?.name||'');
+ if(suggested&&suggested!==fallbackCat&&[...$('category').options].some(o=>o.value===suggested)){
+   $('category').value=suggested;
+   if($('categoryAutoHint'))$('categoryAutoHint').textContent='· sugerida';
+ }
+});
 
 function updateInstallmentPreview(){
  const isInst=$('isInstallment').checked;
@@ -1304,7 +1480,7 @@ function printReport(mode){
  $('printSheet').innerHTML=`
    <div class="print-header">
      <div><h1>DuoFin · ${esc(title)}</h1><div class="small">${esc(peopleNames)}</div></div>
-     <div class="print-meta">Emitido em ${esc(emitted)}<br>DuoFin V6.0.0</div>
+     <div class="print-meta">Emitido em ${esc(emitted)}<br>DuoFin V6.1.0</div>
    </div>
    ${bodyHtml}
    <div class="print-footer"><span>DuoFin — Gestão Financeira a Dois</span><span>Documento gerado localmente no dispositivo</span></div>
@@ -1905,7 +2081,6 @@ function saveCurrentImportModal(){
    if(!$('impLearnRuleWrap').hidden&&$('impLearnRuleCheck').checked){
      const kw=extractKeywordFromDesc(r.description);
      saveLearnedCategoryRule(kw,chosenCat);
-     // Aplicar imediatamente aos restantes movimentos do mesmo extrato com a mesma palavra-chave
      parsedCsvRows.forEach(other=>{
        if(other.type==='expense'&&other.description.toUpperCase().includes(kw)){
          other.category=chosenCat;
@@ -1996,7 +2171,7 @@ $('csvConfirmImportBtn').onclick=()=>{
 function drawChart(){
  const c=$('chart');if(!c)return;
  const rect=c.getBoundingClientRect();
- const dpr=Math.min(window.devicePixelRatio||1,2);
+ const dpr=window.devicePixelRatio||1;
  const w=Math.max(300,Math.round(rect.width||c.parentElement?.clientWidth||680));
  const h=Math.max(180,Math.round(rect.height||200));
  c.width=w*dpr;
@@ -2150,7 +2325,11 @@ $('resetFiltersBtn').onclick=()=>{
  $('filterSearch').value='';
  renderTransactions();
 };
-$('type').onchange=updateTxFormVisibility;
+$('type').onchange=()=>{
+ userTouchedCategory=false;
+ if($('categoryAutoHint'))$('categoryAutoHint').textContent='';
+ updateTxFormVisibility();
+};
 
 // Eventos dos botões de impressão
 $('printFullReportBtn').onclick=()=>printReport('full');
@@ -2273,7 +2452,7 @@ function renderRecurrences(){
   const toggle=e.target.closest('[data-recurrence-toggle]');
   const del=e.target.closest('[data-recurrence-delete]');
   if(edit){const r=db.recurringExpenses.find(x=>String(x.id)===edit.dataset.recurrenceEdit);if(r){loadRecurrenceForm(r);$('recurrenceFormTitle').scrollIntoView({behavior:'smooth',block:'start'});$('recurrenceDescription').focus({preventScroll:true});}return;}
-  if(toggle){const r=db.recurringExpenses.find(x=>String(x.id)===toggle.dataset.recurrenceToggle);if(r){r.active=!r.active;persist();}return;}
+  if(toggle){const r=db.recurringExpenses.find(x=>String(x.id)===toggle.dataset.recurrenceToggle);if(r){r.active=!r.active;r.updatedAt=Date.now();persist();}return;}
   if(del){const r=db.recurringExpenses.find(x=>String(x.id)===del.dataset.recurrenceDelete);if(r&&confirm('Eliminar esta regra? Os movimentos já criados serão preservados.')){recordDeletedId(r.id);db.recurringExpenses=db.recurringExpenses.filter(x=>x.id!==r.id);persist();}}
  };
  const pending=db.transactions.filter(t=>t.status==='pending'&&t.recurrenceId).sort((a,b)=>a.date.localeCompare(b.date));
@@ -2291,7 +2470,7 @@ $('recurrenceStart').value=cur;
 $('recurrenceForm').onsubmit=e=>{
  e.preventDefault();const id=$('recurrenceId').value,description=$('recurrenceDescription').value.trim(),amount=Number($('recurrenceAmount').value),day=Number($('recurrenceDay').value),startMonth=$('recurrenceStart').value,endMonth=$('recurrenceEnd').value;
  if(!description||!Number.isFinite(amount)||amount<=0||!Number.isInteger(day)||day<1||day>31||!startMonth||(endMonth&&endMonth<startMonth)){alert('Confirma a descrição, o valor, o dia e o período da recorrência.');return;}
- const data={description,amount,day,startMonth,endMonth:endMonth||null,category:$('recurrenceCategory').value,person:$('recurrencePerson').value,active:true};
+ const data={description,amount,day,startMonth,endMonth:endMonth||null,category:$('recurrenceCategory').value,person:$('recurrencePerson').value,active:true,updatedAt:Date.now()};
  if(id){const r=db.recurringExpenses.find(x=>x.id===id);if(!r)return;data.active=r.active;Object.assign(r,data)}else{data.id='rr-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8);db.recurringExpenses.push(data)}
  resetRecurrenceForm();generateDueOccurrences();persist();
 };
@@ -2403,16 +2582,16 @@ $('goalForm').onsubmit=e=>{
  if(deadline&&!validDate(deadline)){alert('A data-limite não é válida.');return;}
  const duplicate=db.savingsGoals.some(g=>g.id!==editingGoalId&&g.name.trim().toLocaleLowerCase('pt-PT')===name.toLocaleLowerCase('pt-PT'));
  if(duplicate){alert('Já existe um objetivo com esse nome.');return;}
- if(editingGoalId){const g=db.savingsGoals.find(x=>x.id===editingGoalId);if(!g)return;Object.assign(g,{name,target,deadline:deadline||null});}
- else{db.savingsGoals.push({id:'goal-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7),name,target,deadline:deadline||null,status:'active',legacyTransactionIds:[]});}
+ if(editingGoalId){const g=db.savingsGoals.find(x=>x.id===editingGoalId);if(!g)return;Object.assign(g,{name,target,deadline:deadline||null,updatedAt:Date.now()});}
+ else{db.savingsGoals.push({id:'goal-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7),name,target,deadline:deadline||null,status:'active',legacyTransactionIds:[],updatedAt:Date.now()});}
  resetGoalForm();persist();
 };
 $('goalCancel').onclick=resetGoalForm;
 $('goalList').addEventListener('click',e=>{
  const edit=e.target.closest('[data-goal-edit]'),toggle=e.target.closest('[data-goal-toggle]'),complete=e.target.closest('[data-goal-complete]'),assign=e.target.closest('[data-goal-assign]'),remove=e.target.closest('[data-goal-remove-tx]');
  if(edit){const g=db.savingsGoals.find(x=>x.id===edit.dataset.goalEdit);if(g)editGoal(g);return;}
- if(toggle){const g=db.savingsGoals.find(x=>x.id===toggle.dataset.goalToggle);if(g){g.status=g.status==='paused'?'active':'paused';persist();}return;}
- if(complete){const g=db.savingsGoals.find(x=>x.id===complete.dataset.goalComplete);if(g){g.status=g.status==='completed'?'active':'completed';persist();}return;}
+ if(toggle){const g=db.savingsGoals.find(x=>x.id===toggle.dataset.goalToggle);if(g){g.status=g.status==='paused'?'active':'paused';g.updatedAt=Date.now();persist();}return;}
+ if(complete){const g=db.savingsGoals.find(x=>x.id===complete.dataset.goalComplete);if(g){g.status=g.status==='completed'?'active':'completed';g.updatedAt=Date.now();persist();}return;}
  if(assign){
    const g=db.savingsGoals.find(x=>x.id===assign.dataset.goalAssign);
    const select=$('goalList').querySelector(`[data-goal-assign-select="${g?.id||''}"]`);
@@ -2424,7 +2603,7 @@ $('goalList').addEventListener('click',e=>{
    tx.goalId=g.id;tx.updatedAt=Date.now();persist();return;
  }
  if(remove){
-   const g=db.savingsGoals.find(x=>x.id===remove.dataset.goalRemoveFrom),tx=db.transactions.find(x=>String(t.id)===remove.dataset.goalRemoveTx);
+   const g=db.savingsGoals.find(x=>x.id===remove.dataset.goalRemoveFrom),tx=db.transactions.find(t=>String(t.id)===remove.dataset.goalRemoveTx);
    if(!g||!tx)return;
    if(!confirm('Retirar este movimento do objetivo? O movimento será preservado no histórico.'))return;
    if(tx.goalId===g.id)delete tx.goalId;
@@ -2475,7 +2654,7 @@ addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;in
 installBtn.onclick=async()=>{if(!installPrompt)return;installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;installBtn.hidden=true};
 addEventListener('appinstalled',()=>{$('installHint').textContent='DuoFin adicionada ao dispositivo. Também podes continuar a utilizar o endereço no navegador.';installBtn.hidden=true});
 
-// Sincronização Supabase com Auto-Merge Inteligente (updatedAt + Tombstones)
+// Sincronização Supabase com Auto-Merge Inteligente (updatedAt + Tombstones + Rollovers)
 const CLOUD_KEY='orcamento-plus-cloud-v1';
 let cloud={url:'',key:'',access_token:'',refresh_token:'',expires_at:0,user:null,household_id:null,revision:null,dirty:false};
 try{cloud={...cloud,...JSON.parse(localStorage.getItem(CLOUD_KEY)||'{}')}}catch(e){}
@@ -2534,7 +2713,6 @@ function tryMergePayloads(localRaw, remoteRaw){
         if(rTx.status==='pending'&&t.status!=='pending')txMap.set(id,t);
         else if(t.status==='pending'&&rTx.status!=='pending')txMap.set(id,rTx);
         else{
-          // Resolver edição simultânea pelo timestamp mais recente (updatedAt)
           const lTime=Number(t.updatedAt)||0;
           const rTime=Number(rTx.updatedAt)||0;
           if(lTime>0||rTime>0)txMap.set(id,lTime>=rTime?t:rTx);
@@ -2550,7 +2728,15 @@ function tryMergePayloads(localRaw, remoteRaw){
     const id=String(r.id);
     if(deletedSet.has(id))continue;
     if(!recMap.has(id))recMap.set(id,r);
-    else if(JSON.stringify(recMap.get(id))!==JSON.stringify(r))return null;
+    else{
+      const rRec=recMap.get(id);
+      if(JSON.stringify(rRec)!==JSON.stringify(r)){
+        const lTime=Number(r.updatedAt)||0;
+        const rTime=Number(rRec.updatedAt)||0;
+        if(lTime>0||rTime>0)recMap.set(id,lTime>=rTime?r:rRec);
+        else return null;
+      }
+    }
   }
 
   const goalMap=new Map();
@@ -2559,8 +2745,25 @@ function tryMergePayloads(localRaw, remoteRaw){
     const id=String(g.id);
     if(deletedSet.has(id))continue;
     if(!goalMap.has(id))goalMap.set(id,g);
-    else if(JSON.stringify(goalMap.get(id))!==JSON.stringify(g))return null;
+    else{
+      const rGoal=goalMap.get(id);
+      if(JSON.stringify(rGoal)!==JSON.stringify(g)){
+        const lTime=Number(g.updatedAt)||0;
+        const rTime=Number(rGoal.updatedAt)||0;
+        if(lTime>0||rTime>0)goalMap.set(id,lTime>=rTime?g:rGoal);
+        else return null;
+      }
+    }
   }
+
+  // Fundir decisões de sobras de ciclo (handledCycleRollovers)
+  const rollMap=new Map();
+  [...(remote.handledCycleRollovers||[]),...(local.handledCycleRollovers||[])].forEach(h=>{
+    if(h&&h.cycleKey){
+      const prev=rollMap.get(h.cycleKey);
+      if(!prev||(h.at||0)<(prev.at||0))rollMap.set(h.cycleKey,h);
+    }
+  });
 
   // Fundir regras aprendidas sem gerar conflito
   const rulesMap=new Map();
@@ -2569,7 +2772,6 @@ function tryMergePayloads(localRaw, remoteRaw){
   });
   const mergedSettings={...remote.settings,categoryRules:[...rulesMap.values()]};
 
-  // Verificar se houve alterações incompatíveis nas restantes definições
   const cmpLocal={...local.settings,categoryRules:[]};
   const cmpRemote={...remote.settings,categoryRules:[]};
   if(JSON.stringify(cmpLocal)!==JSON.stringify(cmpRemote))return null;
@@ -2579,7 +2781,8 @@ function tryMergePayloads(localRaw, remoteRaw){
     transactions:[...txMap.values()],
     recurringExpenses:[...recMap.values()],
     savingsGoals:[...goalMap.values()],
-    deletedIds:[...delMap.values()]
+    deletedIds:[...delMap.values()],
+    handledCycleRollovers:[...rollMap.values()]
   };
 }
 
@@ -2663,7 +2866,7 @@ async function syncNow(forcePull=false,silent=false){
      return;
    }
    if(cloud.dirty)await pushCloud(false);
-   else if(!silent)cloudMessage('Tudo sincronizado. Revisão '+row.revision+'.','alert good');
+   else if(!silent)cloudMessage('Tudo sincronizado. Revisão '+cloud.revision+'.','alert good');
  }catch(e){if(!silent)cloudMessage('Não foi possível sincronizar: '+e.message,'alert red')}
 }
 
