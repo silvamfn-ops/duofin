@@ -1,0 +1,13 @@
+DuoFin v5.8.0 — Instruções de Atualização
+=======================================
+
+Ficheiros incluídos neste pacote ZIP:
+- index.html
+- styles.css
+- app.js
+- sw.js
+
+Como atualizar o site facilmente:
+1. Extrai os 4 ficheiros deste ZIP.
+2. Substitui os ficheiros existentes na pasta raiz do teu alojamento/repositório (GitHub Pages, Netlify, Vercel, cPanel, etc.), mantendo intactas as pastas "icons/" e o ficheiro "manifest.webmanifest".
+3. Ao abrir a aplicação no telemóvel ou computador, o novo Service Worker (duofin-v5-8-0) atualizará automaticamente a cache local.
