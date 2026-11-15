@@ -975,7 +975,7 @@ function printReport(mode){
  $('printSheet').innerHTML=`
    <div class="print-header">
      <div><h1>DuoFin · ${esc(title)}</h1><div class="small">${esc(peopleNames)}</div></div>
-     <div class="print-meta">Emitido em ${esc(emitted)}<br>DuoFin V5.8.0</div>
+     <div class="print-meta">Emitido em ${esc(emitted)}<br>DuoFin V5.9.0</div>
    </div>
    ${bodyHtml}
    <div class="print-footer"><span>DuoFin — Gestão Financeira a Dois</span><span>Documento gerado localmente no dispositivo</span></div>
