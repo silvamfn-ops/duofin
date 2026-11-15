@@ -1,18 +1,17 @@
 DuoFin v6.0.0 — Instruções de Atualização
 =======================================
 
-Ficheiros incluídos neste pacote ZIP:
-- index.html
-- styles.css
-- app.js
-- sw.js
-
-Novidades incluídas nesta versão:
-1. Transferência de Saldo Sobrante (Rollover): no Resumo, sempre que existir saldo positivo no ciclo, surge um painel para canalizar a sobra diretamente para um Objetivo de Poupança ou transportá-la para o ciclo seguinte.
-2. Exportação direta para CSV / Excel: nos Movimentos e nos Dados, exportação dos movimentos filtrados com formatação decimal e separador em ponto-e-vírgula compatível com o Microsoft Excel em português.
-3. Bloqueio de Privacidade por PIN e Biometria (WebAuthn): proteção local opcional (PIN de 4 a 6 dígitos encriptado com SHA-256 e suporte para Impressão Digital / FaceID) com bloqueio automático configurável.
+Novidades desta versão (v6.0.0):
+1. Projeção de Fecho de Ciclo: o cartão "Saldo do ciclo" mostra agora o saldo previsto no fecho, descontando despesas recorrentes ativas por vencer e prestações futuras agendadas dentro do ciclo.
+2. Análise Comparativa Multi-Ciclo (separador Gráficos):
+   - "Comparação últimos 6 ciclos": barras agrupadas de Rendimentos vs. Despesas por ciclo.
+   - "Evolução por categoria": histórico de uma categoria específica ao longo dos últimos 6 ciclos, com linha de referência do orçamento definido.
+3. Exportação para Excel (CSV): botão direto na secção Movimentos e Dados (com separador ";" e codificação UTF-8 BOM para abrir no Excel sem desconfigurar acentos).
+4. Gestão de Prestações em Lote: ao tocar numa prestação, é possível apagar apenas as prestações futuras restantes ou aplicar a mesma categoria/responsável a todas as prestações do grupo.
+5. Regras Inteligentes na Importação: ao corrigir uma categoria durante a importação de um extrato PDF/CSV, a DuoFin memoriza o estabelecimento para categorizar automaticamente no futuro.
+6. Sincronização Blindada: suporte a edição e eliminação simultânea entre dispositivos através de marcas temporais (updatedAt) e registo de eliminações (deletedIds).
 
 Como atualizar o site facilmente:
-1. Extrai os 4 ficheiros deste ZIP.
-2. Substitui os ficheiros existentes na pasta raiz do teu alojamento/repositório (GitHub Pages, Netlify, Vercel, cPanel, etc.), mantendo intactas as pastas "icons/" e o ficheiro "manifest.webmanifest".
+1. Extrai os 4 ficheiros principais deste ZIP (index.html, styles.css, app.js, sw.js).
+2. Substitui os ficheiros existentes na pasta raiz do teu alojamento/repositório, mantendo intactas as pastas "icons/" e o ficheiro "manifest.webmanifest".
 3. Ao abrir a aplicação no telemóvel ou computador, o novo Service Worker (duofin-v6-0-0) atualizará automaticamente a cache local.
