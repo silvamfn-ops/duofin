@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#142b45" id="metaThemeColor">
+  <meta name="description" content="DuoFin — gestão financeira a dois, simples, partilhada e disponível offline.">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="DuoFin">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png">
+  <link rel="stylesheet" href="./styles.css">
+  <title>DuoFin v5.7.2.1 — Gestão financeira a dois</title>
+</head>
+<body>
+  <header>
+    <div class="wrap header-inner">
+      <div>
+        <div class="brandline"><span class="brandmark" aria-hidden="true">DF</span><h1>DuoFin</h1></div>
+        <p>As nossas finanças. O nosso equilíbrio.</p>
+      </div>
+      <span class="version-badge">v5.7.2.1</span>
+    </div>
+  </header>
+  <div class="wrap">
+    <div class="nav-wrapper" id="navWrapper">
+      <nav id="mainNav" aria-label="Navegação principal">
+        <button class="active" data-tab="resumo">Resumo</button>
+        <button data-tab="movimentos">Movimentos</button>
+        <button data-tab="recorrentes">Recorrentes</button>
+        <button data-tab="calendario">Calendário</button>
+        <button data-tab="orcamento">Orçamento</button>
+        <button data-tab="objetivo">Objetivos</button>
+        <button data-tab="dados">Dados</button>
+      </nav>
+    </div>
+
+    <section id="resumo" class="view active">
+      <div class="row cycle-header">
+        <div>
+          <b id="monthTitle">Ciclo financeiro</b>
+          <div id="cycleRange" class="small"></div>
+        </div>
+        <select id="cycleSelect" aria-label="Selecionar ciclo financeiro" style="max-width:270px"></select>
+      </div>
+      <div class="stats" style="margin-top:12px">
+        <div class="stat stat-inc"><span>Total de rendimentos</span><b id="inc" class="plus"></b></div>
+        <div class="stat stat-exp"><span>Despesas pagas</span><b id="exp" class="minus"></b></div>
+        <div class="stat stat-bal" id="balCard"><span>Saldo do ciclo</span><b id="bal"></b></div>
+        <div class="stat stat-sav"><span>Poupança líquida</span><b id="savm"></b></div>
+      </div>
+      <div class="actions">
+        <button class="secondary" type="button" id="printFullReportBtn">🖨️ Imprimir relatório completo (ciclo + objetivos)</button>
+      </div>
+      <div id="alerts"></div>
+      <div class="card">
+        <div class="row"><h2>Objetivos de poupança</h2><span class="pill" id="goalCount"></span></div>
+        <div id="goalsSummary"></div>
+      </div>
+      <div class="two">
+        <div class="card"><h2>Despesas por categoria</h2><div id="cats"></div></div>
+        <div class="card"><h2>Despesas por adulto</h2><div id="persons"></div></div>
+      </div>
+      <div class="card">
+        <h2>Evolução da poupança acumulada por ciclo</h2>
+        <div class="chart-wrap">
+          <canvas id="chart"></canvas>
+        </div>
+        <p class="small">Saldo acumulado das transferências de poupança menos resgates registados em cada ciclo.</p>
+      </div>
+      <div class="card"><h2>Objetivos e prazos</h2><div id="forecastText"></div></div>
+      <div class="card"><h2>Movimentos recentes deste ciclo</h2><div id="recent"></div></div>
+    </section>
+
+    <section id="movimentos" class="view">
+      <div class="card" id="txFormCard">
+        <div class="row">
+          <h2 id="txFormTitle">Adicionar movimento</h2>
+          <span class="pill" id="txEditBadge" hidden>Modo de edição</span>
+        </div>
+        <form id="txForm">
+          <input id="txEditId" type="hidden">
+          <div class="grid">
+            <div><label for="date">Data</label><input id="date" type="date" required></div>
+            <div>
+              <label for="type">Tipo</label>
+              <select id="type">
+                <option value="expense">Despesa</option>
+                <option value="income">Rendimento</option>
+                <option value="saving">Poupança transferida</option>
+                <option value="saving_withdraw">Poupança utilizada / resgate</option>
+              </select>
+            </div>
+          </div>
+          <label for="desc">Descrição</label>
+          <input id="desc" required>
+          <div class="grid">
+            <div><label for="amount" id="amountLabel">Valor (€)</label><input id="amount" type="number" min=".01" step=".01" required></div>
+            <div id="categoryField">
+              <label for="category">Categoria</label>
+              <select id="category"></select>
+              <div class="actions category-actions">
+                <button class="ghost" type="button" id="txCategoryAdd">+ Nova categoria</button>
+                <button class="ghost" type="button" id="txCategoryEdit">Editar selecionada</button>
+              </div>
+            </div>
+          </div>
+          <div id="installmentsField">
+            <label class="checkbox-row" for="isInstallment">
+              <input id="isInstallment" type="checkbox">
+              <span>Dividir em prestações mensais (ex.: 3x, 6x, 12x)</span>
+            </label>
+            <div id="installmentsOptions" class="inline-editor" hidden>
+              <div class="grid">
+                <div>
+                  <label for="installmentCount">Número de prestações</label>
+                  <input id="installmentCount" type="number" min="2" max="60" step="1" value="3">
+                </div>
+                <div>
+                  <label for="installmentAmountMode">O valor acima é:</label>
+                  <select id="installmentAmountMode">
+                    <option value="total">O valor TOTAL da compra (a dividir)</option>
+                    <option value="each">O valor de CADA prestação</option>
+                  </select>
+                </div>
+              </div>
+              <p class="small" id="installmentSummary" style="margin-bottom:0">A 1.ª prestação fica registada na data escolhida e as seguintes nos meses subsequentes (com arredondamento exato aos cêntimos).</p>
+            </div>
+          </div>
+          <div id="incomeCycleField" hidden>
+            <label class="checkbox-row" for="incomeCountsForCycle">
+              <input id="incomeCountsForCycle" type="checkbox" checked>
+              <span>Este rendimento define o ciclo financeiro (ex.: vencimento)</span>
+            </label>
+            <p class="small">Desmarca se for um rendimento extra pontual (ex.: reembolso de IRS, venda ou prémio) que não deve fechar o ciclo atual.</p>
+          </div>
+          <div id="savingGoalField" hidden>
+            <label for="savingGoal" id="savingGoalLabel">Associar a objetivo (opcional)</label>
+            <select id="savingGoal"><option value="">Sem objetivo</option></select>
+            <p class="small" id="savingGoalHelp">Só os movimentos de poupança associados contam para o progresso do objetivo.</p>
+          </div>
+          <label for="person">Quem pagou / movimentou</label>
+          <select id="person"><option>Adulto 1</option><option>Adulto 2</option><option>Conta conjunta</option></select>
+          <div class="actions">
+            <button class="primary" type="submit" id="txSaveBtn">Guardar movimento</button>
+            <button class="ghost" type="button" id="txCancelEditBtn" hidden>Cancelar edição</button>
+          </div>
+        </form>
+        <div id="txCategoryEditor" class="inline-editor" hidden>
+          <h3 id="txCategoryEditorTitle">Categoria</h3>
+          <div class="grid">
+            <div><label for="txCategoryName">Nome</label><input id="txCategoryName" maxlength="50" autocomplete="off"></div>
+            <div><label for="txCategoryBudget">Limite por ciclo (€)</label><input id="txCategoryBudget" type="number" min="0" step=".01" value="0"></div>
+          </div>
+          <div class="actions">
+            <button class="primary" type="button" id="txCategorySave">Guardar categoria</button>
+            <button class="ghost" type="button" id="txCategoryCancel">Cancelar</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row">
+          <h2>Histórico de movimentos</h2>
+          <button class="secondary" type="button" id="printMovementsBtn">🖨️ Imprimir movimentos</button>
+        </div>
+        <div class="filter-bar">
+          <div class="grid">
+            <div><label for="movementCycle" style="margin-top:0">Ciclo financeiro</label><select id="movementCycle"></select></div>
+            <div>
+              <label for="filter" style="margin-top:0">Tipo de movimento</label>
+              <select id="filter">
+                <option value="all">Todos os tipos</option>
+                <option value="expense">Despesas</option>
+                <option value="income">Rendimentos</option>
+                <option value="saving">Poupança transferida</option>
+                <option value="saving_withdraw">Poupança utilizada / resgate</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid-3">
+            <div>
+              <label for="filterSearch">Pesquisar descrição</label>
+              <input id="filterSearch" type="search" placeholder="Ex.: Continente, oficina, IRS...">
+            </div>
+            <div>
+              <label for="filterCategory">Categoria</label>
+              <select id="filterCategory"><option value="all">Todas as categorias</option></select>
+            </div>
+            <div>
+              <label for="filterPerson">Quem movimentou</label>
+              <select id="filterPerson"><option value="all">Todos</option></select>
+            </div>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <span class="small" id="filterCountLabel"></span>
+            <button class="ghost" type="button" id="resetFiltersBtn" style="padding:5px 10px;font-size:12px" hidden>Limpar filtros</button>
+          </div>
+        </div>
+        <div id="transactions"></div>
+      </div>
+    </section>
+
+    <section id="recorrentes" class="view">
+      <div class="card">
+        <h2 id="recurrenceFormTitle">Nova despesa recorrente</h2>
+        <form id="recurrenceForm">
+          <input id="recurrenceId" type="hidden">
+          <label for="recurrenceDescription">Descrição</label>
+          <input id="recurrenceDescription" maxlength="100" placeholder="Ex.: Renda da casa" required>
+          <div class="grid">
+            <div><label for="recurrenceAmount">Valor (€)</label><input id="recurrenceAmount" type="number" min="0.01" step="0.01" required></div>
+            <div><label for="recurrenceCategory">Categoria</label><select id="recurrenceCategory"></select></div>
+          </div>
+          <div class="grid">
+            <div><label for="recurrencePerson">Quem paga</label><select id="recurrencePerson"></select></div>
+            <div><label for="recurrenceDay">Dia do mês</label><input id="recurrenceDay" type="number" min="1" max="31" value="1" required></div>
+          </div>
+          <div class="grid">
+            <div><label for="recurrenceStart">Começar em</label><input id="recurrenceStart" type="month" required></div>
+            <div><label for="recurrenceEnd">Terminar em (opcional)</label><input id="recurrenceEnd" type="month"></div>
+          </div>
+          <p class="small">A despesa é criada como pendente na data prevista. Os dias 29, 30 e 31 passam para o último dia dos meses mais curtos.</p>
+          <div class="actions">
+            <button class="primary" type="submit" id="recurrenceSave">Guardar recorrência</button>
+            <button class="ghost" type="button" id="recurrenceCancel" hidden>Cancelar edição</button>
+          </div>
+        </form>
+      </div>
+      <div class="card"><h2>Regras de recorrência</h2><div id="recurrenceRules"></div></div>
+      <div class="card">
+        <h2>Despesas por confirmar</h2>
+        <p class="small">Confirma quando o pagamento acontecer. As despesas pendentes não entram nos totais nem nos limites do orçamento.</p>
+        <div id="pendingRecurring"></div>
+      </div>
+    </section>
+
+    <section id="calendario" class="view">
+      <div class="card">
+        <div class="row"><button class="secondary" id="prev" aria-label="Mês anterior">‹</button><h2 id="calTitle" style="margin:0"></h2><button class="secondary" id="next" aria-label="Mês seguinte">›</button></div>
+        <div class="row" style="margin-top:10px;flex-wrap:wrap">
+          <div style="min-width:170px">
+            <label for="calendarMonth" style="margin-top:0">Mês do calendário</label>
+            <input id="calendarMonth" type="month">
+          </div>
+          <div class="cal-legend">
+            <span><i class="dot dot-exp"></i> Despesa</span>
+            <span><i class="dot dot-inc"></i> Rendimento</span>
+            <span><i class="dot dot-sav"></i> Poupança</span>
+          </div>
+        </div>
+        <div id="calendar" class="calendar"></div>
+      </div>
+      <div class="card"><h2 id="dayTitle">Movimentos do dia</h2><div id="dayItems"></div></div>
+    </section>
+
+    <section id="orcamento" class="view">
+      <div class="card">
+        <h2>Limites por categoria</h2>
+        <p class="small">Comparação com as despesas pagas do ciclo selecionado. Avisos aos 85% e quando ultrapassar o limite.</p>
+        <form id="budgetForm">
+          <div id="budgetFields"></div>
+          <div class="row" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)"><b>Total planeado</b><b id="budgetTotal"></b></div>
+          <div class="actions"><button class="primary">Guardar limites</button></div>
+        </form>
+        <div class="divider" style="height:1px;background:var(--line);margin:18px 0"></div>
+        <h2>Gerir categorias de despesa</h2>
+        <p class="small">Crie categorias, altere nomes e limites ou elimine categorias. Os movimentos existentes são preservados.</p>
+        <div id="categoryManager"></div>
+        <form id="newCategoryForm">
+          <div class="grid">
+            <div><label for="newCategoryName">Nova categoria</label><input id="newCategoryName" maxlength="50" placeholder="Ex.: Animais de estimação" required></div>
+            <div><label for="newCategoryBudget">Limite por ciclo (€)</label><input id="newCategoryBudget" type="number" min="0" step=".01" value="0" required></div>
+          </div>
+          <div class="actions"><button class="secondary" type="submit">Adicionar categoria</button></div>
+        </form>
+      </div>
+      <div class="card">
+        <h2>Rendimento de referência</h2>
+        <label for="incomePlan">Estimativa líquida mensal (€)</label>
+        <input id="incomePlan" type="number">
+        <p class="small">Valor meramente informativo. Não é usado nos totais: o painel contabiliza apenas os rendimentos registados em cada ciclo.</p>
+        <div class="actions"><button class="secondary" id="saveIncome">Guardar</button></div>
+      </div>
+      <div class="card">
+        <h2>Nomes dos adultos</h2>
+        <div class="grid">
+          <div><label for="adult1">Adulto 1</label><input id="adult1"></div>
+          <div><label for="adult2">Adulto 2</label><input id="adult2"></div>
+        </div>
+        <div class="actions"><button class="secondary" id="savePeople">Guardar nomes</button></div>
+      </div>
+    </section>
+
+    <section id="objetivo" class="view">
+      <div class="card">
+        <div class="row">
+          <h2 id="goalFormTitle">Criar objetivo de poupança</h2>
+          <button class="secondary" type="button" id="printGoalsBtn">🖨️ Imprimir relatório de objetivos</button>
+        </div>
+        <form id="goalForm">
+          <input id="goalId" type="hidden">
+          <label for="goalName">Nome do objetivo</label>
+          <input id="goalName" maxlength="70" placeholder="Ex.: Liquidar crédito, férias" required>
+          <div class="grid">
+            <div><label for="goalTarget">Montante-alvo (€)</label><input id="goalTarget" type="number" min="0.01" step="0.01" required></div>
+            <div><label for="goalDeadline">Data-limite (opcional)</label><input id="goalDeadline" type="date"></div>
+          </div>
+          <div class="actions">
+            <button class="primary" id="goalSave" type="submit">Guardar objetivo</button>
+            <button class="ghost" id="goalCancel" type="button" hidden>Cancelar edição</button>
+          </div>
+        </form>
+      </div>
+      <div class="alert good">Para reforçar um objetivo, regista «Poupança transferida» e escolhe o objetivo. Para usar dinheiro guardado, regista «Poupança utilizada / resgate» e associa ao respetivo objetivo.</div>
+      <div id="goalList"></div>
+    </section>
+
+    <section id="dados" class="view">
+      <div class="card">
+        <h2>Importar extrato bancário (PDF ou CSV)</h2>
+        <p class="small">Carrega um extrato bancário em <strong>PDF</strong> (ou CSV) exportado do teu banco (CGD, Millennium bcp, Santander, BPI, Novo Banco, ActivoBank, Moey, Revolut, etc.), ou cola diretamente o texto copiado do PDF. Podes rever e ajustar as categorias antes de confirmar.</p>
+        <div class="grid">
+          <div>
+            <label for="csvDefaultPerson">Responsável por defeito</label>
+            <select id="csvDefaultPerson"><option>Conta conjunta</option></select>
+          </div>
+          <div style="display:flex;align-items:end;gap:8px;flex-wrap:wrap">
+            <label class="secondary" style="margin:0;text-align:center;cursor:pointer;flex:1">📄 Escolher PDF ou CSV<input id="csvFileInput" type="file" accept=".pdf,application/pdf,.csv,text/csv,text/plain" hidden></label>
+            <button class="ghost" type="button" id="togglePasteExtractBtn" style="white-space:nowrap">📋 Colar texto</button>
+          </div>
+        </div>
+        <div id="pasteExtractBox" class="inline-editor" hidden>
+          <label for="pasteExtractText" style="margin-top:0">Colar texto copiado do extrato PDF</label>
+          <textarea id="pasteExtractText" rows="5" placeholder="Cola aqui as linhas copiadas do extrato bancário (ex.: 10-11-2026  COMPRA CONTINENTE  -45,20 €)..."></textarea>
+          <div class="actions">
+            <button class="secondary" type="button" id="parsePastedTextBtn">Analisar texto colado</button>
+            <button class="ghost" type="button" id="cancelPasteTextBtn">Fechar</button>
+          </div>
+        </div>
+        <div id="csvPreviewContainer" hidden>
+          <div class="alert good" id="csvSummaryAlert" style="margin-top:12px"></div>
+          <div class="row" style="margin:8px 0 4px">
+            <label class="checkbox-row" style="margin:0"><input type="checkbox" id="csvToggleAll" checked><span>Selecionar todos</span></label>
+            <span class="small">Toca num movimento para ver/editar detalhe</span>
+          </div>
+          <div class="csv-preview-box" id="csvPreviewList"></div>
+          <div class="actions">
+            <button class="primary" type="button" id="csvConfirmImportBtn">Importar movimentos selecionados</button>
+            <button class="ghost" type="button" id="csvCancelImportBtn">Cancelar</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Relatórios e impressão (PDF / A4)</h2>
+        <p class="small">Gera relatórios formatados para impressão em papel ou gravação como PDF diretamente a partir do navegador.</p>
+        <div class="actions">
+          <button class="primary" type="button" id="printDadosFullBtn">🖨️ Relatório completo (ciclo + objetivos)</button>
+          <button class="secondary" type="button" id="printDadosMovBtn">🖨️ Apenas movimentos filtrados</button>
+          <button class="secondary" type="button" id="printDadosGoalsBtn">🖨️ Apenas objetivos de poupança</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Aparência</h2>
+        <div class="grid">
+          <div>
+            <label for="themeMode">Tema</label>
+            <select id="themeMode">
+              <option value="auto">Automático (seguir o sistema)</option>
+              <option value="light">Claro</option>
+              <option value="dark">Escuro</option>
+            </select>
+          </div>
+          <div>
+            <label for="densityMode">Densidade de informação</label>
+            <select id="densityMode">
+              <option value="balanced">Equilibrada</option>
+              <option value="compact">Compacta</option>
+              <option value="detailed">Detalhada</option>
+            </select>
+          </div>
+        </div>
+        <p class="small setting-note">Estas preferências ficam guardadas apenas neste dispositivo. Não são incluídas nas cópias financeiras nem sincronizadas com o outro telemóvel.</p>
+      </div>
+
+      <div class="card">
+        <h2>Definição dos ciclos financeiros</h2>
+        <label for="cycleGroupingDays">Janela para agrupar entradas de rendimento (dias)</label>
+        <input id="cycleGroupingDays" type="number" min="0" max="20" step="1" value="14">
+        <p class="small">Entradas de rendimento marcadas como definidoras de ciclo separadas por até este número de dias são agrupadas no mesmo recebimento conjunto. O ciclo inicia no primeiro vencimento do grupo e fecha antes do próximo recebimento.</p>
+        <div class="actions"><button class="secondary" id="saveCycleGrouping">Guardar definição</button></div>
+      </div>
+
+      <div class="card">
+        <h2>Aceder à DuoFin</h2>
+        <p class="small"><strong>Não precisas de instalar a DuoFin.</strong> Abre o mesmo endereço HTTPS no navegador do Windows, iPhone ou Android e inicia sessão. Os dados partilhados são carregados do projeto Supabase configurado.</p>
+        <div class="install-instructions">
+          <h3>Windows (Edge ou Chrome)</h3>
+          <ol>
+            <li>Abre o endereço HTTPS da DuoFin no navegador.</li>
+            <li>Inicia sessão com a conta associada ao orçamento.</li>
+            <li>Opcional: no menu do navegador escolhe «Instalar este site como uma aplicação» para teres um ícone e uma janela própria.</li>
+          </ol>
+          <h3>Android (Chrome)</h3>
+          <ol>
+            <li>Abre o mesmo endereço no Chrome.</li>
+            <li>Inicia sessão com a conta associada ao orçamento.</li>
+            <li>Opcional: usa «Instalar aplicação» ou «Adicionar ao ecrã principal» no menu do navegador.</li>
+          </ol>
+          <h3>iPhone (Safari)</h3>
+          <ol>
+            <li>Abre o mesmo endereço diretamente no Safari.</li>
+            <li>Inicia sessão com a conta associada ao orçamento.</li>
+            <li>Já podes utilizar a DuoFin. Opcionalmente, usa «Partilhar» e «Adicionar ao ecrã principal» para criar um ícone.</li>
+          </ol>
+        </div>
+        <button class="primary" id="installApp" hidden>Instalar aplicação (opcional)</button>
+        <p id="installHint" class="small">A instalação é opcional. Se o navegador não apresentar a opção, continua a utilizar a DuoFin normalmente nesta página.</p>
+      </div>
+
+      <div class="card">
+        <h2>Sincronização entre os dispositivos</h2>
+        <p class="small">A sincronização usa uma conta de cada pessoa e uma base de dados privada partilhada. Inclui fusão automática de movimentos criados em simultâneo nos dois dispositivos.</p>
+        <div id="cloudStatus" class="alert">Ainda não configurada. Segue o guia incluído no ZIP para criar o projeto de sincronização.</div>
+        <label for="sbUrl">URL do projeto Supabase</label>
+        <input id="sbUrl" type="url" placeholder="https://xxxxxxxx.supabase.co" autocomplete="url">
+        <label for="sbKey">Chave pública (anon ou publishable)</label>
+        <input id="sbKey" type="password" placeholder="Chave pública do projeto" autocomplete="off">
+        <div class="actions"><button class="secondary" id="saveCloudConfig">Guardar configuração</button></div>
+        <div id="authPanel">
+          <div class="grid">
+            <div><label for="cloudEmail">Email</label><input id="cloudEmail" type="email" autocomplete="username"></div>
+            <div><label for="cloudPassword">Palavra-passe</label><input id="cloudPassword" type="password" autocomplete="current-password"></div>
+          </div>
+          <div class="actions">
+            <button class="primary" id="cloudLogin">Entrar</button>
+            <button class="secondary" id="cloudSignup">Criar conta</button>
+            <button class="danger" id="cloudLogout" hidden>Terminar sessão</button>
+          </div>
+          <p class="small">Cada adulto pode usar a sua própria conta. Se o Supabase pedir confirmação, confirma o email antes de iniciar sessão.</p>
+        </div>
+        <div id="householdPanel" hidden>
+          <hr>
+          <p id="householdInfo" class="small"></p>
+          <label for="householdName">Nome do orçamento partilhado</label>
+          <input id="householdName" value="Orçamento do casal">
+          <div class="actions"><button class="secondary" id="createHousehold">Criar orçamento partilhado</button></div>
+          <label for="inviteCode">Código de convite recebido</label>
+          <input id="inviteCode" autocomplete="off" placeholder="Código fornecido pelo outro telemóvel">
+          <div class="actions">
+            <button class="secondary" id="joinHousehold">Associar a este orçamento</button>
+            <button class="secondary" id="createInvite">Gerar convite para o outro adulto</button>
+          </div>
+          <div id="inviteResult" class="alert good" hidden></div>
+          <div class="actions">
+            <button class="primary" id="syncNow">Sincronizar agora</button>
+            <button class="ghost" id="cloudPull">Carregar versão partilhada</button>
+            <button class="ghost" id="cloudPush">Enviar versão deste telemóvel</button>
+          </div>
+          <p class="small">A aplicação verifica alterações enquanto está aberta (aproximadamente a cada 15 segundos). Novos movimentos e regras criados nos dois dispositivos são fundidos automaticamente.</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Cópias de segurança e privacidade</h2>
+        <p class="small">Sem configurar a sincronização, os dados ficam apenas no armazenamento local deste navegador. Com a sincronização ativada, são enviados para o projeto Supabase que o casal configurar, protegidos por autenticação e regras de acesso.</p>
+        <div class="actions">
+          <button class="primary" id="export">Exportar cópia</button>
+          <label class="secondary">Importar cópia<input id="import" type="file" accept="application/json" hidden></label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Repor dados</h2>
+        <button class="danger" id="reset">Apagar todos os dados</button>
+      </div>
+    </section>
+
+    <!-- Botão flutuante de acesso rápido -->
+    <button type="button" class="fab" id="quickAddFab" title="Novo movimento" aria-label="Adicionar novo movimento">+</button>
+
+    <!-- Folha dedicada exclusivamente à impressão A4 / PDF -->
+    <div id="printSheet" aria-hidden="true"></div>
+
+    <!-- Modal de detalhe de movimento importado -->
+    <div id="importDetailModal" class="modal-backdrop" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="importModalTitle">
+        <div class="row" style="margin-bottom:10px">
+          <h2 id="importModalTitle" style="margin:0">Detalhe do movimento</h2>
+          <button type="button" class="icon-btn" id="closeImportModalBtn" aria-label="Fechar">✕</button>
+        </div>
+        <div id="importDupWarning" class="alert" hidden>⚠ Já existe um movimento na mesma data com este valor. Confirma se não é duplicado antes de importar.</div>
+        <input type="hidden" id="impEditIdx">
+        <label class="checkbox-row" for="impEditSelected">
+          <input type="checkbox" id="impEditSelected">
+          <span>Incluir este movimento na importação definitiva</span>
+        </label>
+        <div class="grid">
+          <div><label for="impEditDate">Data</label><input type="date" id="impEditDate"></div>
+          <div><label for="impEditAmount">Valor (€)</label><input type="number" step="0.01" min="0.01" id="impEditAmount"></div>
+        </div>
+        <label for="impEditDesc">Descrição completa</label>
+        <textarea id="impEditDesc" rows="2"></textarea>
+        <div class="grid">
+          <div>
+            <label for="impEditType">Tipo</label>
+            <select id="impEditType">
+              <option value="expense">Despesa</option>
+              <option value="income">Rendimento</option>
+              <option value="saving">Poupança</option>
+            </select>
+          </div>
+          <div id="impEditCatWrap">
+            <label for="impEditCat">Categoria</label>
+            <select id="impEditCat"></select>
+          </div>
+        </div>
+        <div class="actions" style="justify-content:space-between;margin-top:16px">
+          <div class="row" style="gap:6px">
+            <button type="button" class="ghost" id="impPrevBtn" title="Anterior">‹ Anterior</button>
+            <button type="button" class="ghost" id="impNextBtn" title="Seguinte">Seguinte ›</button>
+          </div>
+          <button type="button" class="primary" id="saveImportDetailBtn">Aplicar e fechar</button>
+        </div>
+      </div>
+    </div>
+
+    <footer>DuoFin · V5.7.2.1 · Gestão financeira a dois</footer>
+  </div>
+  <script src="./app.js"></script>
+</body>
+</html>
