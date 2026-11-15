@@ -13,16 +13,21 @@
   <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png">
   <link rel="stylesheet" href="./styles.css">
-  <title>DuoFin v5.8.0 — Gestão financeira a dois</title>
+  <title>DuoFin v5.9.0 — Gestão financeira a dois</title>
 </head>
 <body>
   <header>
     <div class="wrap header-inner">
       <div>
-        <div class="brandline"><span class="brandmark" aria-hidden="true">DF</span><h1>DuoFin</h1></div>
-        <p>As nossas finanças. O nosso equilíbrio.</p>
+        <div class="brandline">
+          <img src="./icons/logo-mark.png" alt="DuoFin" class="brandmark-img">
+          <div>
+            <h1>DuoFin</h1>
+            <p>As nossas finanças. O nosso equilíbrio.</p>
+          </div>
+        </div>
       </div>
-      <span class="version-badge">v5.8.0</span>
+      <span class="version-badge">v5.9.0</span>
     </div>
   </header>
   <div class="wrap">
@@ -34,7 +39,7 @@
         <button data-tab="recorrentes">Recorrentes</button>
         <button data-tab="calendario">Calendário</button>
         <button data-tab="orcamento">Orçamento</button>
-        <button data-tab="objetivo">Objetivos</button>
+        <button data-tab="objetivo">Objetivos &amp; Património</button>
         <button data-tab="dados">Dados</button>
       </nav>
     </div>
@@ -53,6 +58,18 @@
         <div class="stat stat-bal" id="balCard"><span>Saldo do ciclo</span><b id="bal"></b></div>
         <div class="stat stat-sav"><span>Poupança líquida</span><b id="savm"></b></div>
       </div>
+
+      <!-- NOVO: Cartão rápido de Transferência de Saldo Sobrante (Rollover) -->
+      <div id="rolloverBanner" class="rollover-box" hidden>
+        <div class="row" style="flex-wrap:wrap;gap:10px">
+          <div>
+            <b style="color:var(--g)">💡 Saldo sobrante disponível neste ciclo: <span id="rolloverAvailAmount"></span></b>
+            <div class="small">Podes canalizar a sobra para um objetivo de poupança ou transportá-la para o ciclo seguinte.</div>
+          </div>
+          <button type="button" class="primary" id="openRolloverModalBtn" style="padding:8px 13px;font-size:13px">Transferir sobra ↗</button>
+        </div>
+      </div>
+
       <div class="actions">
         <button class="secondary" type="button" id="printFullReportBtn">🖨️ Imprimir relatório completo (ciclo + objetivos)</button>
       </div>
@@ -142,7 +159,7 @@
               <input id="incomeCountsForCycle" type="checkbox" checked>
               <span>Este rendimento define o ciclo financeiro (ex.: vencimento)</span>
             </label>
-            <p class="small">Desmarca se for um rendimento extra pontual (ex.: reembolso de IRS, venda ou prémio) que não deve fechar o ciclo atual.</p>
+            <p class="small">Desmarca se for um rendimento extra pontual (ex.: reembolso de IRS, venda, prémio ou saldo transportado) que não deve fechar o ciclo atual.</p>
           </div>
           <div id="savingGoalField" hidden>
             <label for="savingGoal" id="savingGoalLabel">Associar a objetivo (opcional)</label>
@@ -238,6 +255,8 @@
             <select id="analyticsMetric">
               <option value="categories">Despesas por categoria</option>
               <option value="budget_vs_actual">Orçamento vs. Gasto real por categoria</option>
+              <option value="compare_prev_cycle">Comparação: Ciclo selecionado vs. Ciclo anterior</option>
+              <option value="compare_avg_3">Comparação: Ciclo selecionado vs. Média 3 ciclos anteriores</option>
               <option value="daily_flow">Evolução diária de despesas acumuladas</option>
               <option value="person">Despesas por responsável (Adultos)</option>
               <option value="balance_summary">Rendimentos vs. Despesas vs. Poupança</option>
@@ -340,6 +359,29 @@
           <div class="actions"><button class="secondary" type="submit">Adicionar categoria</button></div>
         </form>
       </div>
+
+      <!-- NOVO: Dicionário Inteligente de Categorização (Aprendizagem Automática) -->
+      <div class="card">
+        <h2>Dicionário inteligente de categorização</h2>
+        <p class="small">Quando alteras a categoria de um movimento importado (ou adicionas uma regra aqui), a DuoFin memoriza a palavra-chave para classificar futuros extratos automaticamente. Sincronizado entre os dois telemóveis.</p>
+        <form id="categoryRuleForm">
+          <div class="grid">
+            <div>
+              <label for="ruleKeyword">Palavra-chave no extrato</label>
+              <input id="ruleKeyword" maxlength="60" placeholder="Ex.: LEROY MERLIN, GINÁSIO, VIA VERDE" required>
+            </div>
+            <div>
+              <label for="ruleCategory">Categoria a atribuir</label>
+              <select id="ruleCategory"></select>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="secondary" type="submit">+ Guardar regra automática</button>
+          </div>
+        </form>
+        <div id="categoryRulesList" style="margin-top:12px"></div>
+      </div>
+
       <div class="card">
         <h2>Rendimento de referência</h2>
         <label for="incomePlan">Estimativa líquida mensal (€)</label>
@@ -358,6 +400,63 @@
     </section>
 
     <section id="objetivo" class="view">
+      <!-- NOVO: Bloco de Património, Contas e Créditos (Património Líquido do Agregado) -->
+      <div class="card">
+        <div class="row">
+          <h2 style="margin:0">Património líquido do agregado</h2>
+          <span class="pill" id="netWorthBadge"></span>
+        </div>
+        <p class="small">Regista os saldos atuais das contas e poupanças (ativos) e o capital em dívida de créditos (passivos) para acompanhar a evolução global da família.</p>
+        <div class="stats" style="grid-template-columns:repeat(3,1fr);margin-bottom:12px">
+          <div class="stat stat-inc"><span>Total Ativos</span><b id="nwAssetsTotal" class="plus"></b></div>
+          <div class="stat stat-exp"><span>Total Passivos</span><b id="nwLiabilitiesTotal" class="minus"></b></div>
+          <div class="stat stat-bal" id="nwNetCard"><span>Património Líquido</span><b id="nwNetTotal"></b></div>
+        </div>
+
+        <form id="netWorthForm" class="inline-editor" style="margin-top:8px">
+          <input id="nwId" type="hidden">
+          <h3 id="nwFormTitle">Adicionar conta, poupança ou crédito</h3>
+          <div class="grid">
+            <div>
+              <label for="nwType">Natureza</label>
+              <select id="nwType">
+                <option value="asset">Ativo (Conta à ordem, Poupança, PPR, Investimento)</option>
+                <option value="liability">Passivo (Crédito Habitação, Automóvel, Pessoal)</option>
+              </select>
+            </div>
+            <div>
+              <label for="nwName">Designação</label>
+              <input id="nwName" maxlength="60" placeholder="Ex.: Conta Ordem Comum, Crédito Habitação" required>
+            </div>
+          </div>
+          <div class="grid">
+            <div>
+              <label for="nwBalance">Saldo / Capital atual (€)</label>
+              <input id="nwBalance" type="number" min="0" step="0.01" required>
+            </div>
+            <div>
+              <label for="nwNote">Nota opcional (ex.: TAN, banco)</label>
+              <input id="nwNote" maxlength="60" placeholder="Ex.: Santander · Taxa mista">
+            </div>
+          </div>
+          <div class="actions">
+            <button class="primary" type="submit" id="nwSaveBtn">Guardar item patrimonial</button>
+            <button class="ghost" type="button" id="nwCancelBtn" hidden>Cancelar edição</button>
+          </div>
+        </form>
+
+        <div class="two" style="margin-top:12px">
+          <div>
+            <h3 style="font-size:14px;margin:6px 0">Ativos (Contas &amp; Poupanças)</h3>
+            <div id="nwAssetsList"></div>
+          </div>
+          <div>
+            <h3 style="font-size:14px;margin:6px 0">Passivos (Créditos &amp; Dívidas)</h3>
+            <div id="nwLiabilitiesList"></div>
+          </div>
+        </div>
+      </div>
+
       <div class="card">
         <div class="row">
           <h2 id="goalFormTitle">Criar objetivo de poupança</h2>
@@ -423,7 +522,7 @@
         <div class="actions">
           <button class="primary" type="button" id="printDadosFullBtn">🖨️ Relatório completo (ciclo + objetivos)</button>
           <button class="secondary" type="button" id="printDadosMovBtn">🖨️ Apenas movimentos filtrados</button>
-          <button class="secondary" type="button" id="printDadosGoalsBtn">🖨️ Apenas objetivos de poupança</button>
+          <button class="secondary" type="button" id="printDadosGoalsBtn">🖨️ Apenas objetivos e património</button>
         </div>
       </div>
 
@@ -459,6 +558,9 @@
       </div>
 
       <div class="card">
+        <div class="about-brand-box">
+          <img src="./icons/logo-full.png" alt="DuoFin — Gestão Financeira a Dois" class="logo-full-img">
+        </div>
         <h2>Aceder à DuoFin</h2>
         <p class="small"><strong>Não precisas de instalar a DuoFin.</strong> Abre o mesmo endereço HTTPS no navegador do Windows, iPhone ou Android e inicia sessão. Os dados partilhados são carregados do projeto Supabase configurado.</p>
         <div class="install-instructions">
@@ -548,6 +650,45 @@
 
     <!-- Folha dedicada exclusivamente à impressão A4 / PDF -->
     <div id="printSheet" aria-hidden="true"></div>
+
+    <!-- Modal de Transferência de Saldo Sobrante (Rollover) -->
+    <div id="rolloverModal" class="modal-backdrop" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="rolloverModalTitle">
+        <div class="row" style="margin-bottom:8px">
+          <h2 id="rolloverModalTitle" style="margin:0">Transferir saldo sobrante</h2>
+          <button type="button" class="icon-btn" id="closeRolloverModalBtn" aria-label="Fechar">✕</button>
+        </div>
+        <p class="small">Saldo positivo disponível neste ciclo: <b id="rolloverModalMax"></b></p>
+        <form id="rolloverForm">
+          <label for="rolloverDestType">Destino da sobra</label>
+          <select id="rolloverDestType">
+            <option value="goal">Reforçar um Objetivo de Poupança</option>
+            <option value="next_cycle">Transportar saldo para o Ciclo Seguinte</option>
+          </select>
+
+          <div id="rolloverGoalWrap">
+            <label for="rolloverGoalSelect">Escolher objetivo de poupança</label>
+            <select id="rolloverGoalSelect"></select>
+          </div>
+
+          <div class="grid">
+            <div>
+              <label for="rolloverAmount">Valor a transferir (€)</label>
+              <input id="rolloverAmount" type="number" min="0.01" step="0.01" required>
+            </div>
+            <div>
+              <label for="rolloverPerson">Responsável</label>
+              <select id="rolloverPerson"></select>
+            </div>
+          </div>
+          <p class="small" id="rolloverExplain"></p>
+          <div class="actions" style="justify-content:flex-end;margin-top:16px">
+            <button type="button" class="ghost" id="cancelRolloverBtn">Cancelar</button>
+            <button type="submit" class="primary">Confirmar transferência</button>
+          </div>
+        </form>
+      </div>
+    </div>
 
     <!-- Modal de detalhe e edição rápida de movimento (para telemóvel e desktop) -->
     <div id="txDetailModal" class="modal-backdrop" hidden>
@@ -658,6 +799,13 @@
             <select id="impEditCat"></select>
           </div>
         </div>
+        <div id="impLearnRuleWrap" style="margin-top:8px">
+          <label class="checkbox-row" for="impLearnRuleCheck">
+            <input type="checkbox" id="impLearnRuleCheck" checked>
+            <span>Memorizar categoria para futuras importações semelhantes</span>
+          </label>
+          <input id="impLearnKeyword" maxlength="50" placeholder="Palavra-chave a memorizar (ex.: CONTINENTE)" style="margin-top:4px;min-height:36px;font-size:13px">
+        </div>
         <div class="actions" style="justify-content:space-between;margin-top:16px">
           <div class="row" style="gap:6px">
             <button type="button" class="ghost" id="impPrevBtn" title="Anterior">‹ Anterior</button>
@@ -668,7 +816,7 @@
       </div>
     </div>
 
-    <footer>DuoFin · V5.8.0 · Gestão financeira a dois</footer>
+    <footer>DuoFin · V5.9.0 · Gestão financeira a dois</footer>
   </div>
   <script src="./app.js"></script>
 </body>

@@ -1,6 +1,6 @@
 const $=id=>document.getElementById(id),KEY='orcamento-plus-v1',now=new Date(),iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'),cur=iso(now).slice(0,7);
 const defs=[['Habitação',850],['Supermercado',450],['Água, luz e gás',180],['Transportes',250],['Telecomunicações',70],['Saúde e farmácia',80],['Crianças e família',150],['Restaurantes e lazer',150],['Vestuário e pessoal',120],['Outros / imprevistos',300]];
-const fresh=()=>({settings:{income:3200,target:6000,start:'2026-11-01',deadline:'2027-08-31',cycleGroupingDays:14,people:['Adulto 1','Adulto 2'],categories:defs.map(([name,budget])=>({name,budget}))},transactions:[],recurringExpenses:[],savingsGoals:[]});
+const fresh=()=>({settings:{income:3200,target:6000,start:'2026-11-01',deadline:'2027-08-31',cycleGroupingDays:14,people:['Adulto 1','Adulto 2'],categories:defs.map(([name,budget])=>({name,budget})),categoryRules:[]},transactions:[],recurringExpenses:[],savingsGoals:[],netWorthItems:[]});
 let dbNeedsSync=false;
 
 function normalizeDb(x){
@@ -9,6 +9,8 @@ function normalizeDb(x){
  if(!Array.isArray(x.recurringExpenses)){x.recurringExpenses=[];changed=true;}
  if(!Array.isArray(x.settings.categories)){x.settings.categories=defs.map(([name,budget])=>({name,budget}));changed=true;}
  if(!Array.isArray(x.settings.people)){x.settings.people=['Adulto 1','Adulto 2'];changed=true;}
+ if(!Array.isArray(x.settings.categoryRules)){x.settings.categoryRules=[];changed=true;}
+ if(!Array.isArray(x.netWorthItems)){x.netWorthItems=[];changed=true;}
  if(!Number.isFinite(Number(x.settings.cycleGroupingDays))){x.settings.cycleGroupingDays=14;changed=true;}
  x.settings.cycleGroupingDays=Math.max(0,Math.min(20,Math.round(Number(x.settings.cycleGroupingDays)||0)));
  if(!Array.isArray(x.savingsGoals)){
@@ -79,12 +81,10 @@ function addMonthsClamp(dateStr, monthsToAdd){
  return `${ny}-${String(nm).padStart(2,'0')}-${String(Math.min(d,lastDay)).padStart(2,'0')}`;
 }
 
-// Calcula o mês de referência de cada ciclo financeiro (ex.: ciclo 21 ago a 20 set -> Setembro de 2026)
 function computeCycleReferenceMonth(c){
  if(c.fallback)return capFirst(mName(c.key.slice(6)));
  if(c.preCycle)return 'Período inicial ('+capFirst(mName(c.end.slice(0,7)))+')';
  const [sy,sm,sd]=c.start.split('-').map(Number);
- // Se o vencimento que abre o ciclo ocorre a partir do dia 15, o ciclo financia o mês seguinte (ex.: 21 ago -> Setembro)
  let refY=sy,refM=sm;
  if(sd>=15){
    refM+=1;
@@ -197,6 +197,8 @@ function line(t, omitDate=false){
  return `<div class="item row tx-clickable" data-open-tx="${esc(String(t.id))}"><div class="tx-left"><span class="tx-badge ${badgeCls}" aria-hidden="true">${categoryIcon(t)}</span><div class="tx-info"><b>${esc(t.description)}</b><div class="small">${datePrefix}${esc(t.category)} · ${esc(t.person)}${state}</div></div></div><div class="row" style="gap:6px;flex-shrink:0"><b class="amount ${cls}">${prefix} ${eur(t.amount)}</b>${actions}<button class="icon-btn" type="button" data-edit-tx="${esc(String(t.id))}" title="Ver ou editar movimento" aria-label="Ver ou editar movimento">✎</button><button class="danger" type="button" data-del="${esc(String(t.id))}" title="Apagar movimento" aria-label="Apagar movimento">×</button></div></div>`;
 }
 
+let currentCycleBalance=0;
+
 function render(){
  const {cycles,cycle}=getSelectedCycle();
  const mLabel=cycle.monthLabel||computeCycleReferenceMonth(cycle);
@@ -205,7 +207,6 @@ function render(){
  $('cycleSelect').innerHTML=cycles.slice().reverse().map(c=>`<option value="${esc(c.key)}">${esc(cycleName(c))}</option>`).join('');
  $('cycleSelect').value=cycle.key;
 
- // Sincroniza seletor de ciclos do separador Gráficos
  const aSel=$('analyticsCycleSelect');
  if(aSel){
    const prevA=aSel.value;
@@ -219,6 +220,7 @@ function render(){
  const svIn=tx.filter(t=>t.type==='saving'&&isPaid(t)),svOut=tx.filter(t=>t.type==='saving_withdraw'&&isPaid(t));
  const netSaving=sum(svIn)-sum(svOut);
  const cycleBalance=sum(inc)+sum(svOut)-sum(ex)-sum(svIn);
+ currentCycleBalance=cycleBalance;
 
  $('inc').textContent=eur(sum(inc));
  $('exp').textContent=eur(sum(ex));
@@ -227,6 +229,17 @@ function render(){
  $('bal').className=cycleBalance<0?'minus':'';
  $('savm').textContent=eur(netSaving);
  $('savm').className=netSaving>0?'plus':netSaving<0?'minus':'';
+
+ // Banner de Transferência de Saldo Sobrante (Rollover)
+ const rollBanner=$('rolloverBanner');
+ if(rollBanner){
+   if(cycleBalance>0.01){
+     rollBanner.hidden=false;
+     $('rolloverAvailAmount').textContent=eur(cycleBalance);
+   }else{
+     rollBanner.hidden=true;
+   }
+ }
 
  let alerts=[];
  db.settings.categories.forEach(c=>{
@@ -260,6 +273,8 @@ function render(){
 
  $('categoryManager').innerHTML=db.settings.categories.map((c,i)=>`<div class="item" data-category-row="${i}"><div class="grid"><div><label>Nome da categoria</label><input data-cat-name="${i}" maxlength="50" value="${esc(c.name)}"></div><div><label>Limite por ciclo (€)</label><input data-cat-budget="${i}" type="number" min="0" step=".01" value="${Number(c.budget)||0}"></div></div><div class="actions"><button class="secondary" type="button" data-cat-save="${i}">Guardar alterações</button><button class="danger" type="button" data-cat-delete="${i}">Eliminar</button></div></div>`).join('')||'<div class="empty">Ainda não existem categorias.</div>';
 
+ renderCategoryRules();
+
  const move=$('movementCycle'),oldMove=move.value;
  move.innerHTML='<option value="selected">Ciclo selecionado no Resumo</option><option value="all">Todos os movimentos (sem limite de ciclo)</option><option value="future">Prestações / movimentos futuros</option>'+cycles.slice().reverse().map(c=>`<option value="${esc(c.key)}">${esc(cycleName(c))}</option>`).join('');
  move.value=oldMove&&[...move.options].some(o=>o.value===oldMove)?oldMove:'selected';
@@ -279,6 +294,7 @@ function render(){
 
  renderTransactions();
  renderGoals();
+ renderNetWorth();
 
  const activeGoals=(db.savingsGoals||[]).filter(g=>g.status==='active');
  $('forecastText').innerHTML=activeGoals.length?activeGoals.map(g=>{
@@ -293,6 +309,254 @@ function render(){
  updateTxFormVisibility();
  checkNavScroll();
 }
+
+// 2. TRANSFERÊNCIA DE SALDO SOBRANTE (ROLLOVER) ENTRE CICLOS
+function syncRolloverModalUI(){
+ const dest=$('rolloverDestType').value;
+ $('rolloverGoalWrap').hidden=dest!=='goal';
+ const amt=Number($('rolloverAmount').value)||0;
+ const mLabel=activeCycle?.monthLabel||computeCycleReferenceMonth(activeCycle);
+ if(dest==='goal'){
+   $('rolloverExplain').textContent=`Será registada uma saída de poupança de ${eur(amt)} no ciclo de ${mLabel} associada ao objetivo escolhido, reduzindo o saldo sobrante deste ciclo.`;
+ }else{
+   $('rolloverExplain').textContent=`Será registado um ajuste de saída de ${eur(amt)} no ciclo de ${mLabel} e uma entrada extra de ${eur(amt)} («Saldo transportado · ${mLabel}») na abertura do ciclo seguinte, sem fechar o ciclo.`;
+ }
+}
+
+$('openRolloverModalBtn').onclick=()=>{
+ if(currentCycleBalance<=0.01)return;
+ $('rolloverModalMax').textContent=eur(currentCycleBalance);
+ const amtInput=$('rolloverAmount');
+ amtInput.max=currentCycleBalance.toFixed(2);
+ amtInput.value=currentCycleBalance.toFixed(2);
+
+ const goals=(db.savingsGoals||[]).filter(g=>g.status==='active');
+ const gSel=$('rolloverGoalSelect');
+ if(goals.length){
+   gSel.innerHTML=goals.map(g=>`<option value="${esc(g.id)}">${esc(g.name)} (faltam ${eur(Math.max(0,g.target-goalTotal(g)))})</option>`).join('');
+   $('rolloverDestType').value='goal';
+ }else{
+   gSel.innerHTML='<option value="">Nenhum objetivo ativo criado</option>';
+   $('rolloverDestType').value='next_cycle';
+ }
+
+ $('rolloverPerson').innerHTML=['Conta conjunta',...db.settings.people].map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('');
+ syncRolloverModalUI();
+ $('rolloverModal').hidden=false;
+};
+
+$('rolloverDestType').onchange=syncRolloverModalUI;
+$('rolloverAmount').oninput=syncRolloverModalUI;
+$('closeRolloverModalBtn').onclick=()=>{$('rolloverModal').hidden=true;};
+$('cancelRolloverBtn').onclick=()=>{$('rolloverModal').hidden=true;};
+$('rolloverModal').addEventListener('click',e=>{if(e.target===$('rolloverModal'))$('rolloverModal').hidden=true;});
+
+$('rolloverForm').onsubmit=e=>{
+ e.preventDefault();
+ const amt=Number($('rolloverAmount').value);
+ if(!Number.isFinite(amt)||amt<=0||amt>currentCycleBalance+0.01){
+   alert('Indica um valor válido até ao saldo disponível ('+eur(currentCycleBalance)+').');
+   return;
+ }
+ const dest=$('rolloverDestType').value;
+ const person=$('rolloverPerson').value||'Conta conjunta';
+ const mLabel=activeCycle?.monthLabel||computeCycleReferenceMonth(activeCycle);
+ const today=iso(now);
+ const opDate=(activeCycle&&today>=activeCycle.start&&today<=activeCycle.end)?today:(activeCycle?.end||today);
+
+ if(dest==='goal'){
+   const goalId=$('rolloverGoalSelect').value;
+   if(!goalId){alert('Cria primeiro um objetivo ativo ou escolhe transportar para o ciclo seguinte.');return;}
+   const goal=(db.savingsGoals||[]).find(g=>g.id===goalId);
+   db.transactions.push({
+     id:'roll-goal-'+Date.now()+'-'+Math.random().toString(36).slice(2,5),
+     date:opDate,
+     type:'saving',
+     description:`Transferência de sobra (${mLabel}) → ${goal?goal.name:'Objetivo'}`,
+     amount:Number(amt.toFixed(2)),
+     category:'Poupança',
+     person,
+     goalId
+   });
+ }else{
+   const idx=activeCycles.findIndex(c=>c.key===activeCycle?.key);
+   const nextCycle=(idx>=0&&idx+1<activeCycles.length)?activeCycles[idx+1]:null;
+   const nextDate=nextCycle?nextCycle.start:addDays(activeCycle?.end||today,1);
+   const baseId=Date.now()+'-'+Math.random().toString(36).slice(2,5);
+   // Saída de ajuste no ciclo atual
+   db.transactions.push({
+     id:'roll-out-'+baseId,
+     date:opDate,
+     type:'expense',
+     description:`Saldo transportado para ciclo seguinte (${mLabel})`,
+     amount:Number(amt.toFixed(2)),
+     category:db.settings.categories.find(c=>c.name.includes('Outros'))?.name||db.settings.categories[0]?.name||'Outros / imprevistos',
+     person
+   });
+   // Entrada extra no ciclo seguinte (não fecha ciclo)
+   db.transactions.push({
+     id:'roll-in-'+baseId,
+     date:nextDate,
+     type:'income',
+     description:`Saldo transportado do ciclo de ${mLabel}`,
+     amount:Number(amt.toFixed(2)),
+     category:'Rendimento',
+     person,
+     countsForCycle:false
+   });
+ }
+ $('rolloverModal').hidden=true;
+ persist();
+};
+
+// 4. DICIONÁRIO INTELIGENTE DE CATEGORIZAÇÃO (APRENDIZAGEM AUTOMÁTICA)
+function suggestKeywordFromDesc(desc){
+ const clean=String(desc||'').toUpperCase()
+   .replace(/(COMPRA|PAGAMENTO|PAG\.|TRF|TRANSFERENCIA|MB\s*WAY|DEBITO|DIRETO|DD|SIBS|MULTIBANCO|CARTAO|POS|EUR|PT)/g,' ')
+   .replace(/[0-9*\/\-]+/g,' ')
+   .replace(/\s+/g,' ').trim();
+ const words=clean.split(' ').filter(w=>w.length>=3);
+ return words.slice(0,2).join(' ').slice(0,35);
+}
+
+function learnCategoryRule(keyword, categoryName){
+ const kw=String(keyword||'').trim().toLocaleLowerCase('pt-PT');
+ if(!kw||kw.length<2||!categoryName)return false;
+ if(!Array.isArray(db.settings.categoryRules))db.settings.categoryRules=[];
+ const existing=db.settings.categoryRules.find(r=>String(r.keyword).toLocaleLowerCase('pt-PT')===kw);
+ if(existing){
+   existing.category=categoryName;
+ }else{
+   db.settings.categoryRules.unshift({id:'cr-'+Date.now().toString(36),keyword:keyword.trim(),category:categoryName});
+ }
+ return true;
+}
+
+function renderCategoryRules(){
+ const sel=$('ruleCategory'),listEl=$('categoryRulesList');
+ if(!sel||!listEl)return;
+ const prev=sel.value;
+ sel.innerHTML=db.settings.categories.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
+ if(prev&&[...sel.options].some(o=>o.value===prev))sel.value=prev;
+
+ const rules=db.settings.categoryRules||[];
+ listEl.innerHTML=rules.length?rules.map(r=>`
+   <div class="item row">
+     <div>
+       <b>«${esc(r.keyword)}»</b> → <span class="pill">${esc(r.category)}</span>
+     </div>
+     <button type="button" class="danger" data-del-cat-rule="${esc(r.id)}" title="Remover regra">×</button>
+   </div>
+ `).join(''):'<div class="empty">Ainda sem regras personalizadas memorizadas.</div>';
+}
+
+$('categoryRuleForm').onsubmit=e=>{
+ e.preventDefault();
+ const kw=$('ruleKeyword').value.trim();
+ const cat=$('ruleCategory').value;
+ if(!kw||kw.length<2){alert('Indica uma palavra-chave com pelo menos 2 caracteres.');return;}
+ learnCategoryRule(kw,cat);
+ $('categoryRuleForm').reset();
+ persist();
+};
+
+$('categoryRulesList').onclick=e=>{
+ const del=e.target.closest('[data-del-cat-rule]');
+ if(!del)return;
+ db.settings.categoryRules=(db.settings.categoryRules||[]).filter(r=>String(r.id)!==String(del.dataset.delCatRule));
+ persist();
+};
+
+// 5. PATRIMÓNIO LÍQUIDO DO AGREGADO (ATIVOS E PASSIVOS)
+function renderNetWorth(){
+ const items=db.netWorthItems||[];
+ const assets=items.filter(x=>x.type==='asset');
+ const liabilities=items.filter(x=>x.type==='liability');
+ const totalAssets=assets.reduce((s,x)=>s+(Number(x.balance)||0),0);
+ const totalLiabilities=liabilities.reduce((s,x)=>s+(Number(x.balance)||0),0);
+ const netWorth=totalAssets-totalLiabilities;
+
+ $('nwAssetsTotal').textContent=eur(totalAssets);
+ $('nwLiabilitiesTotal').textContent=eur(totalLiabilities);
+ $('nwNetTotal').textContent=eur(netWorth);
+ $('nwNetTotal').className=netWorth<0?'minus':'plus';
+ $('nwNetCard').classList.toggle('is-negative',netWorth<0);
+ $('netWorthBadge').textContent=`${items.length} conta(s)/crédito(s)`;
+
+ const renderItem=x=>`
+   <div class="item row">
+     <div style="min-width:0;flex:1">
+       <b>${esc(x.name)}</b>
+       <div class="small">${x.note?esc(x.note)+' · ':''}Atualizado: ${esc(fmtDate(x.updatedAt||iso(now)))}</div>
+     </div>
+     <div class="row" style="gap:6px;flex-shrink:0">
+       <b class="amount ${x.type==='asset'?'plus':'minus'}">${eur(x.balance)}</b>
+       <button type="button" class="icon-btn" data-nw-edit="${esc(x.id)}" title="Atualizar saldo">✎</button>
+       <button type="button" class="danger" data-nw-del="${esc(x.id)}" title="Eliminar">×</button>
+     </div>
+   </div>`;
+
+ $('nwAssetsList').innerHTML=assets.length?assets.map(renderItem).join(''):'<div class="empty">Sem ativos registados.</div>';
+ $('nwLiabilitiesList').innerHTML=liabilities.length?liabilities.map(renderItem).join(''):'<div class="empty">Sem passivos/créditos registados.</div>';
+}
+
+function resetNetWorthForm(){
+ $('netWorthForm').reset();
+ $('nwId').value='';
+ $('nwFormTitle').textContent='Adicionar conta, poupança ou crédito';
+ $('nwSaveBtn').textContent='Guardar item patrimonial';
+ $('nwCancelBtn').hidden=true;
+}
+
+$('nwCancelBtn').onclick=resetNetWorthForm;
+$('netWorthForm').onsubmit=e=>{
+ e.preventDefault();
+ const id=$('nwId').value;
+ const type=$('nwType').value;
+ const name=$('nwName').value.trim();
+ const balance=Number($('nwBalance').value);
+ const note=$('nwNote').value.trim();
+ if(!name||!Number.isFinite(balance)||balance<0){alert('Indica um nome válido e um valor igual ou superior a zero.');return;}
+ if(!Array.isArray(db.netWorthItems))db.netWorthItems=[];
+ if(id){
+   const item=db.netWorthItems.find(x=>x.id===id);
+   if(item)Object.assign(item,{type,name,balance:Number(balance.toFixed(2)),note,updatedAt:iso(now)});
+ }else{
+   db.netWorthItems.push({
+     id:'nw-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,5),
+     type,name,balance:Number(balance.toFixed(2)),note,updatedAt:iso(now)
+   });
+ }
+ resetNetWorthForm();
+ persist();
+};
+
+$('objetivo').addEventListener('click',e=>{
+ const ed=e.target.closest('[data-nw-edit]');
+ if(ed){
+   const item=(db.netWorthItems||[]).find(x=>x.id===ed.dataset.nwEdit);
+   if(!item)return;
+   $('nwId').value=item.id;
+   $('nwType').value=item.type;
+   $('nwName').value=item.name;
+   $('nwBalance').value=Number(item.balance);
+   $('nwNote').value=item.note||'';
+   $('nwFormTitle').textContent='Atualizar saldo patrimonial';
+   $('nwSaveBtn').textContent='Guardar atualização';
+   $('nwCancelBtn').hidden=false;
+   $('netWorthForm').scrollIntoView({behavior:'smooth',block:'center'});
+   $('nwBalance').focus();
+   return;
+ }
+ const del=e.target.closest('[data-nw-del]');
+ if(del){
+   if(confirm('Eliminar este registo patrimonial?')){
+     db.netWorthItems=(db.netWorthItems||[]).filter(x=>x.id!==del.dataset.nwDel);
+     if($('nwId').value===del.dataset.nwDel)resetNetWorthForm();
+     persist();
+   }
+ }
+});
 
 function getFilteredMovements(){
  const f=$('filter').value,period=$('movementCycle').value,search=$('filterSearch').value.trim().toLocaleLowerCase('pt-PT'),cat=$('filterCategory').value,per=$('filterPerson').value;
@@ -348,7 +612,6 @@ function openTransactionDetailModal(id, startInEdit=false){
  $('txModalTitle').textContent=startInEdit?'Editar movimento':'Detalhe do movimento';
  $('txModalSubtitle').textContent=friendlyDateHeading(t.date);
 
- // Preencher vista de leitura
  $('txModalIcon').textContent=categoryIcon(t);
  const cls=t.type==='income'?'plus':t.type==='saving_withdraw'?'neutral':'minus';
  const prefix=t.type==='income'?'+':t.type==='saving'?'↗':t.type==='saving_withdraw'?'↙':'−';
@@ -374,7 +637,6 @@ function openTransactionDetailModal(id, startInEdit=false){
  $('txModalExtraRow').hidden=!extraInfo;
  $('txModalExtraDisplay').textContent=extraInfo;
 
- // Preencher formulário de edição no pop-up
  $('modalEditDate').value=t.date;
  $('modalEditType').value=t.type;
  $('modalEditDesc').value=t.description;
@@ -457,7 +719,7 @@ $('txModalEditForm').onsubmit=e=>{
  persist();
 };
 
-// SEPARADOR GRÁFICOS: ANÁLISE VISUAL DE CICLOS
+// 3. SEPARADOR GRÁFICOS: ANÁLISE VISUAL E COMPARAÇÃO ENTRE CICLOS
 const CHART_PALETTE=['#173653','#c5a56b','#245d49','#b54747','#396a94','#c97a1e','#5a4b81','#2e86ab','#7a8b99','#9c4f6e','#49796b','#b07d4f'];
 
 function buildAnalyticsDataset(cycle, metric){
@@ -485,7 +747,37 @@ function buildAnalyticsDataset(cycle, metric){
      budget:Number(c.budget)||0,
      color:CHART_PALETTE[idx%CHART_PALETTE.length]
    })).filter(x=>x.value>0||x.budget>0);
-   return {title:'Orçamento planeado vs. Gasto real',items,supportsDonut:false,isComparison:true};
+   return {title:'Orçamento planeado vs. Gasto real',items,supportsDonut:false,isComparison:true,refLabel:'Orçamento'};
+ }
+
+ if(metric==='compare_prev_cycle'||metric==='compare_avg_3'){
+   const idx=activeCycles.findIndex(x=>x.key===cycle.key);
+   const prevCycles=metric==='compare_prev_cycle'
+     ?(idx>0?[activeCycles[idx-1]]:[])
+     :(idx>0?activeCycles.slice(Math.max(0,idx-3),idx):[]);
+   const refLabel=metric==='compare_prev_cycle'
+     ?(prevCycles[0]?prevCycles[0].monthLabel:'Ciclo anterior')
+     :`Média ${prevCycles.length} ciclo(s)`;
+
+   const items=db.settings.categories.map((c,cIdx)=>{
+     const curVal=sum(exp.filter(t=>t.category===c.name));
+     let refVal=0;
+     if(prevCycles.length>0){
+       const totPrev=prevCycles.reduce((acc,pc)=>{
+         const pExp=cycleTransactions(pc).filter(t=>isPaid(t)&&t.type==='expense'&&t.category===c.name);
+         return acc+sum(pExp);
+       },0);
+       refVal=totPrev/prevCycles.length;
+     }
+     return {
+       label:c.name,
+       value:Number(curVal.toFixed(2)),
+       budget:Number(refVal.toFixed(2)),
+       color:CHART_PALETTE[cIdx%CHART_PALETTE.length]
+     };
+   }).filter(x=>x.value>0||x.budget>0);
+
+   return {title:`Ciclo atual vs. ${refLabel}`,items,supportsDonut:false,isComparison:true,refLabel,hasPrev:prevCycles.length>0};
  }
 
  if(metric==='daily_flow'){
@@ -520,7 +812,6 @@ function buildAnalyticsDataset(cycle, metric){
    return {title:'Despesas por responsável',items,supportsDonut:true,isComparison:false};
  }
 
- // balance_summary
  const netSav=Math.max(0,sum(svIn)-sum(svOut));
  const items=[
    {label:'Rendimentos',value:sum(inc),color:'#245d49'},
@@ -541,7 +832,6 @@ function drawAnalyticsChart(){
  let chartType=$('analyticsChartType').value;
  const dataset=buildAnalyticsDataset(cycle,metric);
 
- // Se métrica não fizer sentido em Donut, muda automaticamente para barras
  const donutOpt=$('analyticsChartType').querySelector('option[value="donut"]');
  if(donutOpt)donutOpt.disabled=!dataset.supportsDonut;
  if(!dataset.supportsDonut&&chartType==='donut'){
@@ -549,7 +839,7 @@ function drawAnalyticsChart(){
    $('analyticsChartType').value='bar';
  }
 
- $('analyticsCycleSubtitle').textContent=cycleName(cycle);
+ $('analyticsCycleSubtitle').textContent=cycleName(cycle)+(dataset.refLabel?` · Referência: ${dataset.refLabel}`:'');
 
  const rect=canvas.getBoundingClientRect();
  const dpr=Math.min(window.devicePixelRatio||1,2);
@@ -567,7 +857,6 @@ function drawAnalyticsChart(){
  const inkCol=styles.getPropertyValue('--ink').trim()||'#192838';
  const surfaceCol=styles.getPropertyValue('--surface').trim()||'#ffffff';
  const gCol=styles.getPropertyValue('--g').trim()||'#173653';
- const goldCol=styles.getPropertyValue('--gold').trim()||'#c5a56b';
 
  const items=dataset.items;
  const totalVal=items.reduce((s,x)=>s+x.value,0);
@@ -598,7 +887,6 @@ function drawAnalyticsChart(){
      ctx.stroke();
      startAngle+=slice;
    });
-   // Recorte central
    ctx.beginPath();
    ctx.arc(cx,cy,innerR,0,Math.PI*2);
    ctx.fillStyle=surfaceCol;
@@ -629,7 +917,7 @@ function drawAnalyticsChart(){
 
      if(dataset.isComparison&&item.budget>0){
        const bw=(item.budget/maxVal)*plotW;
-       ctx.fillStyle='rgba(197,165,107,0.35)';
+       ctx.fillStyle='rgba(197,165,107,0.38)';
        ctx.fillRect(padL,y,bw,barH);
      }
      const vw=(item.value/maxVal)*plotW;
@@ -666,7 +954,7 @@ function drawAnalyticsChart(){
    }));
 
    if(pts.length>1){
-     const grad=ctx.createLinearGradient(0,padTop=padT,0,padT+plotH);
+     const grad=ctx.createLinearGradient(0,padT,0,padT+plotH);
      grad.addColorStop(0,'rgba(57,106,148,0.28)');
      grad.addColorStop(1,'rgba(57,106,148,0.0)');
      ctx.fillStyle=grad;
@@ -700,7 +988,6 @@ function drawAnalyticsChart(){
      }
    });
  }else{
-   // Barras verticais (bar)
    const visible=items.slice(0,10);
    const padL=48,padR=16,padT=20,padB=36;
    const plotW=w-padL-padR,plotH=h-padT-padB;
@@ -724,7 +1011,7 @@ function drawAnalyticsChart(){
      const cx=padL+i*slotW+slotW/2;
      if(dataset.isComparison&&item.budget>0){
        const bh=(item.budget/maxVal)*plotH;
-       ctx.fillStyle='rgba(197,165,107,0.38)';
+       ctx.fillStyle='rgba(197,165,107,0.42)';
        ctx.fillRect(cx-barW*0.6,padT+plotH-bh,barW*1.2,bh);
      }
      const vh=(item.value/maxVal)*plotH;
@@ -741,21 +1028,36 @@ function drawAnalyticsChart(){
    });
  }
 
- // Legenda e tabela resumo abaixo do gráfico
  if(metric==='daily_flow'){
    $('analyticsLegend').innerHTML=`<div class="legend-pill"><div class="legend-left"><span class="legend-swatch" style="background:${gCol}"></span><span class="legend-label">Despesa acumulada</span></div><b>${eur(items[items.length-1]?.value||0)}</b></div>`;
    const topDays=[...items].filter(x=>x.daySpent>0).sort((a,b)=>b.daySpent-a.daySpent).slice(0,5);
    $('analyticsSummaryTable').innerHTML=topDays.length?topDays.map(d=>`<div class="item row"><span>Dia ${esc(d.label)}</span><b>${eur(d.daySpent)}</b></div>`).join(''):'<div class="empty">Sem despesas diárias registadas.</div>';
  }else{
-   $('analyticsLegend').innerHTML=items.map(item=>{
+   let legendPrefix='';
+   if(dataset.isComparison){
+     legendPrefix=`<div class="legend-pill" style="border-color:var(--gold)"><div class="legend-left"><span class="legend-swatch" style="background:rgba(197,165,107,0.55)"></span><span class="legend-label">Barra de fundo: ${esc(dataset.refLabel)}</span></div><b>Referência</b></div>`;
+   }
+   $('analyticsLegend').innerHTML=legendPrefix+items.map(item=>{
      const pct=totalVal>0?Math.round((item.value/totalVal)*100):0;
      return `<div class="legend-pill"><div class="legend-left"><span class="legend-swatch" style="background:${item.color}"></span><span class="legend-label" title="${esc(item.label)}">${esc(item.label)}</span></div><b>${eur(item.value)} <span class="small">(${pct}%)</span></b></div>`;
    }).join('');
 
    $('analyticsSummaryTable').innerHTML=items.map(item=>{
      const pct=totalVal>0?((item.value/totalVal)*100).toFixed(1):'0.0';
-     const extra=dataset.isComparison&&item.budget>0?` · Limite: ${eur(item.budget)}`:` · ${pct}% do total`;
-     return `<div class="item row"><div><b>${esc(item.label)}</b><div class="small">${extra}</div></div><b>${eur(item.value)}</b></div>`;
+     let extra=` · ${pct}% do total`;
+     let diffHtml='';
+     if(dataset.isComparison){
+       extra=` · ${dataset.refLabel}: ${eur(item.budget)}`;
+       if(item.budget>0){
+         const deltaPct=Math.round(((item.value-item.budget)/item.budget)*100);
+         const sign=deltaPct>0?'+':'';
+         const cls=deltaPct>0?'minus':deltaPct<0?'plus':'';
+         diffHtml=`<span class="small ${cls}" style="font-weight:700;margin-left:6px">(${sign}${deltaPct}%)</span>`;
+       }else if(item.value>0){
+         diffHtml=`<span class="small minus" style="font-weight:700;margin-left:6px">(novo)</span>`;
+       }
+     }
+     return `<div class="item row"><div><b>${esc(item.label)}</b><div class="small">${extra}</div></div><div><b>${eur(item.value)}</b>${diffHtml}</div></div>`;
    }).join('');
  }
 }
@@ -777,7 +1079,7 @@ function renderGoals(){
  $('goalsSummary').innerHTML=goals.length?goals.slice(0,4).map(g=>{
    const total=goalTotal(g),pct=g.target>0?Math.min(100,total/Number(g.target)*100):0;
    return `<div class="item"><div class="row"><b>${esc(g.name)}</b><span class="pill">${Math.round(pct)}%</span></div><div class="small">${eur(total)} / ${eur(g.target)} · ${goalStatusLabel(g.status)}</div><div class="progress"><i style="width:${pct}%"></i></div></div>`;
- }).join(''):'<div class="empty">Cria o primeiro objetivo na secção «Objetivos».</div>';
+ }).join(''):'<div class="empty">Cria o primeiro objetivo na secção «Objetivos & Património».</div>';
 
  $('goalList').innerHTML=goals.length?goals.map(g=>{
   const tx=goalTransactions(g).sort((a,b)=>b.date.localeCompare(a.date)),total=goalTotal(g),pct=g.target>0?Math.min(100,total/Number(g.target)*100):0,left=Math.max(0,Number(g.target)-total);
@@ -793,11 +1095,6 @@ function renderGoals(){
   }).join('');
   return `<div class="card"><div class="row"><div><h2>${esc(g.name)}</h2><span class="pill">${goalStatusLabel(g.status)}</span></div><b>${Math.round(pct)}%</b></div><div class="row"><b>${eur(total)} / ${eur(g.target)}</b><span class="small">${g.deadline?'Prazo: '+fmtDate(g.deadline):'Sem data-limite'}</span></div><div class="progress"><i style="width:${pct}%"></i></div><div class="small">${left>0?'Faltam '+eur(left):'Montante-alvo atingido.'}</div><div class="actions"><button class="ghost" type="button" data-goal-edit="${esc(g.id)}">Editar</button>${g.status!=='completed'?`<button class="ghost" type="button" data-goal-toggle="${esc(g.id)}">${g.status==='paused'?'Retomar':'Pausar'}</button>`:''}<button class="secondary" type="button" data-goal-complete="${esc(g.id)}">${g.status==='completed'?'Reabrir':'Concluir'}</button></div>${g.status==='active'?`<div class="grid"><div><label>Atribuir movimento de poupança existente</label><select data-goal-assign-select="${esc(g.id)}"><option value="">Selecionar movimento…</option>${options}</select></div><div style="display:flex;align-items:end"><button class="secondary" type="button" data-goal-assign="${esc(g.id)}">Atribuir movimento</button></div></div>`:''}<h3 style="font-size:14px;margin:14px 0 4px">Reforços e resgates atribuídos</h3>${history||'<div class="empty">Ainda sem movimentos associados.</div>'}</div>`;
  }).join(''):'<div class="card empty">Ainda não existem objetivos. Usa o formulário acima para criar um.</div>';
-}
-
-// EDIÇÃO DE MOVIMENTOS & PRESTAÇÕES
-function startEditTransaction(id){
- openTransactionDetailModal(id,true);
 }
 
 function resetTxForm(){
@@ -849,6 +1146,34 @@ function txTypeLabel(t){
  if(t.type==='saving')return 'Poupança (+)';
  if(t.type==='saving_withdraw')return 'Resgate (−)';
  return 'Despesa';
+}
+
+function buildNetWorthReportHtml(){
+ const items=db.netWorthItems||[];
+ if(!items.length)return '';
+ const assets=items.filter(x=>x.type==='asset');
+ const liabilities=items.filter(x=>x.type==='liability');
+ const tA=assets.reduce((s,x)=>s+(Number(x.balance)||0),0);
+ const tL=liabilities.reduce((s,x)=>s+(Number(x.balance)||0),0);
+ const rows=items.map(x=>`<tr>
+   <td>${x.type==='asset'?'Ativo':'Passivo'}</td>
+   <td><b>${esc(x.name)}</b></td>
+   <td>${esc(x.note||'—')}</td>
+   <td>${esc(x.updatedAt||iso(now))}</td>
+   <td class="num"><b>${eur(x.balance)}</b></td>
+ </tr>`).join('');
+ return `<div class="print-section">
+   <h2>Património Líquido do Agregado</h2>
+   <div class="print-kpis" style="grid-template-columns:repeat(3,1fr)">
+     <div class="print-kpi"><span>Total Ativos</span><b>${eur(tA)}</b></div>
+     <div class="print-kpi"><span>Total Passivos</span><b>${eur(tL)}</b></div>
+     <div class="print-kpi"><span>Património Líquido</span><b>${eur(tA-tL)}</b></div>
+   </div>
+   <table class="print-table">
+     <thead><tr><th>Natureza</th><th>Designação</th><th>Nota</th><th>Atualizado</th><th class="num">Saldo / Capital</th></tr></thead>
+     <tbody>${rows}</tbody>
+   </table>
+ </div>`;
 }
 
 function buildGoalsReportHtml(){
@@ -959,8 +1284,8 @@ function printReport(mode){
  let title='Relatório Financeiro Geral',bodyHtml='';
 
  if(mode==='goals'){
-   title='Relatório de Objetivos de Poupança';
-   bodyHtml=buildGoalsReportHtml();
+   title='Relatório de Objetivos e Património';
+   bodyHtml=buildNetWorthReportHtml()+buildGoalsReportHtml();
  }else if(mode==='movements'){
    const {list,periodLabel,typeLabel}=getFilteredMovements();
    title='Extrato de Movimentos';
@@ -968,14 +1293,17 @@ function printReport(mode){
  }else{
    const today=iso(now);
    const tx=[...cycleTransactions(cycle)].filter(t=>t.date<=today).sort((a,b)=>b.date.localeCompare(a.date));
-   title='Relatório do Ciclo Financeiro e Objetivos';
-   bodyHtml=buildMovementsReportHtml(tx,cycleName(cycle),true)+buildGoalsReportHtml();
+   title='Relatório do Ciclo Financeiro, Objetivos e Património';
+   bodyHtml=buildMovementsReportHtml(tx,cycleName(cycle),true)+buildNetWorthReportHtml()+buildGoalsReportHtml();
  }
 
  $('printSheet').innerHTML=`
    <div class="print-header">
-     <div><h1>DuoFin · ${esc(title)}</h1><div class="small">${esc(peopleNames)}</div></div>
-     <div class="print-meta">Emitido em ${esc(emitted)}<br>DuoFin V5.8.0</div>
+     <div class="print-header-brand">
+       <img src="./icons/logo-full.png" alt="DuoFin">
+       <div><h1>${esc(title)}</h1><div class="small">${esc(peopleNames)}</div></div>
+     </div>
+     <div class="print-meta">Emitido em ${esc(emitted)}<br>DuoFin V5.9.0</div>
    </div>
    ${bodyHtml}
    <div class="print-footer"><span>DuoFin — Gestão Financeira a Dois</span><span>Documento gerado localmente no dispositivo</span></div>
@@ -1116,7 +1444,7 @@ const PT_MONTHS = {
 function normalizeCsvDate(raw, fallbackYear){
  let s=String(raw||'').trim();
  if(!s)return null;
- const ptMatch=s.match(/^(\d{1,2})\s+([a-zA-ZçÇ\u0370-\u03FF]{3,10})\.?(?:\s+(\d{4}))?$/);
+ const ptMatch=s.match(/^(\d{1,2})\s+([a-zA-ZçÇͰ-Ͽ]{3,10})\.?(?:\s+(\d{4}))?$/);
  if(ptMatch){
    const d=+ptMatch[1];
    const mKey=ptMatch[2].toLocaleLowerCase('pt-PT');
@@ -1145,7 +1473,7 @@ function normalizeCsvDate(raw, fallbackYear){
 }
 
 function normalizeCsvAmount(raw){
- let s=String(raw||'').replace(/[€$£\s\u00A0]/g,'').trim();
+ let s=String(raw||'').replace(/[€$£\s ]/g,'').trim();
  if(!s)return NaN;
  let neg=false;
  if(s.startsWith('(')&&s.endsWith(')')){neg=true;s=s.slice(1,-1);}
@@ -1163,6 +1491,16 @@ function normalizeCsvAmount(raw){
 
 function guessCategory(desc){
  const d=desc.toLocaleLowerCase('pt-PT');
+ const avail=new Set(db.settings.categories.map(c=>c.name));
+
+ // 1. Consultar primeiro o Dicionário Inteligente (regras aprendidas pelo casal)
+ const customRules=db.settings.categoryRules||[];
+ for(const rule of customRules){
+   const kw=String(rule.keyword||'').trim().toLocaleLowerCase('pt-PT');
+   if(kw&&avail.has(rule.category)&&d.includes(kw))return rule.category;
+ }
+
+ // 2. Regras base de estabelecimentos comuns em Portugal
  const rules=[
    ['Supermercado',['continente','pingo doce','lidl','aldi','auchan','intermarche','mercadona','minipreco','supercor','talho','padaria','mercearia']],
    ['Transportes',['galp','repsol','bp ','cepsa','prio','via verde','uber','bolt','cp ','carris','metro','estacionamento','parque','auto','oficina','pneus']],
@@ -1173,7 +1511,6 @@ function guessCategory(desc){
    ['Habitação',['renda','condominio','ikea','leroy','bricomarche','imov','habitacao','credito habitacao','multi-riscos','seguro de vida']],
    ['Vestuário e pessoal',['zara','hm ','primark','decathlon','sport zone','cabeleireiro','barbeiro','springfield']]
  ];
- const avail=new Set(db.settings.categories.map(c=>c.name));
  for(const [catName,keywords] of rules){
    if(avail.has(catName)&&keywords.some(k=>d.includes(k)))return catName;
  }
@@ -1181,8 +1518,9 @@ function guessCategory(desc){
 }
 
 function parseStatementTextLines(lines){
- const fullText=lines.join('\n');
- const yearMatches=fullText.match(/\b(20\d{2})\b/g);
+ const fullText=lines.join('
+');
+ const yearMatches=fullText.match(/(20\d{2})/g);
  const fallbackYear=yearMatches&&yearMatches.length?yearMatches[0]:String(now.getFullYear());
 
  if(/D[:.]?\s*valor/i.test(fullText)){
@@ -1191,10 +1529,10 @@ function parseStatementTextLines(lines){
  }
 
  const rows=[];
- const datePatternStr='(\\d{4}-\\d{2}-\\d{2}|\\d{1,2}[\\/.-]\\d{1,2}(?:[\\/.-]\\d{4})?|\\d{1,2}\\s+[a-zA-ZçÇ\\u0370-\\u03FF]{3,10}\\.?(?:\\s+\\d{4})?)';
- const dateStartRe=new RegExp('^'+datePatternStr+'\\b\\s*(.*)$');
- const secondDateRe=new RegExp('^'+datePatternStr+'\\b\\s*(.*)$');
- const amountTokenRe=/([+-]?\s*(?:\d{1,3}(?:[.\s\u00A0]\d{3})+|\d+),\d{2}|[+-]?\s*(?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2})\s*[€$£]?/g;
+ const datePatternStr='(\d{4}-\d{2}-\d{2}|\d{1,2}[\/.-]\d{1,2}(?:[\/.-]\d{4})?|\d{1,2}\s+[a-zA-ZçÇ\u0370-\u03FF]{3,10}\.?(?:\s+\d{4})?)';
+ const dateStartRe=new RegExp('^'+datePatternStr+'\b\s*(.*)$');
+ const secondDateRe=new RegExp('^'+datePatternStr+'\b\s*(.*)$');
+ const amountTokenRe=/([+-]?\s*(?:\d{1,3}(?:[.\s ]\d{3})+|\d+),\d{2}|[+-]?\s*(?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2})\s*[€$£]?/g;
  const skipLineRe=/^(saldo\s+(inicial|final|anterior|disponível|contabilístico|autorizado)|total\s+(de\s+)?(débitos|créditos|movimentos)|data\s+(mov|da\s+operação)|descrição|operação|página\s+\d|titular:|conta:|documento\s+com\s+data|para\s+pesquisas)/i;
 
  let pendingEntry=null;
@@ -1205,12 +1543,14 @@ function parseStatementTextLines(lines){
      const isIncome=pendingEntry.amount>0;
      const cleanDesc=pendingEntry.description.replace(/\s+/g,' ').trim()||'Movimento bancário';
      if(!skipLineRe.test(cleanDesc)){
+       const guessed=isIncome?'Rendimento':guessCategory(cleanDesc);
        rows.push({
          selected:true,
          date:pendingEntry.date,
          description:cleanDesc,
          type:isIncome?'income':'expense',
-         category:isIncome?'Rendimento':guessCategory(cleanDesc),
+         category:guessed,
+         initialCategory:guessed,
          amount:Math.abs(pendingEntry.amount)
        });
      }
@@ -1239,10 +1579,10 @@ function parseStatementTextLines(lines){
        const firstAmtIdx=amtMatches[0].index;
        let descPart=rest.slice(0,firstAmtIdx).trim();
        const trailingText=rest.slice(chosenMatch.index+chosenMatch[0].length).trim();
-       if(/^D\b|^DEB/i.test(trailingText)&&amt>0)amt=-amt;
-       if(/^C\b|^CRED/i.test(trailingText)&&amt<0)amt=Math.abs(amt);
+       if(/^D|^DEB/i.test(trailingText)&&amt>0)amt=-amt;
+       if(/^C|^CRED/i.test(trailingText)&&amt<0)amt=Math.abs(amt);
        if(!/[+-]/.test(chosenMatch[1])&&amt>0){
-         if(amtMatches.length===1&&/\b(transf\.?\s*receb|trf\.?\s*mb\s*way\s*de|ordenado|vencimento|salário|reembolso|crédito|depósito|juros\s+cred)\b/i.test(descPart)){
+         if(amtMatches.length===1&&/(transf\.?\s*receb|trf\.?\s*mb\s*way\s*de|ordenado|vencimento|salário|reembolso|crédito|depósito|juros\s+cred)/i.test(descPart)){
            amt=Math.abs(amt);
          }else if(amtMatches.length===1){
            amt=-Math.abs(amt);
@@ -1260,7 +1600,7 @@ function parseStatementTextLines(lines){
        const extraDesc=line.slice(0,amtMatches[0].index).trim();
        if(extraDesc)pendingEntry.description+=' '+extraDesc;
        if(!/[+-]/.test(chosenMatch[1])&&amt>0&&amtMatches.length===1){
-         if(!/\b(transf\.?\s*receb|trf\.?\s*mb\s*way\s*de|ordenado|vencimento|salário|reembolso|crédito|depósito)\b/i.test(pendingEntry.description)){
+         if(!/(transf\.?\s*receb|trf\.?\s*mb\s*way\s*de|ordenado|vencimento|salário|reembolso|crédito|depósito)/i.test(pendingEntry.description)){
            amt=-Math.abs(amt);
          }
        }
@@ -1275,9 +1615,9 @@ function parseStatementTextLines(lines){
 }
 
 function parseSantanderLines(lines, fallbackYear){
- const dateOnlyRe=/^(\d{1,2}\s+[a-zA-ZçÇ\u0370-\u03FF]{3,10}\.?(?:\s+\d{4})?|\d{1,2}[\/.-]\d{1,2}[\/.-]\d{4})$/;
+ const dateOnlyRe=/^(\d{1,2}\s+[a-zA-ZçÇͰ-Ͽ]{3,10}\.?(?:\s+\d{4})?|\d{1,2}[\/.-]\d{1,2}[\/.-]\d{4})$/;
  const dValorRe=/^D[:.]?\s*valor[:.]?\s*(.+)$/i;
- const amountTokenRe=/([+-]?\s*(?:\d{1,3}(?:[.\s\u00A0]\d{3})+|\d+),\d{2})\s*€/g;
+ const amountTokenRe=/([+-]?\s*(?:\d{1,3}(?:[.\s ]\d{3})+|\d+),\d{2})\s*€/g;
  const skipHeaderRe=/^(santander|titular:|conta:|saldo\s+disponível|movimentos\s+da\s+sua\s+conta|operação|data\s+da\s+operação|documento\s+com\s+data|página\s+\d|para\s+pesquisas)/i;
 
  const cleanLines=lines.map(l=>l.trim()).filter(l=>l&&!skipHeaderRe.test(l));
@@ -1342,12 +1682,14 @@ function parseSantanderLines(lines, fallbackYear){
    if(!Number.isFinite(movAmount)||movAmount===0)continue;
    const description=descParts.join(' ').replace(/\s+/g,' ').trim()||'Movimento Santander';
    const isIncome=movAmount>0;
+   const guessed=isIncome?'Rendimento':guessCategory(description);
    results.push({
      selected:true,
      date:dt,
      description,
      type:isIncome?'income':'expense',
-     category:isIncome?'Rendimento':guessCategory(description),
+     category:guessed,
+     initialCategory:guessed,
      amount:Math.abs(movAmount)
    });
  }
@@ -1355,9 +1697,11 @@ function parseSantanderLines(lines, fallbackYear){
 }
 
 function parseCsvContent(text){
- const lines=text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+ const lines=text.split(/?
+/).map(l=>l.trim()).filter(Boolean);
  if(lines.length<2)throw new Error('O ficheiro parece estar vazio.');
- const sample=lines.slice(0,5).join('\n');
+ const sample=lines.slice(0,5).join('
+');
  const sep=(sample.match(/;/g)||[]).length>=(sample.match(/,/g)||[]).length?';':',';
  let headerIdx=0;
  for(let i=0;i<Math.min(10,lines.length);i++){
@@ -1394,12 +1738,14 @@ function parseCsvContent(text){
    }
    if(!Number.isFinite(amt)||amt===0)continue;
    const isIncome=amt>0;
+   const guessed=isIncome?'Rendimento':guessCategory(desc);
    rows.push({
      selected:true,
      date:dt,
      description:desc,
      type:isIncome?'income':'expense',
-     category:isIncome?'Rendimento':guessCategory(desc),
+     category:guessed,
+     initialCategory:guessed,
      amount:Math.abs(amt)
    });
  }
@@ -1415,7 +1761,8 @@ $('cancelPasteTextBtn').onclick=()=>{$('pasteExtractBox').hidden=true;};
 $('parsePastedTextBtn').onclick=()=>{
  const raw=$('pasteExtractText').value.trim();
  if(!raw){alert('Cola primeiro o texto copiado do extrato bancário.');return;}
- const lines=raw.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+ const lines=raw.split(/?
+/).map(l=>l.trim()).filter(Boolean);
  const rows=parseStatementTextLines(lines);
  if(!rows.length){
    alert('Não foi possível detetar movimentos com Data e Valor no texto colado. Confirma se copiaste as linhas completas do extrato.');
@@ -1504,6 +1851,9 @@ function openImportDetailModal(idx){
  $('impEditCat').innerHTML=db.settings.categories.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
  if([...$('impEditCat').options].some(o=>o.value===r.category))$('impEditCat').value=r.category;
  $('impEditCatWrap').hidden=r.type!=='expense';
+ $('impLearnRuleWrap').hidden=r.type!=='expense';
+ $('impLearnRuleCheck').checked=true;
+ $('impLearnKeyword').value=suggestKeywordFromDesc(r.description);
  $('importDupWarning').hidden=!r.isDup;
  $('impPrevBtn').disabled=idx<=0;
  $('impNextBtn').disabled=idx>=parsedCsvRows.length-1;
@@ -1514,19 +1864,38 @@ function saveCurrentImportModal(){
  const idx=Number($('impEditIdx').value);
  const r=parsedCsvRows[idx];
  if(!r)return;
+ const prevCat=r.category;
  r.selected=$('impEditSelected').checked;
  if(validDate($('impEditDate').value))r.date=$('impEditDate').value;
  const v=parseFloat($('impEditAmount').value);
  if(Number.isFinite(v)&&v>0)r.amount=Number(v.toFixed(2));
  r.description=$('impEditDesc').value.trim()||'Movimento bancário';
  r.type=$('impEditType').value;
- if(r.type==='expense')r.category=$('impEditCat').value;
+ if(r.type==='expense'){
+   r.category=$('impEditCat').value;
+   // Aprendizagem automática se a categoria foi alterada e a opção está ativa
+   if(r.category!==prevCat&&$('impLearnRuleCheck').checked){
+     const kw=$('impLearnKeyword').value.trim();
+     if(kw&&learnCategoryRule(kw,r.category)){
+       // Reaplicar aos restantes movimentos da mesma lista de pré-visualização!
+       const kwLow=kw.toLocaleLowerCase('pt-PT');
+       parsedCsvRows.forEach(other=>{
+         if(other.type==='expense'&&other.description.toLocaleLowerCase('pt-PT').includes(kwLow)){
+           other.category=r.category;
+         }
+       });
+       persist();
+     }
+   }
+ }
  r.isDup=isDuplicateMovement(r);
  renderCsvPreview();
 }
 
 $('impEditType').onchange=()=>{
- $('impEditCatWrap').hidden=$('impEditType').value!=='expense';
+ const isExp=$('impEditType').value==='expense';
+ $('impEditCatWrap').hidden=!isExp;
+ $('impLearnRuleWrap').hidden=!isExp;
 };
 $('closeImportModalBtn').onclick=()=>{$('importDetailModal').hidden=true;};
 $('saveImportDetailBtn').onclick=()=>{
@@ -1754,7 +2123,6 @@ $('resetFiltersBtn').onclick=()=>{
 };
 $('type').onchange=updateTxFormVisibility;
 
-// Eventos dos botões de impressão
 $('printFullReportBtn').onclick=()=>printReport('full');
 $('printMovementsBtn').onclick=()=>printReport('movements');
 $('printGoalsBtn').onclick=()=>printReport('goals');
@@ -1926,7 +2294,11 @@ $('txCategorySave').onclick=()=>{
   if(txCategoryMode==='edit'){
     const c=db.settings.categories[txCategoryIndex];if(!c)return;
     const previous=c.name;c.name=name;c.budget=budget;
-    if(previous!==name){db.transactions.forEach(t=>{if(t.category===previous)t.category=name;});db.recurringExpenses?.forEach(r=>{if(r.category===previous)r.category=name;});}
+    if(previous!==name){
+      db.transactions.forEach(t=>{if(t.category===previous)t.category=name;});
+      db.recurringExpenses?.forEach(r=>{if(r.category===previous)r.category=name;});
+      db.settings.categoryRules?.forEach(cr=>{if(cr.category===previous)cr.category=name;});
+    }
   }else{
     db.settings.categories.push({name,budget});
   }
@@ -1954,7 +2326,11 @@ $('categoryManager').addEventListener('click',e=>{
     if(!Number.isFinite(budget)||budget<0){alert('Indique um limite válido.');return;}
     const previous=db.settings.categories[i].name;
     db.settings.categories[i]={name,budget};
-    if(previous!==name){db.transactions.forEach(t=>{if(t.category===previous)t.category=name;});db.recurringExpenses?.forEach(r=>{if(r.category===previous)r.category=name;});}
+    if(previous!==name){
+      db.transactions.forEach(t=>{if(t.category===previous)t.category=name;});
+      db.recurringExpenses?.forEach(r=>{if(r.category===previous)r.category=name;});
+      db.settings.categoryRules?.forEach(cr=>{if(cr.category===previous)cr.category=name;});
+    }
     persist();alert('Categoria atualizada.');
   }
   if(del){
@@ -1965,12 +2341,16 @@ $('categoryManager').addEventListener('click',e=>{
     let replacement=null;
     if(used.length){
       const choices=db.settings.categories.filter((c,j)=>j!==i).map(c=>c.name);
-      const answer=prompt('Esta categoria está associada a '+used.length+' movimento(s). Escreva exatamente o nome da categoria de destino:\n'+choices.join('\n'));
+      const answer=prompt('Esta categoria está associada a '+used.length+' movimento(s). Escreva exatamente o nome da categoria de destino:
+'+choices.join('
+'));
       if(answer===null)return;
       replacement=choices.find(n=>n.toLocaleLowerCase('pt-PT')===answer.trim().toLocaleLowerCase('pt-PT'));
       if(!replacement){alert('Categoria de destino não reconhecida. Nada foi alterado.');return;}
       if(!confirm('Os '+used.length+' movimento(s) serão reclassificados como "'+replacement+'". Continuar?'))return;
-      db.transactions.forEach(t=>{if(t.category===cat.name)t.category=replacement;});db.recurringExpenses?.forEach(r=>{if(r.category===cat.name)r.category=replacement;});
+      db.transactions.forEach(t=>{if(t.category===cat.name)t.category=replacement;});
+      db.recurringExpenses?.forEach(r=>{if(r.category===cat.name)r.category=replacement;});
+      db.settings.categoryRules?.forEach(cr=>{if(cr.category===cat.name)cr.category=replacement;});
     } else if(!confirm('Eliminar a categoria "'+cat.name+'"?')) return;
     db.settings.categories.splice(i,1);
     persist();
@@ -2020,7 +2400,7 @@ $('goalList').addEventListener('click',e=>{
    tx.goalId=g.id;persist();return;
  }
  if(remove){
-   const g=db.savingsGoals.find(x=>x.id===remove.dataset.goalRemoveFrom),tx=db.transactions.find(t=>String(t.id)===remove.dataset.goalRemoveTx);
+   const g=db.savingsGoals.find(x=>x.id===remove.dataset.goalRemoveFrom),tx=db.transactions.find(x=>String(x.id)===remove.dataset.goalRemoveTx);
    if(!g||!tx)return;
    if(!confirm('Retirar este movimento do objetivo? O movimento será preservado no histórico.'))return;
    if(tx.goalId===g.id)delete tx.goalId;
@@ -2070,7 +2450,7 @@ addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;in
 installBtn.onclick=async()=>{if(!installPrompt)return;installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;installBtn.hidden=true};
 addEventListener('appinstalled',()=>{$('installHint').textContent='DuoFin adicionada ao dispositivo. Também podes continuar a utilizar o endereço no navegador.';installBtn.hidden=true});
 
-// Sincronização Supabase com Auto-Merge
+// Sincronização Supabase com Auto-Merge (incluindo categoryRules e netWorthItems)
 const CLOUD_KEY='orcamento-plus-cloud-v1';
 let cloud={url:'',key:'',access_token:'',refresh_token:'',expires_at:0,user:null,household_id:null,revision:null,dirty:false};
 try{cloud={...cloud,...JSON.parse(localStorage.getItem(CLOUD_KEY)||'{}')}}catch(e){}
@@ -2104,7 +2484,17 @@ function setLocalData(p){const n=normalizeDb(p);db=n.db;localStorage.setItem(KEY
 function tryMergePayloads(localRaw, remoteRaw){
   const local=normalizeDb(JSON.parse(JSON.stringify(localRaw))).db;
   const remote=normalizeDb(JSON.parse(JSON.stringify(remoteRaw))).db;
-  if(JSON.stringify(local.settings)!==JSON.stringify(remote.settings))return null;
+  const localBaseSettings={...local.settings,categoryRules:undefined};
+  const remoteBaseSettings={...remote.settings,categoryRules:undefined};
+  if(JSON.stringify(localBaseSettings)!==JSON.stringify(remoteBaseSettings))return null;
+
+  const rulesMap=new Map();
+  (remote.settings.categoryRules||[]).forEach(r=>rulesMap.set(String(r.keyword).toLocaleLowerCase('pt-PT'),r));
+  (local.settings.categoryRules||[]).forEach(r=>{
+    const k=String(r.keyword).toLocaleLowerCase('pt-PT');
+    if(!rulesMap.has(k))rulesMap.set(k,r);
+  });
+
   const txMap=new Map();
   remote.transactions.forEach(t=>txMap.set(String(t.id),t));
   for(const t of local.transactions){
@@ -2133,11 +2523,19 @@ function tryMergePayloads(localRaw, remoteRaw){
     if(!goalMap.has(id))goalMap.set(id,g);
     else if(JSON.stringify(goalMap.get(id))!==JSON.stringify(g))return null;
   }
+  const nwMap=new Map();
+  (remote.netWorthItems||[]).forEach(n=>nwMap.set(String(n.id),n));
+  for(const n of (local.netWorthItems||[])){
+    const id=String(n.id);
+    if(!nwMap.has(id))nwMap.set(id,n);
+    else if(JSON.stringify(nwMap.get(id))!==JSON.stringify(n))return null;
+  }
   return {
-    settings:remote.settings,
+    settings:{...remote.settings,categoryRules:[...rulesMap.values()]},
     transactions:[...txMap.values()],
     recurringExpenses:[...recMap.values()],
-    savingsGoals:[...goalMap.values()]
+    savingsGoals:[...goalMap.values()],
+    netWorthItems:[...nwMap.values()]
   };
 }
 

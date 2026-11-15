@@ -1,4 +1,4 @@
-const CACHE_NAME = 'duofin-v5-8-0-20261113';
+const CACHE_NAME = 'duofin-v5-9-0-20261114';
 const CORE_ASSETS = [
   './',
   './index.html',
@@ -9,7 +9,9 @@ const CORE_ASSETS = [
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-192-maskable.png',
-  './icons/icon-512-maskable.png'
+  './icons/icon-512-maskable.png',
+  './icons/logo-mark.png',
+  './icons/logo-full.png'
 ];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(CORE_ASSETS)).then(() => self.skipWaiting()));

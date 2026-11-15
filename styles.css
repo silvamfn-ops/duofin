@@ -16,7 +16,7 @@ body{
 }
 header{
   background:linear-gradient(135deg,#11253c,#1e4466);
-  color:white;padding:22px 18px;padding-top:calc(22px + env(safe-area-inset-top));
+  color:white;padding:20px 18px;padding-top:calc(20px + env(safe-area-inset-top));
   border-radius:0 0 22px 22px;box-shadow:0 4px 14px rgba(17,37,60,0.16);
 }
 .header-inner{display:flex;align-items:center;justify-content:space-between;gap:12px}
@@ -26,12 +26,27 @@ header{
 }
 .wrap{max-width:860px;margin:auto;padding:0 14px}
 h1{margin:0;font-size:24px;letter-spacing:-0.3px}
-header p{margin:4px 0 0;color:#d6e2ee;font-size:14px}
-.brandline{display:flex;align-items:center;gap:11px}
-.brandmark{
-  display:inline-flex;align-items:center;justify-content:center;width:39px;height:39px;
-  border:1.5px solid #d8bd88;border-radius:12px;color:#e1c58f;font-size:15px;
-  font-weight:800;letter-spacing:-1px;flex:0 0 auto;background:rgba(255,255,255,0.04);
+header p{margin:2px 0 0;color:#d6e2ee;font-size:13.5px}
+.brandline{display:flex;align-items:center;gap:12px}
+.brandmark-img{
+  width:56px;height:38px;object-fit:contain;flex:0 0 auto;
+  filter:drop-shadow(0 2px 4px rgba(0,0,0,0.22));
+}
+.about-brand-box{
+  text-align:center;padding:12px 10px 8px;margin-bottom:10px;
+  border-bottom:1px solid var(--line);
+}
+.logo-full-img{max-width:190px;height:auto;display:inline-block}
+html.theme-dark .logo-full-img{
+  background:#f8fafc;padding:10px 16px;border-radius:14px;
+}
+
+/* Rollover Banner */
+.rollover-box{
+  background:linear-gradient(to right,var(--surface),var(--p));
+  border:1px solid var(--g);border-left:4px solid var(--gold);
+  border-radius:14px;padding:12px 14px;margin:11px 0;
+  box-shadow:var(--shadow-sm);
 }
 
 /* Navegação com indicador de scroll */
@@ -65,7 +80,7 @@ nav button.active{background:var(--g);color:white;border-color:var(--g);box-shad
 .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
 .stat{margin:0;position:relative;overflow:hidden;border-left:4px solid var(--line);transition:transform .12s}
 .stat span{display:block;color:var(--muted);font-size:12px;font-weight:500;margin-bottom:3px}
-.stat b{font-size:20px;letter-spacing:-0.3px}
+.stat b{font-size:19px;letter-spacing:-0.3px}
 .stat-inc{border-left-color:var(--green)}
 .stat-exp{border-left-color:var(--red)}
 .stat-bal{border-left-color:var(--g);background:linear-gradient(to bottom right,var(--surface),var(--p))}
@@ -263,15 +278,12 @@ footer{text-align:center;color:var(--muted);font-size:12px;padding:20px;padding-
 @media(min-width:600px){.modal-backdrop{align-items:center}}
 @keyframes slideUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
 
-.csv-table{width:100%;border-collapse:collapse;font-size:12px}
-.csv-table th,.csv-table td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left}
-.csv-table th{background:var(--surface-2);position:sticky;top:0;z-index:2}
-.csv-table select,.csv-table input{min-height:32px;padding:4px 6px;font-size:12px}
-
 /* ÁREA DE RELATÓRIOS PARA IMPRESSÃO */
 #printSheet{display:none}
 .print-header{border-bottom:2px solid #142b45;padding-bottom:12px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:flex-end}
-.print-header h1{font-size:22px;color:#142b45;margin:0}
+.print-header-brand{display:flex;align-items:center;gap:12px}
+.print-header-brand img{width:64px;height:auto}
+.print-header h1{font-size:21px;color:#142b45;margin:0}
 .print-meta{font-size:12px;color:#526170;text-align:right}
 .print-section{margin-bottom:22px;page-break-inside:avoid}
 .print-section h2{font-size:15px;color:#142b45;border-bottom:1px solid #cbd5e1;padding-bottom:5px;margin:0 0 10px;text-transform:uppercase;letter-spacing:.4px}
@@ -317,7 +329,6 @@ html.theme-dark .neutral{color:#8eb8e0}
 html.theme-dark .alert.red{background:#3b2528;color:#ffb4ac}
 html.theme-dark .alert.good{background:#1c3a32;color:#a9dec7}
 html.theme-dark .danger{background:#3b2528;color:#ffb4ac}
-html.theme-dark .brandmark{border-color:#d8bd88;color:#e1c58f}
 
 html.density-compact body{font-size:14px}
 html.density-compact .card{padding:11px;margin:7px 0;border-radius:13px}
@@ -339,7 +350,7 @@ html.density-detailed input,html.density-detailed select{min-height:47px;padding
   .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 }
 @media(max-width:560px){
-  .brandmark{width:35px;height:35px}
+  .brandmark-img{width:46px;height:32px}
   .grid,.grid-3{grid-template-columns:1fr;gap:8px}
   .install-instructions{font-size:14px}
   .barline-name{width:95px}
