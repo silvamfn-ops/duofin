@@ -20,6 +20,11 @@ header{
   border-radius:0 0 22px 22px;box-shadow:0 4px 14px rgba(17,37,60,0.16);
 }
 .header-inner{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.header-lock-btn{
+  background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.22);
+  color:#fff;font-size:14px;padding:4px 9px;border-radius:99px;line-height:1.2;
+}
+.header-lock-btn:hover{background:rgba(255,255,255,0.22)}
 .version-badge{
   background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);
   color:#e1c58f;font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px;
@@ -33,6 +38,35 @@ header p{margin:4px 0 0;color:#d6e2ee;font-size:14px}
   border:1.5px solid #d8bd88;border-radius:12px;color:#e1c58f;font-size:15px;
   font-weight:800;letter-spacing:-1px;flex:0 0 auto;background:rgba(255,255,255,0.04);
 }
+
+/* Ecrã de bloqueio PIN / Biometria */
+.lock-overlay{
+  position:fixed;inset:0;z-index:9999;
+  background:linear-gradient(145deg,#0f1f33,#183552);
+  display:flex;align-items:center;justify-content:center;padding:18px;
+}
+.lock-overlay[hidden]{display:none}
+.lock-box{
+  background:var(--surface);color:var(--ink);border:1px solid var(--line);
+  border-radius:20px;padding:24px 20px;width:100%;max-width:360px;
+  text-align:center;box-shadow:0 14px 38px rgba(0,0,0,0.35);
+}
+.lock-mark{
+  width:50px;height:50px;font-size:18px;background:#142b45;margin:0 auto;
+}
+.pin-input{
+  text-align:center;font-size:24px;letter-spacing:8px;font-weight:700;
+  min-height:50px;
+}
+
+/* Painel Rollover (Transferência de Saldo Sobrante) */
+.rollover-panel{
+  background:linear-gradient(to right,var(--surface),var(--p));
+  border:1px solid rgba(23,54,83,0.22);border-left:4px solid var(--gold);
+  border-radius:14px;padding:12px 14px;margin:11px 0;box-shadow:var(--shadow-sm);
+}
+.rollover-title{font-size:14px;color:var(--ink);margin-bottom:2px}
+.rollover-title b{color:var(--green)}
 
 /* Navegação com indicador de scroll */
 .nav-wrapper{position:relative;margin:2px 0}
@@ -71,14 +105,6 @@ nav button.active{background:var(--g);color:white;border-color:var(--g);box-shad
 .stat-bal{border-left-color:var(--g);background:linear-gradient(to bottom right,var(--surface),var(--p))}
 .stat-bal.is-negative{border-left-color:var(--red);background:linear-gradient(to bottom right,var(--surface),#fff5f5)}
 .stat-sav{border-left-color:var(--gold)}
-
-/* Projeção de fecho de ciclo */
-.projected-sub{
-  margin-top:6px;padding-top:5px;border-top:1px dashed var(--line);
-  font-size:11.5px;color:var(--muted);line-height:1.3;
-}
-.projected-sub strong{color:var(--ink);font-weight:700}
-.projected-sub.is-warn strong{color:var(--red)}
 
 h2{font-size:17px;margin:0 0 12px;letter-spacing:-0.2px}
 .row{display:flex;align-items:center;justify-content:space-between;gap:10px}
@@ -185,7 +211,7 @@ footer{text-align:center;color:var(--muted);font-size:12px;padding:20px;padding-
 
 /* Separador Gráficos */
 .analytics-canvas-box{
-  width:100%;height:285px;position:relative;margin-top:14px;
+  width:100%;height:280px;position:relative;margin-top:14px;
   background:var(--surface-2);border:1px solid var(--line);border-radius:14px;padding:10px;
 }
 .analytics-legend{
@@ -271,6 +297,11 @@ footer{text-align:center;color:var(--muted);font-size:12px;padding:20px;padding-
 @media(min-width:600px){.modal-backdrop{align-items:center}}
 @keyframes slideUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
 
+.csv-table{width:100%;border-collapse:collapse;font-size:12px}
+.csv-table th,.csv-table td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left}
+.csv-table th{background:var(--surface-2);position:sticky;top:0;z-index:2}
+.csv-table select,.csv-table input{min-height:32px;padding:4px 6px;font-size:12px}
+
 /* ÁREA DE RELATÓRIOS PARA IMPRESSÃO */
 #printSheet{display:none}
 .print-header{border-bottom:2px solid #142b45;padding-bottom:12px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:flex-end}
@@ -295,7 +326,7 @@ footer{text-align:center;color:var(--muted);font-size:12px;padding:20px;padding-
 @media print{
   @page{size:A4;margin:14mm}
   body{background:#fff !important;color:#0f172a !important;font-size:12px}
-  header,.nav-wrapper,.view,.fab,footer,.modal-backdrop{display:none !important}
+  header,.nav-wrapper,.view,.fab,footer,.modal-backdrop,.lock-overlay{display:none !important}
   .wrap{max-width:100%;padding:0;margin:0}
   #printSheet{display:block !important}
   .print-table tr{page-break-inside:avoid}
@@ -346,5 +377,5 @@ html.density-detailed input,html.density-detailed select{min-height:47px;padding
   .grid,.grid-3{grid-template-columns:1fr;gap:8px}
   .install-instructions{font-size:14px}
   .barline-name{width:95px}
-  .analytics-canvas-box{height:255px}
+  .analytics-canvas-box{height:250px}
 }
