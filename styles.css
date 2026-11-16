@@ -447,3 +447,45 @@ html.density-detailed input,html.density-detailed select{min-height:47px;padding
 @media(max-width:560px){
   .budget-health-grid{grid-template-columns:1fr;gap:6px}
 }
+
+
+/* Camada de Segurança & Privacidade (v6.4.0) */
+.header-actions{display:flex;align-items:center;gap:8px}
+.header-icon-btn{
+  background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);
+  color:#f4f7fa;border-radius:10px;padding:5px 9px;font-size:14px;cursor:pointer;
+  transition:background-color .15s,transform .1s;
+}
+.header-icon-btn:hover{background:rgba(255,255,255,0.2)}
+.header-icon-btn.is-active{background:#e1c58f;color:#11253c;border-color:#e1c58f}
+
+body.privacy-masked .big,
+body.privacy-masked .tx-amount,
+body.privacy-masked .tx-modal-amount,
+body.privacy-masked .budget-health-grid b,
+body.privacy-masked .kpi-val,
+body.privacy-masked .goal-amounts,
+body.privacy-masked .cal-cell small,
+body.privacy-masked [data-sensitive-amount]{
+  filter:blur(6px);
+  user-select:none;
+  transition:filter .15s ease;
+}
+
+.app-lock-overlay{
+  position:fixed;inset:0;z-index:9999;
+  background:rgba(14,29,47,0.94);backdrop-filter:blur(10px);
+  display:flex;align-items:center;justify-content:center;padding:20px;
+}
+.app-lock-overlay[hidden]{display:none !important}
+.app-lock-box{
+  background:var(--surface);color:var(--ink);border:1px solid var(--line);
+  border-radius:20px;padding:26px 22px;max-width:360px;width:100%;
+  text-align:center;box-shadow:0 18px 44px rgba(0,0,0,0.35);
+}
+.pin-dots{display:flex;justify-content:center;gap:10px;margin:10px 0 14px}
+.pin-dots span{
+  width:11px;height:11px;border-radius:50%;border:1.5px solid var(--muted);
+  background:transparent;transition:background-color .12s,border-color .12s;
+}
+.pin-dots span.filled{background:var(--g);border-color:var(--g)}

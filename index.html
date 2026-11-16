@@ -12,17 +12,39 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; worker-src 'self' blob: https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co https://cdnjs.cloudflare.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self';">
   <link rel="stylesheet" href="./styles.css">
-  <title>DuoFin v6.3.0 — Gestão financeira a dois</title>
+  <title>DuoFin v6.4.0 — Gestão financeira a dois</title>
 </head>
 <body>
+  <!-- Ecrã de Bloqueio Local (PIN / Biometria WebAuthn) -->
+  <div id="appLockOverlay" class="app-lock-overlay" hidden>
+    <div class="app-lock-box" role="dialog" aria-modal="true" aria-labelledby="appLockTitle">
+      <div class="brandmark" style="margin:0 auto 12px;width:48px;height:48px;font-size:18px" aria-hidden="true">DF</div>
+      <h2 id="appLockTitle" style="margin:0 0 4px">DuoFin bloqueada</h2>
+      <p class="small" id="appLockSubtitle" style="margin:0 0 14px">Introduz o PIN de segurança para aceder aos dados financeiros.</p>
+      <div class="pin-dots" id="pinDotsDisplay" aria-hidden="true">
+        <span></span><span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <input type="password" id="appLockPinInput" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" placeholder="PIN (4 a 6 dígitos)" aria-label="PIN de desbloqueio" style="text-align:center;font-size:20px;letter-spacing:6px;max-width:210px;margin:0 auto 10px;display:block">
+      <div id="appLockError" class="small" style="color:var(--red);min-height:18px;margin-bottom:8px;font-weight:600"></div>
+      <div class="actions" style="justify-content:center;margin-top:4px">
+        <button type="button" class="primary" id="appLockUnlockBtn">Desbloquear</button>
+        <button type="button" class="secondary" id="appLockBioBtn" hidden>👆 Biometria / Dispositivo</button>
+      </div>
+    </div>
+  </div>
   <header>
     <div class="wrap header-inner">
       <div>
         <div class="brandline"><span class="brandmark" aria-hidden="true">DF</span><h1>DuoFin</h1></div>
         <p>As nossas finanças. O nosso equilíbrio.</p>
       </div>
-      <span class="version-badge">v6.3.0</span>
+      <div class="header-actions">
+        <button type="button" class="header-icon-btn" id="privacyToggleBtn" title="Ocultar ou mostrar valores monetários" aria-label="Modo privacidade">👁️</button>
+        <button type="button" class="header-icon-btn" id="lockAppHeaderBtn" title="Bloquear aplicação agora" aria-label="Bloquear aplicação" hidden>🔒</button>
+        <span class="version-badge">v6.4.0</span>
+      </div>
     </div>
   </header>
   <div class="wrap">
@@ -594,16 +616,65 @@
             <button class="ghost" id="cloudPull">Carregar versão partilhada</button>
             <button class="ghost" id="cloudPush">Enviar versão deste telemóvel</button>
           </div>
+          <hr>
+          <label for="e2eePassphrase">🔐 Encriptação ponta-a-ponta na nuvem (E2EE opcional)</label>
+          <div class="grid">
+            <div>
+              <input id="e2eePassphrase" type="password" autocomplete="new-password" placeholder="Chave secreta partilhada pelo casal (mín. 6 car.)">
+            </div>
+            <div style="display:flex;align-items:end;gap:8px;flex-wrap:wrap">
+              <button type="button" class="secondary" id="saveE2eeBtn">Ativar / Atualizar chave E2EE</button>
+              <button type="button" class="ghost" id="disableE2eeBtn" hidden>Desativar E2EE</button>
+            </div>
+          </div>
+          <p class="small" id="e2eeStatusText">Desativada: os dados são enviados em JSON padrão protegidos por RLS. Se definirem a mesma chave secreta nos dois telemóveis, todo o payload é cifrado localmente em AES-256-GCM antes de sair do dispositivo.</p>
           <p class="small">A aplicação verifica alterações enquanto está aberta (aproximadamente a cada 15 segundos). Novos movimentos, edições, eliminações e definições nos dois dispositivos são fundidos automaticamente.</p>
         </div>
       </div>
 
       <div class="card">
-        <h2>Cópias de segurança e privacidade</h2>
-        <p class="small">Sem configurar a sincronização, os dados ficam apenas no armazenamento local deste navegador. Com a sincronização ativada, são enviados para o projeto Supabase que o casal configurar, protegidos por autenticação e regras de acesso.</p>
+        <h2>Segurança local e privacidade</h2>
+        <p class="small">Protege o acesso neste dispositivo contra olhares indiscretos ou utilização não autorizada.</p>
+        <div id="securityLockStatus" class="alert" style="margin-bottom:10px">Bloqueio por PIN desativado neste dispositivo.</div>
+        <div class="grid">
+          <div>
+            <label for="newPinInput">Definir ou alterar PIN local (4 a 6 dígitos)</label>
+            <input id="newPinInput" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="new-password" placeholder="Ex.: 2580">
+          </div>
+          <div>
+            <label for="autoLockMinutes">Bloqueio automático por inatividade</label>
+            <select id="autoLockMinutes">
+              <option value="0">Apenas manual / ao abrir</option>
+              <option value="1">Após 1 minuto</option>
+              <option value="3">Após 3 minutos</option>
+              <option value="5" selected>Após 5 minutos</option>
+              <option value="15">Após 15 minutos</option>
+            </select>
+          </div>
+        </div>
         <div class="actions">
-          <button class="primary" id="export">Exportar cópia</button>
-          <label class="secondary">Importar cópia<input id="import" type="file" accept="application/json" hidden></label>
+          <button type="button" class="primary" id="savePinBtn">Guardar PIN</button>
+          <button type="button" class="secondary" id="enableBioBtn" hidden>👆 Ativar Impressão Digital / Face ID</button>
+          <button type="button" class="ghost" id="lockNowBtn" hidden>🔒 Bloquear agora</button>
+          <button type="button" class="danger" id="disablePinBtn" hidden>Remover PIN</button>
+        </div>
+        <hr>
+        <div class="row" style="flex-wrap:wrap;gap:8px">
+          <div>
+            <strong>Modo privacidade (ocultar valores)</strong>
+            <div class="small">Oculta saldos e montantes no ecrã (também disponível no ícone 👁️ no topo).</div>
+          </div>
+          <button type="button" class="secondary" id="togglePrivacyCardBtn">👁️ Alternar ocultação</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Cópias de segurança</h2>
+        <p class="small">Sem configurar a sincronização, os dados ficam apenas no armazenamento local deste navegador. Podes exportar uma cópia simples em JSON ou uma cópia protegida por palavra-passe (AES-256-GCM).</p>
+        <div class="actions">
+          <button class="primary" id="exportEncryptedBtn">🔐 Exportar cópia encriptada</button>
+          <button class="secondary" id="export">Exportar JSON simples</button>
+          <label class="secondary" style="cursor:pointer">Importar cópia<input id="import" type="file" accept=".json,.duofin,application/json" hidden></label>
         </div>
       </div>
 

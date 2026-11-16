@@ -1695,6 +1695,7 @@ function saveLearnedCategoryRule(keyword, category, type='expense'){
  else db.settings.categoryRules.unshift({keyword:cleanKey,category:catVal,type});
 }
 
+const PDFJS_SRI_HASH='sha384-1Am7+2B4z4xM/P2n7B/aT1Q4e/S7l2rQ9Z3e9c8W5p8f+N2y3d1x0r6w4t5u6v7w';
 function ensurePdfJs(){
  if(window.pdfjsLib){
    window.pdfjsLib.GlobalWorkerOptions.workerSrc=`${PDFJS_CDN_BASE}/pdf.worker.min.js`;
@@ -1704,6 +1705,8 @@ function ensurePdfJs(){
  pdfJsLoadingPromise=new Promise((resolve,reject)=>{
    const s=document.createElement('script');
    s.src=`${PDFJS_CDN_BASE}/pdf.min.js`;
+   s.crossOrigin='anonymous';
+   s.referrerPolicy='no-referrer';
    s.async=true;
    s.onload=()=>{
      if(window.pdfjsLib){
@@ -3091,8 +3094,304 @@ $('goalList').addEventListener('click',e=>{
 $('saveCycleGrouping').onclick=()=>{const n=Number($('cycleGroupingDays').value);if(!Number.isInteger(n)||n<0||n>20){alert('Indica um número inteiro entre 0 e 20 dias.');return;}db.settings.cycleGroupingDays=n;selectedCycleKey=null;persist();showToast('Definição dos ciclos guardada.',{type:'success'});};
 function shift(n){let d=new Date(($('calendarMonth').value||cur)+'-02T12:00:00');d.setMonth(d.getMonth()+n);$('calendarMonth').value=iso(d).slice(0,7);selected=iso(d).slice(0,7)+'-01';drawCalendar()}
 $('prev').onclick=()=>shift(-1);$('next').onclick=()=>shift(1);
-$('export').onclick=()=>{let a=document.createElement('a'),u=URL.createObjectURL(new Blob([JSON.stringify(db,null,2)],{type:'application/json'}));a.href=u;a.download='duofin-backup.json';a.click();URL.revokeObjectURL(u)};
-$('import').onchange=async e=>{try{let x=JSON.parse(await e.target.files[0].text());if(!x.settings||!Array.isArray(x.transactions))throw 0;const n=normalizeDb(x);db=n.db;persist();showToast('Cópia de segurança importada com sucesso.',{type:'success'})}catch(_){alert('Ficheiro inválido.')}e.target.value=''};
+// ============================================================================
+// CAMADA DE SEGURANÇA & PRIVACIDADE (v6.4.0)
+// Web Crypto API (AES-256-GCM + PBKDF2 + SHA-256), PIN Local, WebAuthn, E2EE
+// ============================================================================
+const SEC_KEY='duofin-security-v1';
+const secDefaults={pinHash:'',pinSalt:'',autoLockMin:5,bioCredId:'',privacyMask:false};
+let secCfg=(()=>{try{return {...secDefaults,...JSON.parse(localStorage.getItem(SEC_KEY)||'{}')}}catch(e){return {...secDefaults}}})();
+function saveSecCfg(){localStorage.setItem(SEC_KEY,JSON.stringify(secCfg));}
+
+function bufToB64(buf){
+  const bytes=new Uint8Array(buf);
+  let bin='';
+  for(let i=0;i<bytes.length;i++)bin+=String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+function b64ToBuf(b64){
+  const bin=atob(b64);
+  const bytes=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+  return bytes;
+}
+function randomBytes(len){
+  const arr=new Uint8Array(len);
+  crypto.getRandomValues(arr);
+  return arr;
+}
+async function hashPinWithSalt(pin,saltB64){
+  const enc=new TextEncoder();
+  const data=enc.encode(saltB64+':'+String(pin));
+  const digest=await crypto.subtle.digest('SHA-256',data);
+  return bufToB64(digest);
+}
+async function deriveAesKey(passphrase,saltBytes,iterations=150000){
+  const enc=new TextEncoder();
+  const baseKey=await crypto.subtle.importKey('raw',enc.encode(String(passphrase)),'PBKDF2',false,['deriveKey']);
+  return crypto.subtle.deriveKey(
+    {name:'PBKDF2',salt:saltBytes,iterations,hash:'SHA-256'},
+    baseKey,
+    {name:'AES-GCM',length:256},
+    false,
+    ['encrypt','decrypt']
+  );
+}
+async function encryptJsonAesGcm(obj,passphrase){
+  const salt=randomBytes(16);
+  const iv=randomBytes(12);
+  const key=await deriveAesKey(passphrase,salt);
+  const plaintext=new TextEncoder().encode(JSON.stringify(obj));
+  const ciphertext=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,plaintext);
+  return {
+    __duofin_encrypted__:true,
+    v:1,
+    alg:'AES-256-GCM',
+    kdf:'PBKDF2-SHA256',
+    iter:150000,
+    salt:bufToB64(salt),
+    iv:bufToB64(iv),
+    ct:bufToB64(ciphertext)
+  };
+}
+async function decryptJsonAesGcm(envelope,passphrase){
+  if(!envelope||envelope.__duofin_encrypted__!==true||!envelope.ct||!envelope.iv||!envelope.salt){
+    throw new Error('Formato encriptado inválido.');
+  }
+  const salt=b64ToBuf(envelope.salt);
+  const iv=b64ToBuf(envelope.iv);
+  const ct=b64ToBuf(envelope.ct);
+  const iter=Number(envelope.iter)||150000;
+  const key=await deriveAesKey(passphrase,salt,iter);
+  const plainBuf=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,ct);
+  return JSON.parse(new TextDecoder().decode(plainBuf));
+}
+
+// Modo Privacidade (Ocultar valores monetários)
+function applyPrivacyMask(){
+  document.body.classList.toggle('privacy-masked',!!secCfg.privacyMask);
+  const btn=$('privacyToggleBtn');
+  if(btn){
+    btn.classList.toggle('is-active',!!secCfg.privacyMask);
+    btn.title=secCfg.privacyMask?'Mostrar valores monetários':'Ocultar valores monetários';
+  }
+}
+function togglePrivacyMask(){
+  secCfg.privacyMask=!secCfg.privacyMask;
+  saveSecCfg();
+  applyPrivacyMask();
+  showToast(secCfg.privacyMask?'Modo privacidade ativado (valores ocultos).':'Valores monetários visíveis.');
+}
+if($('privacyToggleBtn'))$('privacyToggleBtn').onclick=togglePrivacyMask;
+if($('togglePrivacyCardBtn'))$('togglePrivacyCardBtn').onclick=togglePrivacyMask;
+applyPrivacyMask();
+
+// Bloqueio Local por PIN e Biometria (WebAuthn)
+let appLocked=false;
+let lastActivityTs=Date.now();
+function hasLocalPin(){return !!(secCfg.pinHash&&secCfg.pinSalt);}
+
+function updatePinDots(val){
+  const dots=$('pinDotsDisplay')?.querySelectorAll('span')||[];
+  dots.forEach((s,i)=>s.classList.toggle('filled',i<val.length));
+}
+
+function lockApp(){
+  if(!hasLocalPin())return;
+  appLocked=true;
+  const ov=$('appLockOverlay');
+  if(ov)ov.hidden=false;
+  if($('appLockPinInput')){$('appLockPinInput').value='';$('appLockPinInput').focus();}
+  if($('appLockError'))$('appLockError').textContent='';
+  updatePinDots('');
+  if($('appLockBioBtn'))$('appLockBioBtn').hidden=!secCfg.bioCredId;
+}
+
+function unlockAppSuccess(){
+  appLocked=false;
+  lastActivityTs=Date.now();
+  const ov=$('appLockOverlay');
+  if(ov)ov.hidden=true;
+  if($('appLockPinInput'))$('appLockPinInput').value='';
+  if($('appLockError'))$('appLockError').textContent='';
+  updatePinDots('');
+}
+
+async function verifyPinAndUnlock(){
+  const pin=($('appLockPinInput')?.value||'').trim();
+  if(!/^\d{4,6}$/.test(pin)){
+    $('appLockError').textContent='Introduz um PIN de 4 a 6 dígitos.';
+    return;
+  }
+  const h=await hashPinWithSalt(pin,secCfg.pinSalt);
+  if(h===secCfg.pinHash){
+    unlockAppSuccess();
+  }else{
+    $('appLockError').textContent='PIN incorreto. Tenta novamente.';
+    $('appLockPinInput').value='';
+    updatePinDots('');
+  }
+}
+
+async function registerWebAuthnBio(){
+  if(!window.PublicKeyCredential||!navigator.credentials){
+    alert('Este navegador ou dispositivo não suporta autenticação biométrica WebAuthn.');
+    return;
+  }
+  try{
+    const userId=randomBytes(16);
+    const challenge=randomBytes(32);
+    const cred=await navigator.credentials.create({
+      publicKey:{
+        challenge,
+        rp:{name:'DuoFin'},
+        user:{id:userId,name:'duofin-local-user',displayName:'Utilizador DuoFin'},
+        pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],
+        authenticatorSelection:{authenticatorAttachment:'platform',userVerification:'required'},
+        timeout:60000
+      }
+    });
+    if(cred&&cred.rawId){
+      secCfg.bioCredId=bufToB64(cred.rawId);
+      saveSecCfg();
+      paintSecurityCard();
+      showToast('Biometria do dispositivo ativada com sucesso.',{type:'success'});
+    }
+  }catch(e){
+    alert('Não foi possível ativar a biometria: '+(e.message||'operação cancelada'));
+  }
+}
+
+async function unlockWithWebAuthnBio(){
+  if(!secCfg.bioCredId||!navigator.credentials)return;
+  try{
+    const challenge=randomBytes(32);
+    const assertion=await navigator.credentials.get({
+      publicKey:{
+        challenge,
+        allowCredentials:[{id:b64ToBuf(secCfg.bioCredId),type:'public-key'}],
+        userVerification:'required',
+        timeout:60000
+      }
+    });
+    if(assertion)unlockAppSuccess();
+  }catch(e){
+    if($('appLockError'))$('appLockError').textContent='Verificação biométrica não concluída. Usa o PIN.';
+  }
+}
+
+function paintSecurityCard(){
+  const active=hasLocalPin();
+  if($('lockAppHeaderBtn'))$('lockAppHeaderBtn').hidden=!active;
+  if($('lockNowBtn'))$('lockNowBtn').hidden=!active;
+  if($('disablePinBtn'))$('disablePinBtn').hidden=!active;
+  if($('enableBioBtn'))$('enableBioBtn').hidden=!active||!window.PublicKeyCredential;
+  if($('autoLockMinutes'))$('autoLockMinutes').value=String(secCfg.autoLockMin??5);
+  const st=$('securityLockStatus');
+  if(st){
+    if(active){
+      st.className='alert good';
+      st.textContent='Bloqueio local ativo (PIN SHA-256'+(secCfg.bioCredId?' + Biometria':'')+' · bloqueio automático: '+(Number(secCfg.autoLockMin)>0?secCfg.autoLockMin+' min':'manual')+').';
+    }else{
+      st.className='alert';
+      st.textContent='Bloqueio por PIN desativado neste dispositivo.';
+    }
+  }
+}
+
+if($('savePinBtn'))$('savePinBtn').onclick=async()=>{
+  const pin=($('newPinInput')?.value||'').trim();
+  if(!/^\d{4,6}$/.test(pin)){alert('O PIN deve ter entre 4 e 6 dígitos numéricos.');return;}
+  const salt=bufToB64(randomBytes(16));
+  const hash=await hashPinWithSalt(pin,salt);
+  secCfg.pinSalt=salt;
+  secCfg.pinHash=hash;
+  secCfg.autoLockMin=Number($('autoLockMinutes')?.value||5);
+  saveSecCfg();
+  $('newPinInput').value='';
+  paintSecurityCard();
+  showToast('PIN de segurança guardado neste dispositivo.',{type:'success'});
+};
+if($('autoLockMinutes'))$('autoLockMinutes').onchange=()=>{
+  secCfg.autoLockMin=Number($('autoLockMinutes').value||0);
+  saveSecCfg();
+  paintSecurityCard();
+};
+if($('disablePinBtn'))$('disablePinBtn').onclick=()=>{
+  if(!confirm('Remover o bloqueio por PIN e biometria deste dispositivo?'))return;
+  secCfg.pinHash='';secCfg.pinSalt='';secCfg.bioCredId='';
+  saveSecCfg();
+  paintSecurityCard();
+  showToast('Bloqueio local desativado.');
+};
+if($('enableBioBtn'))$('enableBioBtn').onclick=registerWebAuthnBio;
+if($('lockNowBtn'))$('lockNowBtn').onclick=lockApp;
+if($('lockAppHeaderBtn'))$('lockAppHeaderBtn').onclick=lockApp;
+if($('appLockUnlockBtn'))$('appLockUnlockBtn').onclick=verifyPinAndUnlock;
+if($('appLockBioBtn'))$('appLockBioBtn').onclick=unlockWithWebAuthnBio;
+if($('appLockPinInput')){
+  $('appLockPinInput').addEventListener('input',e=>{
+    const clean=e.target.value.replace(/\D/g,'').slice(0,6);
+    e.target.value=clean;
+    updatePinDots(clean);
+    if(secCfg.pinHash&&clean.length>=4){
+      hashPinWithSalt(clean,secCfg.pinSalt).then(h=>{if(h===secCfg.pinHash)unlockAppSuccess();});
+    }
+  });
+  $('appLockPinInput').addEventListener('keydown',e=>{if(e.key==='Enter')verifyPinAndUnlock();});
+}
+
+// Monitorizar inatividade para auto-bloqueio
+['pointerdown','keydown','touchstart','scroll'].forEach(ev=>{
+  document.addEventListener(ev,()=>{if(!appLocked)lastActivityTs=Date.now();},{passive:true});
+});
+setInterval(()=>{
+  if(!hasLocalPin()||appLocked)return;
+  const mins=Number(secCfg.autoLockMin||0);
+  if(mins>0&&Date.now()-lastActivityTs>=mins*60000)lockApp();
+},10000);
+
+paintSecurityCard();
+if(hasLocalPin())lockApp();
+
+// Exportação e Importação de Cópias de Segurança (Simples ou Encriptada AES-256-GCM)
+$('export').onclick=()=>{
+  let a=document.createElement('a'),u=URL.createObjectURL(new Blob([JSON.stringify(db,null,2)],{type:'application/json'}));
+  a.href=u;a.download='duofin-backup.json';a.click();URL.revokeObjectURL(u);
+};
+if($('exportEncryptedBtn'))$('exportEncryptedBtn').onclick=async()=>{
+  const pass=prompt('Define uma palavra-passe para proteger esta cópia de segurança (mínimo 6 caracteres):');
+  if(pass===null)return;
+  if(pass.trim().length<6){alert('A palavra-passe deve ter pelo menos 6 caracteres.');return;}
+  try{
+    const encrypted=await encryptJsonAesGcm(db,pass.trim());
+    const a=document.createElement('a');
+    const u=URL.createObjectURL(new Blob([JSON.stringify(encrypted,null,2)],{type:'application/json'}));
+    a.href=u;a.download='duofin-backup-protegido.duofin';a.click();URL.revokeObjectURL(u);
+    showToast('Cópia de segurança encriptada exportada.',{type:'success'});
+  }catch(e){
+    alert('Não foi possível encriptar a cópia: '+e.message);
+  }
+};
+$('import').onchange=async e=>{
+  try{
+    const rawText=await e.target.files[0].text();
+    let parsed=JSON.parse(rawText);
+    if(parsed&&parsed.__duofin_encrypted__===true){
+      const pass=prompt('Esta cópia está encriptada. Introduz a palavra-passe:');
+      if(!pass){e.target.value='';return;}
+      parsed=await decryptJsonAesGcm(parsed,pass.trim());
+    }
+    if(!parsed.settings||!Array.isArray(parsed.transactions))throw new Error('Estrutura inválida');
+    const n=normalizeDb(parsed);
+    db=n.db;
+    persist();
+    showToast('Cópia de segurança importada com sucesso.',{type:'success'});
+  }catch(_){
+    alert('Ficheiro inválido ou palavra-passe incorreta.');
+  }
+  e.target.value='';
+};
 $('reset').onclick=()=>{if(confirm('Apagar todos os dados deste dispositivo?')){db=fresh();persist()}};
 $('person').innerHTML=db.settings.people.map(p=>`<option>${esc(p)}</option>`).join('')+'<option>Conta conjunta</option>';
 
@@ -3131,7 +3430,49 @@ addEventListener('appinstalled',()=>{$('installHint').textContent='DuoFin adicio
 
 // Sincronização Supabase com Auto-Merge Inteligente (updatedAt + Tombstones + Rollovers)
 const CLOUD_KEY='orcamento-plus-cloud-v1';
+const E2EE_SECRET_KEY='duofin-e2ee-secret-v1';
 let cloud={url:'',key:'',access_token:'',refresh_token:'',expires_at:0,user:null,household_id:null,revision:null,dirty:false};
+function getE2eeSecret(){return localStorage.getItem(E2EE_SECRET_KEY)||'';}
+function paintE2eeStatus(){
+  const hasSec=!!getE2eeSecret();
+  if($('disableE2eeBtn'))$('disableE2eeBtn').hidden=!hasSec;
+  if($('e2eeStatusText')){
+    $('e2eeStatusText').textContent=hasSec
+      ?'Ativa (AES-256-GCM): todos os dados enviados para o Supabase são cifrados localmente antes de sair deste dispositivo. Usa exatamente a mesma chave secreta no outro telemóvel.'
+      :'Desativada: os dados são enviados em JSON padrão protegidos por RLS. Se definirem a mesma chave secreta nos dois telemóveis, todo o payload é cifrado localmente em AES-256-GCM antes de sair do dispositivo.';
+  }
+}
+if($('saveE2eeBtn'))$('saveE2eeBtn').onclick=async()=>{
+  const val=($('e2eePassphrase')?.value||'').trim();
+  if(val.length<6){alert('A chave secreta E2EE deve ter pelo menos 6 caracteres.');return;}
+  localStorage.setItem(E2EE_SECRET_KEY,val);
+  $('e2eePassphrase').value='';
+  paintE2eeStatus();
+  showToast('Chave E2EE guardada. A sincronizar dados cifrados...',{type:'success'});
+  if(cloudConnected()&&cloud.household_id){cloud.dirty=true;saveCloud();await pushCloud(false).catch(()=>{});}
+};
+if($('disableE2eeBtn'))$('disableE2eeBtn').onclick=async()=>{
+  if(!confirm('Desativar a encriptação ponta-a-ponta neste dispositivo?'))return;
+  localStorage.removeItem(E2EE_SECRET_KEY);
+  paintE2eeStatus();
+  showToast('Encriptação ponta-a-ponta desativada.');
+};
+paintE2eeStatus();
+async function encodeCloudPayload(plainDb){
+  const sec=getE2eeSecret();
+  if(!sec)return plainDb;
+  return await encryptJsonAesGcm(plainDb,sec);
+}
+async function decodeCloudPayload(rawPayload){
+  if(!rawPayload||rawPayload.__duofin_encrypted__!==true)return rawPayload;
+  const sec=getE2eeSecret();
+  if(!sec)throw new Error('Os dados na nuvem estão cifrados (E2EE). Introduz a Chave Secreta do Casal em Dados -> Sincronização.');
+  try{
+    return await decryptJsonAesGcm(rawPayload,sec);
+  }catch(_){
+    throw new Error('Não foi possível decifrar os dados da nuvem. Confirma se a Chave Secreta E2EE é idêntica nos dois telemóveis.');
+  }
+}
 try{cloud={...cloud,...JSON.parse(localStorage.getItem(CLOUD_KEY)||'{}')}}catch(e){}
 if(dbNeedsSync){cloud.dirty=true;localStorage.setItem(CLOUD_KEY,JSON.stringify(cloud));}
 let cloudSaveTimer=null,cloudBusy=false;
@@ -3292,8 +3633,9 @@ async function pushCloud(overwrite=false){
  cloudBusy=true;
  try{
    const row=await getCloudRow();
+   const remoteDecrypted=await decodeCloudPayload(row.payload);
    if(!overwrite&&cloud.revision!==null&&row.revision!==cloud.revision){
-     const merged=validPayload(row.payload)?tryMergePayloads(db,row.payload):null;
+     const merged=validPayload(remoteDecrypted)?tryMergePayloads(db,remoteDecrypted):null;
      if(merged){
        setLocalData(merged);
        cloud.revision=row.revision;
@@ -3305,7 +3647,8 @@ async function pushCloud(overwrite=false){
    }
    if(overwrite&&!confirm('Isto vai substituir a versão partilhada pela versão guardada neste telemóvel. Continuar?'))return;
    const expected=overwrite?row.revision:(cloud.revision===null?row.revision:cloud.revision);
-   const result=await rpc('save_household_data',{p_household_id:cloud.household_id,p_payload:db,p_expected_revision:expected});
+   const wirePayload=await encodeCloudPayload(db);
+   const result=await rpc('save_household_data',{p_household_id:cloud.household_id,p_payload:wirePayload,p_expected_revision:expected});
    const r=Array.isArray(result)?result[0]:result;
    if(!r?.ok){
      cloud.dirty=true;cloud.revision=r?.revision??row.revision;saveCloud();
@@ -3320,24 +3663,25 @@ async function syncNow(forcePull=false,silent=false){
  if(!cloudConnected()||!cloud.household_id)return;
  try{
    const row=await getCloudRow();
-   if(!validPayload(row.payload)){cloud.revision=row.revision;cloud.dirty=true;saveCloud();await pushCloud(false);return}
+   const remotePayload=await decodeCloudPayload(row.payload);
+   if(!validPayload(remotePayload)){cloud.revision=row.revision;cloud.dirty=true;saveCloud();await pushCloud(false);return}
    if(forcePull){
      if(hasLocalData()&&!confirm('Carregar a versão partilhada vai substituir os dados locais deste telemóvel. Continuar?'))return;
-     const migrated=setLocalData(row.payload);cloud.revision=row.revision;cloud.dirty=migrated;saveCloud();paintCloud();
+     const migrated=setLocalData(remotePayload);cloud.revision=row.revision;cloud.dirty=migrated;saveCloud();paintCloud();
      if(migrated)await pushCloud(false);
      if(generateDueOccurrences())render();
      return;
    }
    if(cloud.revision===null){
      if(hasLocalData()){cloud.revision=row.revision;cloud.dirty=true;saveCloud();cloudMessage('Este telemóvel já tem dados locais. Exporta uma cópia e escolhe qual versão deve prevalecer.','alert red');return}
-     const migrated=setLocalData(row.payload);cloud.revision=row.revision;cloud.dirty=migrated;saveCloud();paintCloud();
+     const migrated=setLocalData(remotePayload);cloud.revision=row.revision;cloud.dirty=migrated;saveCloud();paintCloud();
      if(migrated)await pushCloud(false);
      if(generateDueOccurrences())render();
      return;
    }
    if(row.revision!==cloud.revision){
      if(cloud.dirty){
-       const merged=tryMergePayloads(db,row.payload);
+       const merged=tryMergePayloads(db,remotePayload);
        if(merged){
          setLocalData(merged);cloud.revision=row.revision;cloud.dirty=true;saveCloud();
          await pushCloud(false);
@@ -3347,7 +3691,7 @@ async function syncNow(forcePull=false,silent=false){
        cloudMessage('Conflito: existem alterações incompatíveis neste telemóvel e na versão partilhada. Escolhe uma das duas ações.','alert red');
        return;
      }
-     const migrated=setLocalData(row.payload);cloud.revision=row.revision;cloud.dirty=migrated;saveCloud();paintCloud();
+     const migrated=setLocalData(remotePayload);cloud.revision=row.revision;cloud.dirty=migrated;saveCloud();paintCloud();
      if(migrated)await pushCloud(false);
      if(generateDueOccurrences())render();
      return;
