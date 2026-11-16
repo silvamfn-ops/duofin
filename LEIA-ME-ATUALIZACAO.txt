@@ -1,17 +1,22 @@
-DuoFin v6.1.0 — Instruções de Atualização
+DuoFin v6.2.0 — Instruções de Atualização
 =======================================
 
-Novidades desta versão (v6.1.0):
-1. Gestão de Sobra de Ciclo: no início de um novo ciclo, se o ciclo anterior tiver fechado com saldo positivo, surge um alerta interativo no Resumo para escolher entre:
-   - Transitar o saldo para o ciclo em vigor (como saldo transitado que não reinicia o ciclo);
-   - Atribuir o valor a um Objetivo de Poupança (ou poupança geral);
-   - Ignorar/dispensar o alerta para esse ciclo (decisão sincronizada entre dispositivos).
-2. Contador no separador Recorrentes: indica quantas despesas recorrentes estão pendentes de confirmação.
-3. Sugestão automática de categoria: ao escrever a descrição de uma despesa manual, a categoria é sugerida automaticamente com base no estabelecimento e nas regras aprendidas.
-4. Duplicar movimento: novo botão no detalhe de qualquer movimento para repetir o lançamento com a data de hoje.
-5. Melhorias técnicas: projeção de fecho de ciclo agora considera também poupanças agendadas e fusão automática aprimorada para objetivos e recorrências.
+Novidades desta versão (v6.2.0):
+1. Notificações Flutuantes (Toasts) com opção «Desfazer»:
+   - Ao apagar um movimento ou ignorar uma despesa recorrente, surge uma barra discreta no fundo do ecrã com o botão «Desfazer» (durante 5,5 segundos) para reverter imediatamente a ação sem caixas de alerta intrusivas.
+2. Previsão de Ritmo e Conclusão nos Objetivos de Poupança:
+   - Calcula automaticamente quanto é necessário poupar por ciclo para atingir o objetivo dentro da data-limite e compara com o ritmo real dos últimos ciclos.
+   - Para objetivos sem data-limite, estima o número de ciclos e a data prevista de conclusão com base na média de reforços.
+3. Classificação Automática de Poupanças na Importação (PDF / CSV):
+   - O leitor de extratos identifica automaticamente transferências para poupança, depósitos a prazo, PPR ou certificados de aforro, permitindo associá-los logo a um Objetivo e memorizar a regra para futuras importações.
+4. Filtros Rápidos e Gestão Avançada de Prestações:
+   - Novos atalhos no Histórico («Todos», «⏳ Pendentes», «💳 Prestações», «🚫 Ignorados»).
+   - No detalhe de uma compra em prestações, é agora possível atualizar o valor das prestações futuras restantes de uma só vez.
+5. Navegação Rápida entre Ciclos & Auto-Merge Melhorado:
+   - Botões ‹ e › junto ao seletor de ciclo no Resumo para alternar rapidamente entre períodos.
+   - Fusão automática de alterações nas categorias entre os dispositivos do casal.
 
 Como atualizar:
-1. Extrai os 4 ficheiros deste ZIP (index.html, styles.css, app.js, sw.js).
+1. Extrai os 5 ficheiros deste ZIP (index.html, styles.css, app.js, sw.js, LEIA-ME-ATUALIZACAO.txt).
 2. Substitui os ficheiros existentes na pasta raiz do teu alojamento/repositório, mantendo intactas as pastas "icons/" e o ficheiro "manifest.webmanifest".
-3. Ao abrir a aplicação, o Service Worker (duofin-v6-1-0) atualizará automaticamente a cache.
+3. Ao abrir a aplicação, o Service Worker (duofin-v6-2-0-20261116) atualizará automaticamente a cache.

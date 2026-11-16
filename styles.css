@@ -368,3 +368,44 @@ html.density-detailed input,html.density-detailed select{min-height:47px;padding
   .barline-name{width:95px}
   .analytics-canvas-box{height:255px}
 }
+
+
+/* Chips de filtro rápido */
+.quick-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.chip{
+  border:1px solid var(--line);background:var(--surface);color:var(--muted);
+  border-radius:99px;padding:5px 11px;font-size:12px;font-weight:650;
+}
+.chip:hover{border-color:var(--g);color:var(--ink)}
+.chip.active{background:var(--p);color:var(--g);border-color:var(--g)}
+
+/* Previsão de objetivos */
+.goal-forecast-badge{
+  display:inline-block;margin-top:5px;padding:4px 9px;border-radius:8px;
+  background:var(--p);color:var(--g);font-size:12px;font-weight:600;
+}
+.goal-forecast-badge.is-warn{background:var(--warning-bg);color:var(--warning-ink)}
+.goal-forecast-badge.is-done{background:#e8f2ed;color:#245d49}
+
+/* Notificações flutuantes (Toasts) */
+.toast-container{
+  position:fixed;left:50%;bottom:calc(82px + env(safe-area-inset-bottom));
+  transform:translateX(-50%);z-index:120;display:flex;flex-direction:column;
+  gap:8px;width:calc(100% - 28px);max-width:440px;pointer-events:none;
+}
+.toast{
+  pointer-events:auto;background:#142b45;color:#fff;padding:12px 15px;
+  border-radius:14px;box-shadow:0 8px 24px rgba(15,25,36,0.28);
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  font-size:13.5px;line-height:1.35;border:1px solid rgba(255,255,255,0.12);
+  animation:toastIn .2s ease-out;
+}
+.toast.is-error{background:#7f2525;border-color:rgba(255,255,255,0.18)}
+.toast.is-success{background:#1b4d3c;border-color:rgba(255,255,255,0.18)}
+.toast-undo{
+  background:rgba(255,255,255,0.16);color:#e1c58f;border:1px solid rgba(225,197,143,0.4);
+  border-radius:8px;padding:5px 10px;font-size:12px;font-weight:750;white-space:nowrap;
+}
+.toast-undo:hover{background:rgba(255,255,255,0.25)}
+@keyframes toastIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@media print{.toast-container,.quick-chips{display:none !important}}

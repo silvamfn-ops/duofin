@@ -13,7 +13,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png">
   <link rel="stylesheet" href="./styles.css">
-  <title>DuoFin v6.1.0 — Gestão financeira a dois</title>
+  <title>DuoFin v6.2.0 — Gestão financeira a dois</title>
 </head>
 <body>
   <header>
@@ -22,7 +22,7 @@
         <div class="brandline"><span class="brandmark" aria-hidden="true">DF</span><h1>DuoFin</h1></div>
         <p>As nossas finanças. O nosso equilíbrio.</p>
       </div>
-      <span class="version-badge">v6.1.0</span>
+      <span class="version-badge">v6.2.0</span>
     </div>
   </header>
   <div class="wrap">
@@ -40,12 +40,16 @@
     </div>
 
     <section id="resumo" class="view active">
-      <div class="row cycle-header">
+      <div class="row cycle-header" style="flex-wrap:wrap;gap:8px">
         <div>
           <b id="monthTitle">Ciclo financeiro</b>
           <div id="cycleRange" class="small"></div>
         </div>
-        <select id="cycleSelect" aria-label="Selecionar ciclo financeiro" style="max-width:270px"></select>
+        <div class="row" style="gap:6px;flex:1;justify-content:flex-end;min-width:240px">
+          <button type="button" class="icon-btn" id="prevCycleBtn" title="Ciclo anterior" aria-label="Ciclo anterior">‹</button>
+          <select id="cycleSelect" aria-label="Selecionar ciclo financeiro" style="max-width:250px"></select>
+          <button type="button" class="icon-btn" id="nextCycleBtn" title="Ciclo seguinte" aria-label="Ciclo seguinte">›</button>
+        </div>
       </div>
 
       <!-- Alerta interativo de gestão de sobra do ciclo anterior -->
@@ -93,7 +97,7 @@
         </div>
         <p class="small">Saldo acumulado das transferências de poupança menos resgates registados em cada ciclo.</p>
       </div>
-      <div class="card"><h2>Objetivos e prazos</h2><div id="forecastText"></div></div>
+      <div class="card"><h2>Previsão e ritmo dos objetivos</h2><div id="forecastText"></div></div>
       <div class="card">
         <div class="row" style="margin-bottom:6px">
           <h2 style="margin:0">Movimentos recentes deste ciclo</h2>
@@ -236,6 +240,12 @@
               <select id="filterPerson"><option value="all">Todos</option></select>
             </div>
           </div>
+          <div class="quick-chips" id="quickStatusChips">
+            <button type="button" class="chip active" data-quick-status="all">Todos</button>
+            <button type="button" class="chip" data-quick-status="pending">⏳ Pendentes</button>
+            <button type="button" class="chip" data-quick-status="installments">💳 Prestações</button>
+            <button type="button" class="chip" data-quick-status="skipped">🚫 Ignorados</button>
+          </div>
           <div class="row" style="margin-top:8px">
             <span class="small" id="filterCountLabel"></span>
             <button class="ghost" type="button" id="resetFiltersBtn" style="padding:5px 10px;font-size:12px" hidden>Limpar filtros</button>
@@ -374,7 +384,7 @@
       </div>
       <div class="card">
         <h2>Regras aprendidas na importação</h2>
-        <p class="small">Sempre que corrigires uma categoria ao importar um extrato PDF ou CSV, a DuoFin memoriza essa associação para futuras importações e sugestões automáticas.</p>
+        <p class="small">Sempre que corrigires uma categoria ou tipo ao importar um extrato PDF ou CSV, a DuoFin memoriza essa associação para futuras importações e sugestões automáticas.</p>
         <div id="learnedRulesList"></div>
       </div>
       <div class="card">
@@ -421,7 +431,7 @@
     <section id="dados" class="view">
       <div class="card">
         <h2>Importar extrato bancário (PDF ou CSV)</h2>
-        <p class="small">Carrega um extrato bancário em <strong>PDF</strong> (ou CSV) exportado do teu banco (CGD, Millennium bcp, Santander, BPI, Novo Banco, ActivoBank, Moey, Revolut, etc.), ou cola diretamente o texto copiado do PDF. Podes rever e ajustar as categorias antes de confirmar.</p>
+        <p class="small">Carrega um extrato bancário em <strong>PDF</strong> (ou CSV) exportado do teu banco (CGD, Millennium bcp, Santander, BPI, Novo Banco, ActivoBank, Moey, Revolut, etc.), ou cola diretamente o texto copiado do PDF. Podes rever e ajustar categorias e poupanças antes de confirmar.</p>
         <div class="grid">
           <div>
             <label for="csvDefaultPerson">Responsável por defeito</label>
@@ -525,7 +535,7 @@
 
       <div class="card">
         <h2>Sincronização entre os dispositivos</h2>
-        <p class="small">A sincronização usa uma conta de cada pessoa e uma base de dados privada partilhada. Inclui fusão automática inteligente de movimentos criados, editados ou apagados nos dois dispositivos.</p>
+        <p class="small">A sincronização usa uma conta de cada pessoa e uma base de dados privada partilhada. Inclui fusão automática inteligente de movimentos, definições, objetivos e recorrências nos dois dispositivos.</p>
         <div id="cloudStatus" class="alert">Ainda não configurada. Segue o guia incluído no ZIP para criar o projeto de sincronização.</div>
         <label for="sbUrl">URL do projeto Supabase</label>
         <input id="sbUrl" type="url" placeholder="https://xxxxxxxx.supabase.co" autocomplete="url">
@@ -562,7 +572,7 @@
             <button class="ghost" id="cloudPull">Carregar versão partilhada</button>
             <button class="ghost" id="cloudPush">Enviar versão deste telemóvel</button>
           </div>
-          <p class="small">A aplicação verifica alterações enquanto está aberta (aproximadamente a cada 15 segundos). Novos movimentos, edições e eliminações nos dois dispositivos são fundidos automaticamente.</p>
+          <p class="small">A aplicação verifica alterações enquanto está aberta (aproximadamente a cada 15 segundos). Novos movimentos, edições, eliminações e definições nos dois dispositivos são fundidos automaticamente.</p>
         </div>
       </div>
 
@@ -580,6 +590,9 @@
         <button class="danger" id="reset">Apagar todos os dados</button>
       </div>
     </section>
+
+    <!-- Notificação flutuante (Toast) com suporte a Desfazer -->
+    <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
     <!-- Botão flutuante de acesso rápido -->
     <button type="button" class="fab" id="quickAddFab" title="Novo movimento" aria-label="Adicionar novo movimento">+</button>
@@ -677,6 +690,10 @@
               <input id="modalEditApplyAllInst" type="checkbox">
               <span>Aplicar esta categoria e responsável a todas as prestações deste grupo</span>
             </label>
+            <label class="checkbox-row" for="modalEditApplyFutureAmountInst" id="modalEditApplyFutureAmountWrap" hidden>
+              <input id="modalEditApplyFutureAmountInst" type="checkbox">
+              <span>Aplicar também o novo valor (€) às prestações futuras restantes</span>
+            </label>
           </div>
 
           <div class="actions" style="justify-content:space-between;margin-top:16px">
@@ -713,6 +730,7 @@
               <option value="expense">Despesa</option>
               <option value="income">Rendimento</option>
               <option value="saving">Poupança</option>
+              <option value="saving_withdraw">Resgate de poupança</option>
             </select>
           </div>
           <div id="impEditCatWrap">
@@ -720,10 +738,14 @@
             <select id="impEditCat"></select>
           </div>
         </div>
+        <div id="impEditGoalWrap" hidden>
+          <label for="impEditGoal">Associar a objetivo (opcional)</label>
+          <select id="impEditGoal"><option value="">Sem objetivo</option></select>
+        </div>
         <div id="impLearnRuleWrap" hidden>
           <label class="checkbox-row" for="impLearnRuleCheck">
             <input type="checkbox" id="impLearnRuleCheck" checked>
-            <span id="impLearnRuleLabel">Memorizar categoria para este estabelecimento em futuras importações</span>
+            <span id="impLearnRuleLabel">Memorizar regra para futuras importações</span>
           </label>
         </div>
         <div class="actions" style="justify-content:space-between;margin-top:16px">
@@ -736,7 +758,7 @@
       </div>
     </div>
 
-    <footer>DuoFin · V6.1.0 · Gestão financeira a dois</footer>
+    <footer>DuoFin · V6.2.0 · Gestão financeira a dois</footer>
   </div>
   <script src="./app.js"></script>
 </body>
