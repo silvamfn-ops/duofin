@@ -522,6 +522,15 @@ function render(){
    if(v>c.budget)alerts.push(`<div class="alert red">⚠ ${esc(c.name)} acima do limite em ${eur(v-c.budget)}.</div>`);
    else if(c.budget&&v>=c.budget*.85)alerts.push(`<div class="alert">Atenção: ${esc(c.name)} já consumiu ${Math.round(v/c.budget*100)}% do limite neste ciclo.</div>`);
  });
+ const smartCheck=computeSmartBudgetInsights();
+ smartCheck.categories.forEach(st=>{
+   if(!st.locked&&st.consecutiveOver>=2&&st.suggestedBudget>st.currentBudget){
+     alerts.push(`<div class="alert">💡 <strong>${esc(st.name)}</strong> ultrapassou o limite (${eur(st.currentBudget)}) nos últimos ${st.consecutiveOver} ciclos (média real: <strong>${eur(st.effectiveReal)}</strong>). <button type="button" class="smart-apply-pill" style="margin-left:6px" data-quick-adapt-cat="${st.index}" data-smart-val="${st.suggestedBudget}">Atualizar limite para ${eur(st.suggestedBudget)}</button></div>`);
+   }
+ });
+ if(smartCheck.refIncome>0&&smartCheck.currentTotal>smartCheck.refIncome){
+   alerts.push(`<div class="alert red">⚖️ O orçamento total planeado (${eur(smartCheck.currentTotal)}) está acima das receitas médias (${eur(smartCheck.refIncome)}). Revê a distribuição no separador <strong>Orçamento</strong>.</div>`);
+ }
  $('alerts').innerHTML=alerts.join('')||'<div class="alert good">Despesas dentro dos limites definidos neste ciclo.</div>';
 
  $('cats').innerHTML=db.settings.categories.map(c=>{
@@ -546,7 +555,28 @@ function render(){
  $('adult2').value=db.settings.people[1];
  $('cycleGroupingDays').value=db.settings.cycleGroupingDays??14;
 
- $('budgetFields').innerHTML=db.settings.categories.map((c,i)=>`<div class="grid"><div><label>${esc(c.name)}</label></div><div><input data-budget="${i}" type="number" min="0" step=".01" value="${c.budget}"></div></div>`).join('');
+ const smartInsights=computeSmartBudgetInsights();
+ if($('autoAdjustBudgetsToggle'))$('autoAdjustBudgetsToggle').checked=!!db.settings.autoAdjustBudgets;
+ $('budgetFields').innerHTML=smartInsights.categories.map(st=>{
+   const diff=st.suggestedBudget-st.currentBudget;
+   const showSuggest=!st.locked&&st.hasSample&&Math.abs(diff)>=5;
+   const realText=st.hasSample?`Média real: <strong>${eur(st.effectiveReal)}</strong>${st.recFloor>st.avgSpent?' (incl. recorrentes)':''}`:'Sem histórico suficiente ainda';
+   const suggestBtn=showSuggest?`<button type="button" class="smart-apply-pill" data-apply-smart="${st.index}" data-smart-val="${st.suggestedBudget}">Ajustar para ${eur(st.suggestedBudget)}</button>`:'';
+   const lockTitle=st.locked?'Desbloquear categoria (permitir ajuste automático)':'Bloquear limite desta categoria (manter teto fixo)';
+   return `<div class="budget-cat-row">
+     <div class="budget-cat-top">
+       <label style="margin:0;flex:1">${esc(st.name)}</label>
+       <div class="row" style="gap:6px">
+         <input data-budget="${st.index}" type="number" min="0" step=".01" value="${st.currentBudget}" style="width:125px;min-height:38px;padding:7px 10px;text-align:right">
+         <button type="button" class="lock-cat-btn ${st.locked?'is-locked':''}" data-toggle-lock="${st.index}" title="${lockTitle}" aria-label="${lockTitle}">${st.locked?'🔒':'🔓'}</button>
+       </div>
+     </div>
+     <div class="budget-cat-meta">
+       <span>${realText}</span>
+       ${suggestBtn}
+     </div>
+   </div>`;
+ }).join('');
  updateBudget();
 
  $('categoryManager').innerHTML=db.settings.categories.map((c,i)=>`<div class="item" data-category-row="${i}"><div class="grid"><div><label>Nome da categoria</label><input data-cat-name="${i}" maxlength="50" value="${esc(c.name)}"></div><div><label>Limite por ciclo (€)</label><input data-cat-budget="${i}" type="number" min="0" step=".01" value="${Number(c.budget)||0}"></div></div><div class="actions"><button class="secondary" type="button" data-cat-save="${i}">Guardar alterações</button><button class="danger" type="button" data-cat-delete="${i}">Eliminar</button></div></div>`).join('')||'<div class="empty">Ainda não existem categorias.</div>';
@@ -1609,7 +1639,7 @@ function printReport(mode){
  $('printSheet').innerHTML=`
    <div class="print-header">
      <div><h1>DuoFin · ${esc(title)}</h1><div class="small">${esc(peopleNames)}</div></div>
-     <div class="print-meta">Emitido em ${esc(emitted)}<br>DuoFin V6.2.0</div>
+     <div class="print-meta">Emitido em ${esc(emitted)}<br>DuoFin V6.3.0</div>
    </div>
    ${bodyHtml}
    <div class="print-footer"><span>DuoFin — Gestão Financeira a Dois</span><span>Documento gerado localmente no dispositivo</span></div>
@@ -2342,8 +2372,9 @@ $('csvConfirmImportBtn').onclick=()=>{
  });
  parsedCsvRows=[];
  $('csvPreviewContainer').hidden=true;
+ const autoUpdated=runAutoBudgetAdjustment(true);
  persist();
- showToast(`${toImport.length} movimento(s) importado(s) com sucesso!`,{type:'success'});
+ showToast(autoUpdated?`${toImport.length} movimento(s) importado(s) e orçamento ajustado à média real!`:`${toImport.length} movimento(s) importado(s) com sucesso!`,{type:'success'});
 };
 
 function drawChart(){
@@ -2440,7 +2471,161 @@ function drawChart(){
  });
 }
 
-function updateBudget(){$('budgetTotal').textContent=eur([...document.querySelectorAll('[data-budget]')].reduce((s,x)=>s+(+x.value||0),0))}
+
+// MOTOR DE ORÇAMENTO INTELIGENTE E EQUILÍBRIO RECEITA vs. DESPESA (v6.3.0)
+function roundSmartBudget(val){
+ if(!Number.isFinite(val)||val<=0)return 0;
+ if(val<=25)return Math.ceil(val);
+ if(val<=200)return Math.round(val/5)*5;
+ return Math.round(val/10)*10;
+}
+
+function getReferenceMonthlyIncome(){
+ const today=iso(now);
+ const cycles=buildCycles().filter(c=>!c.preCycle&&!c.fallback);
+ const closed=cycles.filter(c=>!c.open).slice(-4);
+ const sample=closed.length?closed:cycles.slice(-4);
+ if(sample.length){
+   const totals=sample.map(cy=>{
+     const txs=cycleTransactions(cy).filter(t=>t.date<=today&&isPaid(t)&&t.type==='income');
+     return sum(txs);
+   }).filter(v=>v>0);
+   if(totals.length){
+     const avg=totals.reduce((a,b)=>a+b,0)/totals.length;
+     return Number(avg.toFixed(2));
+   }
+ }
+ return Math.max(0,Number(db.settings.income)||0);
+}
+
+function computeSmartBudgetInsights(){
+ const today=iso(now);
+ const cycles=buildCycles().filter(c=>!c.preCycle);
+ const closedCycles=cycles.filter(c=>!c.open).slice(-4);
+ const currentCyc=currentCycle(cycles);
+ const sampleCycles=closedCycles.length?closedCycles:(currentCyc?[currentCyc]:[]);
+ const refIncome=getReferenceMonthlyIncome();
+
+ const catStats=db.settings.categories.map((c,idx)=>{
+   let avgSpent=0;
+   let consecutiveOver=0;
+   if(sampleCycles.length){
+     const vals=sampleCycles.map(cy=>{
+       const txs=cycleTransactions(cy).filter(t=>t.date<=today&&isPaid(t)&&t.type==='expense'&&t.category===c.name);
+       return sum(txs);
+     });
+     avgSpent=vals.reduce((a,b)=>a+b,0)/vals.length;
+     for(let i=vals.length-1;i>=0;i--){
+       if(c.budget>0&&vals[i]>c.budget*1.05)consecutiveOver++;
+       else break;
+     }
+   }
+   // Considerar também despesas recorrentes ativas desta categoria como piso mínimo
+   const recFloor=(db.recurringExpenses||[])
+     .filter(r=>r.active&&r.category===c.name)
+     .reduce((s,r)=>s+(Number(r.amount)||0),0);
+
+   const effectiveReal=Math.max(avgSpent,recFloor);
+   const rawSuggested=effectiveReal>0?roundSmartBudget(effectiveReal):(Number(c.budget)||0);
+   return {
+     index:idx,
+     name:c.name,
+     currentBudget:Number(c.budget)||0,
+     locked:!!c.locked,
+     avgSpent:Number(avgSpent.toFixed(2)),
+     recFloor:Number(recFloor.toFixed(2)),
+     effectiveReal:Number(effectiveReal.toFixed(2)),
+     suggestedBudget:rawSuggested,
+     consecutiveOver,
+     hasSample:sampleCycles.length>0&&(avgSpent>0||recFloor>0)
+   };
+ });
+
+ // Garantir que a soma das sugestões não ultrapassa a receita de referência (se existir receita > 0)
+ let totalSuggested=catStats.reduce((s,x)=>s+(x.locked?x.currentBudget:x.suggestedBudget),0);
+ if(refIncome>0&&totalSuggested>refIncome){
+   const lockedSum=catStats.filter(x=>x.locked).reduce((s,x)=>s+x.currentBudget,0);
+   const availableForUnlocked=Math.max(0,refIncome-lockedSum);
+   const unlockedSum=catStats.filter(x=>!x.locked).reduce((s,x)=>s+x.suggestedBudget,0);
+   if(unlockedSum>0){
+     const ratio=availableForUnlocked/unlockedSum;
+     catStats.forEach(x=>{
+       if(!x.locked){
+         x.suggestedBudget=Math.max(0,roundSmartBudget(x.suggestedBudget*ratio));
+       }
+     });
+     // Ajuste fino caso arredondamento ainda passe ligeiramente o teto
+     let checkTotal=catStats.reduce((s,x)=>s+(x.locked?x.currentBudget:x.suggestedBudget),0);
+     if(checkTotal>refIncome){
+       const largest=[...catStats].filter(x=>!x.locked&&x.suggestedBudget>0).sort((a,b)=>b.suggestedBudget-a.suggestedBudget)[0];
+       if(largest){
+         largest.suggestedBudget=Math.max(0,Math.floor(largest.suggestedBudget-(checkTotal-refIncome)));
+       }
+     }
+   }
+ }
+
+ const currentTotal=catStats.reduce((s,x)=>s+x.currentBudget,0);
+ return {
+   refIncome,
+   currentTotal,
+   sampleCount:sampleCycles.length,
+   categories:catStats
+ };
+}
+
+function runAutoBudgetAdjustment(silent=true){
+ if(!db.settings.autoAdjustBudgets)return false;
+ const insights=computeSmartBudgetInsights();
+ if(!insights.sampleCount)return false;
+ let changed=false;
+ const nowTs=Date.now();
+ insights.categories.forEach(st=>{
+   if(st.locked||!st.hasSample)return;
+   const cat=db.settings.categories[st.index];
+   if(!cat)return;
+   // Atualizar se houver diferença relevante (>= 5€ ou >= 10%)
+   if(Math.abs(cat.budget-st.suggestedBudget)>=5){
+     cat.budget=st.suggestedBudget;
+     cat.updatedAt=nowTs;
+     changed=true;
+   }
+ });
+ if(changed&&!silent){
+   showToast('Orçamento atualizado automaticamente com base na média real.',{type:'success'});
+ }
+ return changed;
+}
+
+function updateBudget(){
+ const total=[...document.querySelectorAll('[data-budget]')].reduce((s,x)=>s+(+x.value||0),0);
+ $('budgetTotal').textContent=eur(total);
+ const refInc=getReferenceMonthlyIncome();
+ if($('budgetRefIncomeVal'))$('budgetRefIncomeVal').textContent=eur(refInc);
+ if($('budgetPlannedVal'))$('budgetPlannedVal').textContent=eur(total);
+ const margin=refInc-total;
+ const marginEl=$('budgetMarginVal');
+ if(marginEl){
+   marginEl.textContent=refInc>0?eur(margin):'—';
+   marginEl.className=refInc>0?(margin<0?'minus':'plus'):'';
+ }
+ const badge=$('budgetHealthBadge');
+ const alertBox=$('budgetHealthAlert');
+ const balBtn=$('balanceToIncomeBtn');
+ if(refInc>0&&total>refInc){
+   if(badge){badge.textContent='Acima das receitas';badge.style.background='#fff0ee';badge.style.color='#923c38';}
+   if(alertBox){
+     alertBox.hidden=false;
+     alertBox.className='alert red';
+     alertBox.innerHTML=`⚠ O total orçamentado (<strong>${eur(total)}</strong>) supera as receitas médias em <strong>${eur(total-refInc)}</strong>. Usa «Enquadrar nas receitas» para reajustar proporcionalmente.`;
+   }
+   if(balBtn)balBtn.hidden=false;
+ }else{
+   if(badge){badge.textContent='Equilibrado';badge.style.background='';badge.style.color='';}
+   if(alertBox)alertBox.hidden=true;
+   if(balBtn)balBtn.hidden=true;
+ }
+}
 
 function drawCalendar(){
  let m=$('calendarMonth').value||cur,[y,mo]=m.split('-').map(Number),off=(new Date(y,mo-1,1).getDay()+6)%7,days=new Date(y,mo,0).getDate(),s=['2ª','3ª','4ª','5ª','6ª','Sáb','Dom'].map(x=>`<div class="dayname">${x}</div>`).join('');
@@ -2751,6 +2936,106 @@ $('categoryManager').addEventListener('click',e=>{
 });
 
 $('budgetFields').addEventListener('input',updateBudget);
+
+$('autoAdjustBudgetsToggle').onchange=e=>{
+ db.settings.autoAdjustBudgets=e.target.checked;
+ if(db.settings.autoAdjustBudgets)runAutoBudgetAdjustment(true);
+ persist();
+ showToast(db.settings.autoAdjustBudgets?'Auto-ajuste inteligente ativado.':'Auto-ajuste inteligente desativado.',{type:'success'});
+};
+
+$('applyAllSmartBudgetsBtn').onclick=()=>{
+ const insights=computeSmartBudgetInsights();
+ let count=0;
+ const nowTs=Date.now();
+ insights.categories.forEach(st=>{
+   if(!st.locked&&st.hasSample&&Math.abs(st.suggestedBudget-st.currentBudget)>=1){
+     db.settings.categories[st.index].budget=st.suggestedBudget;
+     db.settings.categories[st.index].updatedAt=nowTs;
+     count++;
+   }
+ });
+ if(!count){
+   showToast('Os limites já estão alinhados com a média real dos últimos ciclos.');
+   return;
+ }
+ persist();
+ showToast(`${count} categoria(s) ajustada(s) à média real (dentro das receitas).`,{type:'success'});
+};
+
+$('balanceToIncomeBtn').onclick=()=>{
+ const refInc=getReferenceMonthlyIncome();
+ if(refInc<=0){
+   showToast('Regista primeiro rendimentos ou define um rendimento de referência.',{type:'error'});
+   return;
+ }
+ const inputs=[...document.querySelectorAll('[data-budget]')];
+ const vals=inputs.map(inp=>({idx:+inp.dataset.budget,val:Math.max(0,+inp.value||0),locked:!!db.settings.categories[+inp.dataset.budget]?.locked}));
+ const lockedSum=vals.filter(x=>x.locked).reduce((s,x)=>s+x.val,0);
+ const unlockedSum=vals.filter(x=>!x.locked).reduce((s,x)=>s+x.val,0);
+ const available=Math.max(0,refInc-lockedSum);
+ if(unlockedSum<=0){
+   showToast('Desbloqueia pelo menos uma categoria para redistribuir o valor.',{type:'error'});
+   return;
+ }
+ const ratio=available/unlockedSum;
+ const nowTs=Date.now();
+ vals.forEach(x=>{
+   if(!x.locked){
+     const adjusted=roundSmartBudget(x.val*ratio);
+     db.settings.categories[x.idx].budget=adjusted;
+     db.settings.categories[x.idx].updatedAt=nowTs;
+   }
+ });
+ // Garantir que não ultrapassa nem 1 euro após arredondamento
+ let totalAfter=db.settings.categories.reduce((s,c)=>s+(Number(c.budget)||0),0);
+ if(totalAfter>refInc){
+   const biggest=db.settings.categories.filter(c=>!c.locked&&c.budget>0).sort((a,b)=>b.budget-a.budget)[0];
+   if(biggest)biggest.budget=Math.max(0,Math.floor(biggest.budget-(totalAfter-refInc)));
+ }
+ persist();
+ showToast(`Orçamento enquadrado dentro das receitas (${eur(refInc)}).`,{type:'success'});
+};
+
+$('budgetFields').addEventListener('click',e=>{
+ const applyBtn=e.target.closest('[data-apply-smart]');
+ if(applyBtn){
+   const idx=+applyBtn.dataset.applySmart;
+   const val=+applyBtn.dataset.smartVal;
+   if(db.settings.categories[idx]){
+     db.settings.categories[idx].budget=val;
+     db.settings.categories[idx].updatedAt=Date.now();
+     persist();
+     showToast(`Limite de «${db.settings.categories[idx].name}» ajustado para ${eur(val)}.`,{type:'success'});
+   }
+   return;
+ }
+ const lockBtn=e.target.closest('[data-toggle-lock]');
+ if(lockBtn){
+   const idx=+lockBtn.dataset.toggleLock;
+   const cat=db.settings.categories[idx];
+   if(cat){
+     cat.locked=!cat.locked;
+     cat.updatedAt=Date.now();
+     persist();
+     showToast(cat.locked?`«${cat.name}» bloqueada (teto fixo).`:`«${cat.name}» desbloqueada para sugestões.`);
+   }
+ }
+});
+
+$('alerts').addEventListener('click',e=>{
+ const qBtn=e.target.closest('[data-quick-adapt-cat]');
+ if(!qBtn)return;
+ const idx=+qBtn.dataset.quickAdaptCat;
+ const val=+qBtn.dataset.smartVal;
+ if(db.settings.categories[idx]){
+   db.settings.categories[idx].budget=val;
+   db.settings.categories[idx].updatedAt=Date.now();
+   persist();
+   showToast(`Limite de «${db.settings.categories[idx].name}» atualizado para ${eur(val)}.`,{type:'success'});
+ }
+});
+
 $('budgetForm').onsubmit=e=>{e.preventDefault();document.querySelectorAll('[data-budget]').forEach(x=>{const c=db.settings.categories[+x.dataset.budget];c.budget=Math.max(0,+x.value||0);c.updatedAt=Date.now();});persist();showToast('Limites de orçamento guardados.',{type:'success'})};
 $('saveIncome').onclick=()=>{db.settings.income=+$('incomePlan').value||0;persist();showToast('Rendimento de referência guardado.',{type:'success'})};
 $('savePeople').onclick=()=>{

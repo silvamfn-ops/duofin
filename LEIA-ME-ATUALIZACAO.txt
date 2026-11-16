@@ -1,22 +1,20 @@
-DuoFin v6.2.0 — Instruções de Atualização
+DuoFin v6.3.0 — Instruções de Atualização
 =======================================
 
-Novidades desta versão (v6.2.0):
-1. Notificações Flutuantes (Toasts) com opção «Desfazer»:
-   - Ao apagar um movimento ou ignorar uma despesa recorrente, surge uma barra discreta no fundo do ecrã com o botão «Desfazer» (durante 5,5 segundos) para reverter imediatamente a ação sem caixas de alerta intrusivas.
-2. Previsão de Ritmo e Conclusão nos Objetivos de Poupança:
-   - Calcula automaticamente quanto é necessário poupar por ciclo para atingir o objetivo dentro da data-limite e compara com o ritmo real dos últimos ciclos.
-   - Para objetivos sem data-limite, estima o número de ciclos e a data prevista de conclusão com base na média de reforços.
-3. Classificação Automática de Poupanças na Importação (PDF / CSV):
-   - O leitor de extratos identifica automaticamente transferências para poupança, depósitos a prazo, PPR ou certificados de aforro, permitindo associá-los logo a um Objetivo e memorizar a regra para futuras importações.
-4. Filtros Rápidos e Gestão Avançada de Prestações:
-   - Novos atalhos no Histórico («Todos», «⏳ Pendentes», «💳 Prestações», «🚫 Ignorados»).
-   - No detalhe de uma compra em prestações, é agora possível atualizar o valor das prestações futuras restantes de uma só vez.
-5. Navegação Rápida entre Ciclos & Auto-Merge Melhorado:
-   - Botões ‹ e › junto ao seletor de ciclo no Resumo para alternar rapidamente entre períodos.
-   - Fusão automática de alterações nas categorias entre os dispositivos do casal.
+Novidades desta versão (v6.3.0):
+1. Motor de Orçamento Inteligente e Auto-Ajustável:
+   - Analisa a média real de gastos dos últimos ciclos fechados e as despesas recorrentes ativas por categoria.
+   - Exibe no separador «Orçamento» a média real de cada categoria e permite ajustar com 1 clique (arredondado para valores limpos) ou aplicar todas as sugestões de uma só vez.
+2. Trava de Equilíbrio (Teto de Receitas):
+   - Compara continuamente o Total Orçamentado com a Receita Média real do casal.
+   - Alerta quando o orçamento planeado ultrapassa as receitas e disponibiliza o botão «Enquadrar nas receitas» para redistribuir proporcionalmente os limites dentro do rendimento disponível.
+3. Cadeado por Categoria (🔒 / 🔓) & Auto-Ajuste Contínuo:
+   - Permite bloquear categorias discricionárias (ex.: Restaurantes e lazer) para que mantenham um teto fixo rigoroso, enquanto despesas essenciais (ex.: Telecomunicações, Água/Luz, Supermercado) se adaptam automaticamente à realidade.
+   - Opção para atualizar automaticamente os limites desbloqueados sempre que importarem um extrato bancário.
+4. Alertas Inteligentes no Resumo:
+   - Se uma categoria exceder o limite durante 2 ou mais ciclos consecutivos, o painel Resumo sugere diretamente a atualização do limite para a média real.
 
 Como atualizar:
 1. Extrai os 5 ficheiros deste ZIP (index.html, styles.css, app.js, sw.js, LEIA-ME-ATUALIZACAO.txt).
-2. Substitui os ficheiros existentes na pasta raiz do teu alojamento/repositório, mantendo intactas as pastas "icons/" e o ficheiro "manifest.webmanifest".
-3. Ao abrir a aplicação, o Service Worker (duofin-v6-2-0-20261116) atualizará automaticamente a cache.
+2. Substitui os ficheiros existentes na pasta raiz do teu alojamento/repositório, mantendo intactas a pasta "icons/" e o ficheiro "manifest.webmanifest".
+3. Ao abrir a aplicação, o Service Worker (duofin-v6-3-0-20261116) atualizará automaticamente a cache.

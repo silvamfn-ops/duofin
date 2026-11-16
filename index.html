@@ -13,7 +13,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png">
   <link rel="stylesheet" href="./styles.css">
-  <title>DuoFin v6.2.0 — Gestão financeira a dois</title>
+  <title>DuoFin v6.3.0 — Gestão financeira a dois</title>
 </head>
 <body>
   <header>
@@ -22,7 +22,7 @@
         <div class="brandline"><span class="brandmark" aria-hidden="true">DF</span><h1>DuoFin</h1></div>
         <p>As nossas finanças. O nosso equilíbrio.</p>
       </div>
-      <span class="version-badge">v6.2.0</span>
+      <span class="version-badge">v6.3.0</span>
     </div>
   </header>
   <div class="wrap">
@@ -363,8 +363,30 @@
 
     <section id="orcamento" class="view">
       <div class="card">
-        <h2>Limites por categoria</h2>
-        <p class="small">Comparação com as despesas pagas do ciclo selecionado. Avisos aos 85% e quando ultrapassar o limite.</p>
+        <div class="row" style="flex-wrap:wrap;gap:8px">
+          <h2 style="margin:0">Orçamento Inteligente & Limites</h2>
+          <span class="pill" id="budgetHealthBadge">Equilibrado</span>
+        </div>
+        <p class="small" style="margin-top:6px">A DuoFin analisa a média real dos últimos ciclos e garante que o total orçamentado não ultrapassa as receitas do casal.</p>
+
+        <div id="budgetHealthBox" class="budget-health-box">
+          <div class="budget-health-grid">
+            <div><span class="small">Receita média / ref.</span><b id="budgetRefIncomeVal">0,00 €</b></div>
+            <div><span class="small">Total orçamentado</span><b id="budgetPlannedVal">0,00 €</b></div>
+            <div><span class="small">Margem livre / poupança</span><b id="budgetMarginVal">0,00 €</b></div>
+          </div>
+          <div id="budgetHealthAlert" class="alert" hidden style="margin:10px 0 0"></div>
+          <div class="actions" id="budgetSmartActions" style="margin-top:10px">
+            <button type="button" class="secondary" id="applyAllSmartBudgetsBtn">✨ Ajustar à média real</button>
+            <button type="button" class="ghost" id="balanceToIncomeBtn" hidden>⚖️ Enquadrar nas receitas</button>
+          </div>
+        </div>
+
+        <label class="checkbox-row" for="autoAdjustBudgetsToggle" style="margin:12px 0">
+          <input type="checkbox" id="autoAdjustBudgetsToggle">
+          <span>Atualizar automaticamente os limites desbloqueados com a média real ao importar extratos ou fechar ciclos</span>
+        </label>
+
         <form id="budgetForm">
           <div id="budgetFields"></div>
           <div class="row" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)"><b>Total planeado</b><b id="budgetTotal"></b></div>
@@ -758,7 +780,7 @@
       </div>
     </div>
 
-    <footer>DuoFin · V6.2.0 · Gestão financeira a dois</footer>
+    <footer>DuoFin · V6.3.0 · Gestão financeira a dois</footer>
   </div>
   <script src="./app.js"></script>
 </body>
