@@ -489,3 +489,94 @@ body.privacy-masked [data-sensitive-amount]{
   background:transparent;transition:background-color .12s,border-color .12s;
 }
 .pin-dots span.filled{background:var(--g);border-color:var(--g)}
+
+
+/* Cartões de aviso deslizáveis e ocultáveis (v6.4.1) */
+.swipe-alert-wrap {
+  position: relative;
+  overflow: hidden;
+  border-radius: 10px;
+  margin: 8px 0;
+  touch-action: pan-y;
+  user-select: none;
+}
+.swipe-alert-wrap .alert {
+  margin: 0;
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+  cursor: grab;
+}
+.swipe-alert-wrap .alert:active {
+  cursor: grabbing;
+}
+.swipe-alert-wrap.is-dragging .alert {
+  transition: none;
+}
+.swipe-alert-bg {
+  position: absolute;
+  inset: 0;
+  background: var(--surface-2);
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  z-index: 1;
+}
+.alert-dismiss-x {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  opacity: 0.65;
+  font-size: 16px;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 6px;
+  flex: 0 0 auto;
+}
+.alert-dismiss-x:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.06);
+}
+.alert-choice-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--ink);
+  animation: fadeView 0.16s ease-out;
+}
+.alert-choice-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.alert-choice-actions button {
+  padding: 5px 10px;
+  font-size: 12px;
+  border-radius: 8px;
+}
+.hidden-alerts-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+.hidden-alerts-bar button {
+  font-size: 12px;
+  padding: 4px 8px;
+}

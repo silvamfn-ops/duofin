@@ -35,6 +35,56 @@ function load(){try{const raw=JSON.parse(localStorage.getItem(KEY));if(raw?.sett
 
 // SISTEMA DE NOTIFICAÇÕES FLUTUANTES (TOASTS) COM OPÇÃO DESFAZER
 let lastUndoSnapshot=null;
+
+// GESTÃO DE AVISOS OCULTOS (SÓ AGORA OU ATÉ AO PRÓXIMO CICLO)
+const DISMISSED_CYCLE_ALERTS_KEY = 'duofin-dismissed-cycle-alerts-v1';
+const sessionDismissedAlerts = new Set();
+let pendingAlertChoiceId = null;
+
+function readCycleDismissedAlerts() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(DISMISSED_CYCLE_ALERTS_KEY) || '{}');
+    return raw && typeof raw === 'object' ? raw : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function isAlertDismissed(cycleKey, alertId) {
+  if (sessionDismissedAlerts.has(`${cycleKey}::${alertId}`)) return true;
+  const stored = readCycleDismissedAlerts();
+  return Array.isArray(stored[cycleKey]) && stored[cycleKey].includes(alertId);
+}
+
+function dismissAlertForNow(cycleKey, alertId) {
+  sessionDismissedAlerts.add(`${cycleKey}::${alertId}`);
+  pendingAlertChoiceId = null;
+  render();
+}
+
+function dismissAlertForCycle(cycleKey, alertId) {
+  const stored = readCycleDismissedAlerts();
+  if (!Array.isArray(stored[cycleKey])) stored[cycleKey] = [];
+  if (!stored[cycleKey].includes(alertId)) stored[cycleKey].push(alertId);
+  const keys = Object.keys(stored);
+  if (keys.length > 8) delete stored[keys[0]];
+  localStorage.setItem(DISMISSED_CYCLE_ALERTS_KEY, JSON.stringify(stored));
+  pendingAlertChoiceId = null;
+  render();
+}
+
+function restoreDismissedAlerts(cycleKey) {
+  for (const k of [...sessionDismissedAlerts]) {
+    if (k.startsWith(`${cycleKey}::`)) sessionDismissedAlerts.delete(k);
+  }
+  const stored = readCycleDismissedAlerts();
+  if (stored[cycleKey]) {
+    delete stored[cycleKey];
+    localStorage.setItem(DISMISSED_CYCLE_ALERTS_KEY, JSON.stringify(stored));
+  }
+  pendingAlertChoiceId = null;
+  render();
+}
 function showToast(msg, opts={}){
  const container=$('toastContainer');
  if(!container)return;
@@ -516,22 +566,77 @@ function render(){
    projEl.hidden=true;
  }
 
- let alerts=[];
- db.settings.categories.forEach(c=>{
-   let v=sum(ex.filter(t=>t.category===c.name));
-   if(v>c.budget)alerts.push(`<div class="alert red">⚠ ${esc(c.name)} acima do limite em ${eur(v-c.budget)}.</div>`);
-   else if(c.budget&&v>=c.budget*.85)alerts.push(`<div class="alert">Atenção: ${esc(c.name)} já consumiu ${Math.round(v/c.budget*100)}% do limite neste ciclo.</div>`);
- });
- const smartCheck=computeSmartBudgetInsights();
- smartCheck.categories.forEach(st=>{
-   if(!st.locked&&st.consecutiveOver>=2&&st.suggestedBudget>st.currentBudget){
-     alerts.push(`<div class="alert">💡 <strong>${esc(st.name)}</strong> ultrapassou o limite (${eur(st.currentBudget)}) nos últimos ${st.consecutiveOver} ciclos (média real: <strong>${eur(st.effectiveReal)}</strong>). <button type="button" class="smart-apply-pill" style="margin-left:6px" data-quick-adapt-cat="${st.index}" data-smart-val="${st.suggestedBudget}">Atualizar limite para ${eur(st.suggestedBudget)}</button></div>`);
+ let rawAlerts = [];
+ db.settings.categories.forEach(c => {
+   let v = sum(ex.filter(t => t.category === c.name));
+   if (v > c.budget) {
+     rawAlerts.push({
+       id: `over:${c.name}`,
+       cls: 'alert red',
+       html: `⚠ ${esc(c.name)} acima do limite em ${eur(v - c.budget)}.`
+     });
+   } else if (c.budget && v >= c.budget * 0.85) {
+     rawAlerts.push({
+       id: `warn:${c.name}`,
+       cls: 'alert',
+       html: `Atenção: ${esc(c.name)} já consumiu ${Math.round(v / c.budget * 100)}% do limite neste ciclo.`
+     });
    }
  });
- if(smartCheck.refIncome>0&&smartCheck.currentTotal>smartCheck.refIncome){
-   alerts.push(`<div class="alert red">⚖️ O orçamento total planeado (${eur(smartCheck.currentTotal)}) está acima das receitas médias (${eur(smartCheck.refIncome)}). Revê a distribuição no separador <strong>Orçamento</strong>.</div>`);
+
+ const smartCheck = computeSmartBudgetInsights();
+ smartCheck.categories.forEach(st => {
+   if (!st.locked && st.consecutiveOver >= 2 && st.suggestedBudget > st.currentBudget) {
+     rawAlerts.push({
+       id: `smart:${st.name}`,
+       cls: 'alert',
+       html: `💡 <strong>${esc(st.name)}</strong> ultrapassou o limite (${eur(st.currentBudget)}) nos últimos ${st.consecutiveOver} ciclos (média real: <strong>${eur(st.effectiveReal)}</strong>). <button type="button" class="smart-apply-pill" style="margin-left:6px" data-quick-adapt-cat="${st.index}" data-smart-val="${st.suggestedBudget}">Atualizar limite para ${eur(st.suggestedBudget)}</button>`
+     });
+   }
+ });
+
+ if (smartCheck.refIncome > 0 && smartCheck.currentTotal > smartCheck.refIncome) {
+   rawAlerts.push({
+     id: 'balance:over-income',
+     cls: 'alert red',
+     html: `⚖️ O orçamento total planeado (${eur(smartCheck.currentTotal)}) está acima das receitas médias (${eur(smartCheck.refIncome)}). Revê a distribuição no separador <strong>Orçamento</strong>.`
+   });
  }
- $('alerts').innerHTML=alerts.join('')||'<div class="alert good">Despesas dentro dos limites definidos neste ciclo.</div>';
+
+ const visibleAlerts = rawAlerts.filter(a => !isAlertDismissed(cycle.key, a.id));
+ const hiddenCount = rawAlerts.length - visibleAlerts.length;
+
+ if (!rawAlerts.length) {
+   $('alerts').innerHTML = '<div class="alert good">Despesas dentro dos limites definidos neste ciclo.</div>';
+ } else {
+   const cardsHtml = visibleAlerts.map(a => {
+     if (pendingAlertChoiceId === a.id) {
+       return `<div class="swipe-alert-wrap">
+         <div class="alert-choice-bar">
+           <span>Ocultar este aviso:</span>
+           <div class="alert-choice-actions">
+             <button type="button" class="secondary" data-alert-hide-now="${esc(a.id)}">Só agora</button>
+             <button type="button" class="primary" data-alert-hide-cycle="${esc(a.id)}">Até ao próximo ciclo</button>
+             <button type="button" class="ghost" data-alert-cancel-hide>Cancelar</button>
+           </div>
+         </div>
+       </div>`;
+     }
+     return `<div class="swipe-alert-wrap" data-swipe-alert="${esc(a.id)}">
+       <div class="swipe-alert-bg" aria-hidden="true"><span>← Ocultar aviso</span><span>Ocultar aviso →</span></div>
+       <div class="${a.cls}">
+         <div style="flex:1;min-width:0">${a.html}</div>
+         <button type="button" class="alert-dismiss-x" data-alert-ask-hide="${esc(a.id)}" title="Ocultar aviso" aria-label="Ocultar aviso">✕</button>
+       </div>
+     </div>`;
+   }).join('');
+
+   const restoreHtml = hiddenCount > 0
+     ? `<div class="hidden-alerts-bar"><button type="button" class="ghost" data-restore-alerts>👁️ ${hiddenCount} aviso(s) oculto(s) neste ciclo · Mostrar</button></div>`
+     : '';
+
+   $('alerts').innerHTML = cardsHtml + restoreHtml;
+ }
 
  $('cats').innerHTML=db.settings.categories.map(c=>{
    let v=sum(ex.filter(t=>t.category===c.name));
@@ -3037,6 +3142,89 @@ $('alerts').addEventListener('click',e=>{
    persist();
    showToast(`Limite de «${db.settings.categories[idx].name}» atualizado para ${eur(val)}.`,{type:'success'});
  }
+});
+
+// Interação de deslize (touch/rato) e escolha de ocultação nos cartões de aviso
+let alertSwipeState = null;
+
+$('alerts').addEventListener('pointerdown', e => {
+  if (e.target.closest('button')) return;
+  const wrap = e.target.closest('[data-swipe-alert]');
+  if (!wrap) return;
+  const card = wrap.querySelector('.alert');
+  alertSwipeState = {
+    wrap,
+    card,
+    id: wrap.dataset.swipeAlert,
+    startX: e.clientX,
+    startY: e.clientY,
+    dx: 0,
+    lockedHorizontal: false
+  };
+});
+
+window.addEventListener('pointermove', e => {
+  if (!alertSwipeState) return;
+  const dx = e.clientX - alertSwipeState.startX;
+  const dy = e.clientY - alertSwipeState.startY;
+  if (!alertSwipeState.lockedHorizontal) {
+    if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 8) {
+      alertSwipeState = null;
+      return;
+    }
+    if (Math.abs(dx) > 8) {
+      alertSwipeState.lockedHorizontal = true;
+      alertSwipeState.wrap.classList.add('is-dragging');
+    }
+  }
+  if (alertSwipeState && alertSwipeState.lockedHorizontal) {
+    alertSwipeState.dx = dx;
+    alertSwipeState.card.style.transform = `translateX(${dx}px)`;
+    alertSwipeState.card.style.opacity = String(Math.max(0.35, 1 - Math.abs(dx) / 220));
+  }
+});
+
+window.addEventListener('pointerup', () => {
+  if (!alertSwipeState) return;
+  const { wrap, card, id, dx, lockedHorizontal } = alertSwipeState;
+  alertSwipeState = null;
+  wrap.classList.remove('is-dragging');
+  if (lockedHorizontal && Math.abs(dx) >= 75) {
+    pendingAlertChoiceId = id;
+    render();
+  } else {
+    card.style.transform = '';
+    card.style.opacity = '';
+  }
+});
+
+$('alerts').addEventListener('click', e => {
+  const askBtn = e.target.closest('[data-alert-ask-hide]');
+  if (askBtn) {
+    pendingAlertChoiceId = askBtn.dataset.alertAskHide;
+    render();
+    return;
+  }
+  const nowBtn = e.target.closest('[data-alert-hide-now]');
+  if (nowBtn && activeCycle) {
+    dismissAlertForNow(activeCycle.key, nowBtn.dataset.alertHideNow);
+    return;
+  }
+  const cycleBtn = e.target.closest('[data-alert-hide-cycle]');
+  if (cycleBtn && activeCycle) {
+    dismissAlertForCycle(activeCycle.key, cycleBtn.dataset.alertHideCycle);
+    showToast('Aviso ocultado até ao próximo ciclo.');
+    return;
+  }
+  if (e.target.closest('[data-alert-cancel-hide]')) {
+    pendingAlertChoiceId = null;
+    render();
+    return;
+  }
+  if (e.target.closest('[data-restore-alerts]') && activeCycle) {
+    restoreDismissedAlerts(activeCycle.key);
+    showToast('Avisos do ciclo restaurados.');
+  }
 });
 
 $('budgetForm').onsubmit=e=>{e.preventDefault();document.querySelectorAll('[data-budget]').forEach(x=>{const c=db.settings.categories[+x.dataset.budget];c.budget=Math.max(0,+x.value||0);c.updatedAt=Date.now();});persist();showToast('Limites de orçamento guardados.',{type:'success'})};
