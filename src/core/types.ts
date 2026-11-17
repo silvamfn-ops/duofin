@@ -2,13 +2,20 @@ export type SplitMode = '50_50' | 'proportional' | '100_payer' | 'custom';
 export type MatchType = 'contains' | 'exact' | 'starts_with';
 export type RolloverDestination = 'same_category' | 'savings_goal';
 
+export interface SummaryAlertSettings {
+  show_forecast_card: boolean;        // Visualizar/ocultar cartão de previsão no separador Resumo
+  liquidity_alert_enabled: boolean;   // Ativar/desativar aviso visual de alerta de liquidez
+  minimum_safe_balance: number;       // Limite mínimo de segurança (€) para disparar o alerta
+  dismissed_for_month?: string | null; // Ex: "2026-11" se o casal silenciou o alerta apenas este mês
+}
+
 export interface AutoRule {
   id: string;
   pattern: string;
   match_type: MatchType;
   category_id: string;
   split_mode: SplitMode;
-  custom_split_ratio?: number | null; // e.g. 0.6 for 60% payer / 40% partner
+  custom_split_ratio?: number | null;
   priority: number;
   active: boolean;
 }
@@ -36,9 +43,9 @@ export interface BudgetV2 {
 
 export interface Transaction {
   id: string;
-  date: string; // ISO YYYY-MM-DD
+  date: string;
   description: string;
-  amount: number; // Negative for expense, positive for income
+  amount: number;
   category_id: string;
   payer_id: string;
   split_mode: SplitMode;
@@ -65,9 +72,9 @@ export interface SimulationEvent {
   id: string;
   label: string;
   type: 'extra_income' | 'one_time_expense' | 'recurring_expense';
-  amount: number; // Always positive magnitude
-  start_month_offset: number; // 0 = current month, 1 = next month, etc.
-  duration_months: number; // 1 for one-time, N for recurring
+  amount: number;
+  start_month_offset: number;
+  duration_months: number;
 }
 
 export interface MonthlyProjectionPoint {
