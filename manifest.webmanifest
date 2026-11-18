@@ -1,7 +1,7 @@
 {
   "name": "DuoFin — Gestão financeira a dois",
   "short_name": "DuoFin",
-  "version": "6.7.0",
+  "version": "6.6.0",
   "description": "Gestão financeira a dois, simples, partilhada e disponível offline.",
   "start_url": "./index.html",
   "display": "standalone",

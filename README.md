@@ -1,6 +1,6 @@
-# DuoFin v6.7.0 — Fase 2: Ergonomia Mobile & Registo sem Atrito
+# DuoFin v6.6.0 — Fase 2: Ergonomia Mobile & Registo sem Atrito
 
-## Novidades incluídas nesta versão (v6.7.0)
+## Novidades incluídas nesta versão (v6.6.0)
 1. **Navegação Inferior Fixa (Bottom Tab Bar) em Mobile (`< 680px`):**
    - Os 4 separadores principais (*Resumo*, *Movimentos*, *Gráficos*, *Objetivos*) ficam fixos na base do ecrã, como numa app nativa.
    - Botão **Mais** com gaveta deslizante para aceder a *Recorrentes* (com indicador de pendentes), *Calendário*, *Orçamento* e *Dados*.

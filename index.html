@@ -12,9 +12,9 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; worker-src 'self' blob: https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://cdnjs.cloudflare.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; worker-src 'self' blob: https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co https://cdnjs.cloudflare.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self';">
   <link rel="stylesheet" href="./styles.css">
-  <title>DuoFin v6.7.0 — Gestão financeira a dois</title>
+  <title>DuoFin v6.6.0 — Gestão financeira a dois</title>
 </head>
 <body>
   <!-- Ecrã de Bloqueio Local (PIN / Biometria WebAuthn) -->
@@ -43,7 +43,7 @@
       <div class="header-actions">
         <button type="button" class="header-icon-btn" id="privacyToggleBtn" title="Ocultar ou mostrar valores monetários" aria-label="Modo privacidade">👁️</button>
         <button type="button" class="header-icon-btn" id="lockAppHeaderBtn" title="Bloquear aplicação agora" aria-label="Bloquear aplicação" hidden>🔒</button>
-        <button type="button" class="version-badge" id="versionBadgeBtn" title="Ver novidades desta versão">v6.7.0</button>
+        <button type="button" class="version-badge" id="versionBadgeBtn" title="Ver novidades desta versão">v6.6.0</button>
       </div>
     </div>
   </header>
@@ -639,7 +639,7 @@
       </div>
 
       <div class="card">
-        <div class="row" style="flex-wrap:wrap;gap:8px;margin-bottom:4px"><h2 style="margin:0">Sincronização entre os dispositivos</h2><span id="realtimeBadge" class="realtime-badge" hidden>⚡ Tempo real ativo</span></div>
+        <h2>Sincronização entre os dispositivos</h2>
         <p class="small">A sincronização usa uma conta de cada pessoa e uma base de dados privada partilhada. Inclui fusão automática inteligente de movimentos, definições, objetivos e recorrências nos dois dispositivos.</p>
         <div id="cloudStatus" class="alert">Ainda não configurada. Segue o guia incluído no ZIP para criar o projeto de sincronização.</div>
         <label for="sbUrl">URL do projeto Supabase</label>
@@ -689,7 +689,7 @@
             </div>
           </div>
           <p class="small" id="e2eeStatusText">Desativada: os dados são enviados em JSON padrão protegidos por RLS. Se definirem a mesma chave secreta nos dois telemóveis, todo o payload é cifrado localmente em AES-256-GCM antes de sair do dispositivo.</p>
-          <p class="small">A sincronização utiliza canal <strong>WebSocket em tempo real</strong> (Supabase Realtime) para refletir alterações instantaneamente entre os dois telemóveis, com verificação periódica automática de reserva (15s).</p>
+          <p class="small">A aplicação verifica alterações enquanto está aberta (aproximadamente a cada 15 segundos). Novos movimentos, edições, eliminações e definições nos dois dispositivos são fundidos automaticamente.</p>
         </div>
       </div>
 
@@ -730,31 +730,22 @@
       </div>
 
       <div class="card">
-        <h2>Cópias de segurança &amp; Histórico de Versões</h2>
+        <h2>Cópias de segurança</h2>
         <p class="small">Sem configurar a sincronização, os dados ficam apenas no armazenamento local deste navegador. Podes exportar uma cópia simples em JSON ou uma cópia protegida por palavra-passe (AES-256-GCM).</p>
         <div class="actions">
           <button class="primary" id="exportEncryptedBtn">🔐 Exportar cópia encriptada</button>
           <button class="secondary" id="export">Exportar JSON simples</button>
           <label class="secondary" style="cursor:pointer">Importar cópia<input id="import" type="file" accept=".json,.duofin,application/json" hidden></label>
         </div>
-        <hr>
-        <div class="row" style="flex-wrap:wrap;gap:8px;margin-bottom:6px">
-          <div>
-            <strong>🕒 Pontos de restauro automáticos (últimas 5 versões)</strong>
-            <div class="small">Guardados localmente em IndexedDB antes de fusões na nuvem, importações ou reposições.</div>
-          </div>
-          <button type="button" class="ghost" id="createManualSnapshotBtn">+ Criar ponto agora</button>
-        </div>
-        <div id="snapshotsList" class="snapshots-list"></div>
       </div>
 
       <div class="card">
         <div class="row" style="flex-wrap:wrap;gap:8px">
           <div>
-            <h2 style="margin:0">Sobre a DuoFin v6.7.0</h2>
+            <h2 style="margin:0">Sobre a DuoFin v6.6.0</h2>
             <div class="small">Consulta as melhorias mais recentes desta versão.</div>
           </div>
-          <button type="button" class="secondary" id="openChangelogBtn">✨ Ver novidades da v6.7.0</button>
+          <button type="button" class="secondary" id="openChangelogBtn">✨ Ver novidades da v6.6.0</button>
         </div>
       </div>
 
@@ -779,15 +770,15 @@
         <div class="row" style="margin-bottom:8px">
           <div class="row" style="gap:8px">
             <span class="pill">Novidades</span>
-            <h2 id="changelogModalTitle" style="margin:0">DuoFin v6.7.0</h2>
+            <h2 id="changelogModalTitle" style="margin:0">DuoFin v6.6.0</h2>
           </div>
           <button type="button" class="icon-btn" id="closeChangelogBtn" aria-label="Fechar">✕</button>
         </div>
-                <p class="small" style="margin:0 0 8px">Fase 3 concluída — Sincronização em Tempo Real &amp; Robustez Técnica:</p>
+                <p class="small" style="margin:0 0 8px">Fase 2 concluída — experiência mobile nativa e registo instantâneo sem atrito:</p>
         <ul class="changelog-list">
-          <li><strong>Sincronização Instantânea via WebSockets (Realtime):</strong> Quando os dois telemóveis estão abertos, qualquer movimento ou alteração aparece em menos de 1 segundo no outro dispositivo, com fallback periódico automático.</li>
-          <li><strong>Histórico de Versões &amp; Restauro com 1 Clique (IndexedDB):</strong> A aplicação guarda automaticamente até 5 pontos de restauro locais antes de fusões na nuvem, importações ou reposições, permitindo recuperar qualquer estado anterior em <em>Dados</em>.</li>
-          <li><strong>Arquitetura Modular ES6:</strong> Código reorganizado em módulos nativos independentes (<code>cycles</code>, <code>parser</code>, <code>charts</code>, <code>crypto</code>, <code>snapshots</code>, <code>sync</code>) para maior velocidade, fiabilidade e manutenção.</li>
+          <li><strong>Barra de Navegação Inferior Fixa (Mobile):</strong> Em ecrãs pequenos, os 4 separadores principais (<em>Resumo, Movimentos, Gráficos, Objetivos</em>) ficam fixos na base com acesso rápido à gaveta <em>Mais</em>.</li>
+          <li><strong>Calculadora Inline & Atalhos Rápidos:</strong> Soma ou subtrai várias parcelas diretamente no campo de valor (ex.: <code>42,50 + 8,30</code>) e usa botões de despesas frequentes com um toque.</li>
+          <li><strong>Progresso Real na Leitura PDF & Feedback Háptico:</strong> Barra de progresso página a página ao importar extratos PDF e micro-vibração tátil nas ações principais.</li>
         </ul>
         <div class="actions" style="justify-content:flex-end;margin-top:16px">
           <button type="button" class="primary" id="confirmChangelogBtn">Entendido</button>
@@ -953,8 +944,8 @@
       </div>
     </div>
 
-    <footer>DuoFin · v6.7.0 · Gestão financeira a dois</footer>
+    <footer>DuoFin · v6.6.0 · Gestão financeira a dois</footer>
   </div>
-  <script type="module" src="./app.js"></script>
+  <script src="./app.js"></script>
 </body>
 </html>

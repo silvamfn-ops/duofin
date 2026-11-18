@@ -739,19 +739,3 @@ html.theme-dark .calc-preview-badge{background:#1c3a32;color:#a9dec7}
 @media print{
   .mobile-drawer-backdrop,.mobile-more-drawer,.quick-templates-bar,.calc-ops,.pdf-progress-box{display:none !important}
 }
-
-/* ============================================================================
-   REALTIME BADGE & HISTÓRICO DE VERSÕES / SNAPSHOTS (v6.7.0)
-   ============================================================================ */
-.realtime-badge{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px;border:1px solid var(--line);background:var(--surface-alt,#f3f6fa);color:var(--muted)}
-.realtime-badge.is-live{background:rgba(36,93,73,.12);border-color:rgba(36,93,73,.35);color:#1f5c45}
-.realtime-badge.is-connecting{background:rgba(197,165,107,.16);border-color:rgba(197,165,107,.45);color:#7a5b1e}
-.realtime-badge.is-fallback{background:rgba(23,54,83,.08);border-color:rgba(23,54,83,.22);color:var(--ink)}
-html.theme-dark .realtime-badge.is-live{background:rgba(62,168,128,.18);border-color:rgba(62,168,128,.4);color:#7ee0b8}
-html.theme-dark .realtime-badge.is-connecting{background:rgba(218,185,118,.18);border-color:rgba(218,185,118,.4);color:#ebd094}
-
-.snapshots-list{display:flex;flex-direction:column;gap:8px;margin-top:8px}
-.snapshot-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
-.snapshot-meta{min-width:0;flex:1}
-.snapshot-title{font-size:13px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.snapshot-restore-btn{padding:6px 11px;font-size:12.5px;white-space:nowrap}
