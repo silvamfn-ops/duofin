@@ -606,3 +606,136 @@ body.privacy-masked [data-sensitive-amount]{
   font-size: 12px;
   padding: 4px 8px;
 }
+
+/* ============================================================================
+   FASE 2 (v6.6.0): BOTTOM TAB BAR MOBILE, CALCULADORA INLINE, ATALHOS & PDF
+   ============================================================================ */
+.nav-ico{display:none}
+.mobile-more-btn{display:none !important}
+.mobile-drawer-backdrop,.mobile-more-drawer{display:none}
+
+@media(max-width:679px){
+  body{padding-bottom:calc(68px + env(safe-area-inset-bottom))}
+  .nav-wrapper{
+    position:fixed;left:0;right:0;bottom:0;z-index:65;margin:0;
+    background:var(--surface);border-top:1px solid var(--line);
+    box-shadow:0 -4px 18px rgba(17,37,60,0.09);
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  .nav-wrapper::after{display:none !important}
+  #mainNav{
+    display:grid;grid-template-columns:repeat(5,1fr);gap:2px;
+    padding:6px 6px 5px;overflow:visible;
+  }
+  #mainNav button{
+    flex-direction:column;justify-content:center;align-items:center;
+    gap:2px;padding:6px 2px;border:0;border-radius:12px;
+    background:transparent;font-size:10.5px;font-weight:650;
+    min-height:48px;position:relative;
+  }
+  #mainNav button.active{
+    background:var(--p);color:var(--g);box-shadow:none;
+  }
+  .nav-ico{display:block;font-size:17px;line-height:1.1}
+  .nav-lbl{display:block;line-height:1.15;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+  .desktop-only-tab{display:none !important}
+  .mobile-more-btn{display:flex !important}
+  .mobile-more-btn .nav-badge{
+    position:absolute;top:4px;right:14%;padding:1px 5px;font-size:9.5px;
+  }
+  .fab{
+    bottom:calc(78px + env(safe-area-inset-bottom));
+    right:16px;width:52px;height:52px;
+  }
+  .toast-container{
+    bottom:calc(138px + env(safe-area-inset-bottom));
+  }
+  .mobile-drawer-backdrop{
+    display:block;position:fixed;inset:0;z-index:80;
+    background:rgba(15,25,36,0.52);backdrop-filter:blur(2px);
+  }
+  .mobile-drawer-backdrop[hidden]{display:none !important}
+  .mobile-more-drawer{
+    display:block;position:fixed;left:0;right:0;bottom:0;z-index:85;
+    background:var(--surface);border-top:1px solid var(--line);
+    border-radius:20px 20px 0 0;padding:10px 16px calc(22px + env(safe-area-inset-bottom));
+    box-shadow:0 -10px 30px rgba(0,0,0,0.24);
+    animation:slideUp .18s ease-out;
+  }
+  .mobile-more-drawer[hidden]{display:none !important}
+  .drawer-handle{
+    width:38px;height:4px;border-radius:99px;background:var(--line);
+    margin:0 auto 10px;
+  }
+  .drawer-grid{
+    display:grid;grid-template-columns:repeat(2,1fr);gap:10px;
+  }
+  .drawer-item{
+    display:flex;align-items:center;gap:10px;padding:13px 12px;
+    background:var(--surface-2);border:1px solid var(--line);border-radius:14px;
+    color:var(--ink);font-weight:700;font-size:13.5px;position:relative;text-align:left;
+  }
+  .drawer-item.active{
+    background:var(--p);border-color:var(--g);color:var(--g);
+  }
+  .drawer-ico{font-size:19px;flex:0 0 auto}
+}
+
+/* Atalhos Rápidos (Templates Frequentes) */
+.quick-templates-bar{
+  background:var(--surface-2);border:1px solid var(--line);border-radius:12px;
+  padding:9px 11px;margin-bottom:10px;
+}
+.quick-templates-head{
+  display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;
+}
+.quick-templates-list{
+  display:flex;gap:7px;overflow-x:auto;padding-bottom:2px;
+  scrollbar-width:none;
+}
+.quick-templates-list::-webkit-scrollbar{display:none}
+.quick-tpl-btn{
+  display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
+  background:var(--surface);border:1px solid var(--line);border-radius:99px;
+  padding:6px 11px;font-size:12px;font-weight:650;color:var(--ink);
+  flex:0 0 auto;
+}
+.quick-tpl-btn:hover,.quick-tpl-btn:active{
+  border-color:var(--g);background:var(--p);color:var(--g);
+}
+.quick-tpl-amt{
+  font-weight:750;color:var(--muted);font-size:11.5px;
+}
+
+/* Calculadora Inline no Campo de Valor */
+.calc-input-wrap{
+  display:flex;align-items:stretch;gap:6px;
+}
+.calc-input-wrap input{
+  flex:1;min-width:0;font-weight:700;
+}
+.calc-ops{
+  display:flex;gap:4px;flex:0 0 auto;
+}
+.calc-op-btn{
+  min-width:34px;min-height:42px;padding:0 8px;border-radius:10px;
+  border:1px solid var(--line);background:var(--surface-2);color:var(--g);
+  font-size:16px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;
+}
+.calc-op-btn:hover{border-color:var(--g);background:var(--p)}
+.calc-eq-btn{background:var(--p);border-color:rgba(23,54,83,0.28)}
+.calc-preview-badge{
+  display:inline-block;margin-left:6px;padding:1px 7px;border-radius:99px;
+  background:#e8f2ed;color:var(--green);font-size:11.5px;font-weight:750;
+}
+html.theme-dark .calc-preview-badge{background:#1c3a32;color:#a9dec7}
+
+/* Barra de progresso real na leitura PDF */
+.pdf-progress-box{
+  background:var(--surface-2);border:1px solid var(--line);border-radius:12px;
+  padding:11px 13px;margin-top:12px;
+}
+
+@media print{
+  .mobile-drawer-backdrop,.mobile-more-drawer,.quick-templates-bar,.calc-ops,.pdf-progress-box{display:none !important}
+}

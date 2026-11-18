@@ -1,5 +1,5 @@
 const $=id=>document.getElementById(id),KEY='orcamento-plus-v1',now=new Date(),iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'),cur=iso(now).slice(0,7);
-const APP_VERSION='v6.5.0';
+const APP_VERSION='v6.6.0';
 const CHANGELOG_KEY='duofin-seen-version-v1';
 const defs=[['Habitação',850],['Supermercado',450],['Água, luz e gás',180],['Transportes',250],['Telecomunicações',70],['Saúde e farmácia',80],['Crianças e família',150],['Restaurantes e lazer',150],['Vestuário e pessoal',120],['Outros / imprevistos',300]];
 const fresh=()=>({settings:{income:3200,target:6000,start:'2026-11-01',deadline:'2027-08-31',cycleGroupingDays:14,people:['Adulto 1','Adulto 2'],categories:defs.map(([name,budget])=>({name,budget})),categoryRules:[]},transactions:[],recurringExpenses:[],savingsGoals:[],deletedIds:[],handledCycleRollovers:[]});
@@ -141,7 +141,7 @@ function deleteTransactionWithUndo(id){
    db.transactions.splice(idx,1);
    if($('txEditId').value===String(id))resetTxForm();
    persist();
-   showToast('Movimento apagado.',{
+   haptic([20,40,20]);showToast('Movimento apagado.',{
      duration:5500,
      undoLabel:'Desfazer',
      onUndo:()=>{
@@ -153,6 +153,119 @@ function deleteTransactionWithUndo(id){
      }
    });
  }
+}
+
+
+// ============================================================================
+// FEEDBACK HÁPTICO (MICRO-VIBRAÇÕES) & CALCULADORA INLINE (v6.6.0)
+// ============================================================================
+function haptic(pattern=12){
+ try{
+   if(typeof navigator!=='undefined'&&typeof navigator.vibrate==='function'){
+     navigator.vibrate(pattern);
+   }
+ }catch(e){}
+}
+
+function evaluateAmountExpression(raw){
+ const cleaned=String(raw??'')
+   .replace(/[€$£\s\u00A0]/g,'')
+   .replace(/,/g,'.')
+   .replace(/[−–—]/g,'-')
+   .replace(/[×xX]/g,'*')
+   .replace(/[÷]/g,'/');
+ if(!cleaned)return NaN;
+ if(/^[+-]?\d+(?:\.\d+)?$/.test(cleaned)){
+   const v=parseFloat(cleaned);
+   return Number.isFinite(v)?v:NaN;
+ }
+ if(!/^[0-9.+\-*/()]+$/.test(cleaned))return NaN;
+ const tokens=cleaned.match(/\d+(?:\.\d+)?|[+\-*/()]/g);
+ if(!tokens||tokens.join('')!==cleaned)return NaN;
+
+ // Shunting-yard seguro sem eval()
+ const out=[],ops=[];
+ const prec={'+':1,'-':1,'*':2,'/':2};
+ let prevType='start';
+ for(const tok of tokens){
+   if(/^\d/.test(tok)){
+     out.push(parseFloat(tok));
+     prevType='num';
+   }else if(tok==='('){
+     ops.push(tok);
+     prevType='op';
+   }else if(tok===')'){
+     while(ops.length&&ops[ops.length-1]!=='(')out.push(ops.pop());
+     if(!ops.length)return NaN;
+     ops.pop();
+     prevType='num';
+   }else{
+     if((tok==='+'||tok==='-')&&(prevType==='start'||prevType==='op')){
+       out.push(0);
+     }else if(prevType!=='num'){
+       return NaN;
+     }
+     while(ops.length&&ops[ops.length-1]!=='('&&prec[ops[ops.length-1]]>=prec[tok]){
+       out.push(ops.pop());
+     }
+     ops.push(tok);
+     prevType='op';
+   }
+ }
+ while(ops.length){
+   const op=ops.pop();
+   if(op==='(')return NaN;
+   out.push(op);
+ }
+ const stack=[];
+ for(const item of out){
+   if(typeof item==='number'){
+     stack.push(item);
+   }else{
+     if(stack.length<2)return NaN;
+     const b=stack.pop(),a=stack.pop();
+     if(item==='+')stack.push(a+b);
+     else if(item==='-')stack.push(a-b);
+     else if(item==='*')stack.push(a*b);
+     else if(item==='/'){
+       if(b===0)return NaN;
+       stack.push(a/b);
+     }
+   }
+ }
+ if(stack.length!==1||!Number.isFinite(stack[0]))return NaN;
+ return Math.round(stack[0]*100)/100;
+}
+
+function updateAmountCalcPreview(){
+ const inp=$('amount');
+ const badge=$('calcPreviewBadge');
+ if(!inp||!badge)return;
+ const raw=inp.value.trim();
+ const hasExpr=/[+\-*/×÷]/.test(raw.replace(/^[+-]/,''));
+ if(!hasExpr){
+   badge.hidden=true;
+   return;
+ }
+ const val=evaluateAmountExpression(raw);
+ if(Number.isFinite(val)&&val>0){
+   badge.textContent='= '+eur(val);
+   badge.hidden=false;
+ }else{
+   badge.hidden=true;
+ }
+}
+
+function commitAmountCalculation(playHaptic=true){
+ const inp=$('amount');
+ if(!inp)return NaN;
+ const val=evaluateAmountExpression(inp.value);
+ if(Number.isFinite(val)&&val>0){
+   inp.value=val.toFixed(2);
+   updateAmountCalcPreview();
+   if(playHaptic)haptic(10);
+ }
+ return val;
 }
 
 let db=load(),selected=iso(now),selectedCycleKey=null,activeCycle=null,activeCycles=[];
@@ -478,13 +591,36 @@ function getSelectedCycle(){
 }
 function persist(skipCloud=false){localStorage.setItem(KEY,JSON.stringify(db));render();if(!skipCloud)queueCloudSave()}
 
+const MORE_DRAWER_TABS=new Set(['recorrentes','calendario','orcamento','dados']);
+
+function openMobileMoreDrawer(){
+ const dr=$('mobileMoreDrawer'),bd=$('mobileMoreBackdrop'),btn=$('mobileMoreBtn');
+ if(!dr||!bd)return;
+ dr.hidden=false;
+ bd.hidden=false;
+ if(btn)btn.setAttribute('aria-expanded','true');
+ haptic(10);
+}
+
+function closeMobileMoreDrawer(){
+ const dr=$('mobileMoreDrawer'),bd=$('mobileMoreBackdrop'),btn=$('mobileMoreBtn');
+ if(dr)dr.hidden=true;
+ if(bd)bd.hidden=true;
+ if(btn)btn.setAttribute('aria-expanded','false');
+}
+
 function switchTab(tabId){
- document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('active',x.dataset.tab===tabId));
+ closeMobileMoreDrawer();
+ document.querySelectorAll('nav button[data-tab]').forEach(x=>x.classList.toggle('active',x.dataset.tab===tabId));
+ const moreBtn=$('mobileMoreBtn');
+ if(moreBtn)moreBtn.classList.toggle('active',MORE_DRAWER_TABS.has(tabId));
+ document.querySelectorAll('[data-drawer-tab]').forEach(x=>x.classList.toggle('active',x.dataset.drawerTab===tabId));
  document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id===tabId));
  const fab=$('quickAddFab');
  if(fab)fab.hidden=tabId!=='resumo';
  hideChartTooltip('chartTooltip');
  hideChartTooltip('analyticsTooltip');
+ haptic(8);
  if(tabId==='resumo')requestAnimationFrame(drawChart);
  if(tabId==='graficos')requestAnimationFrame(drawAnalyticsChart);
 }
@@ -510,9 +646,18 @@ function line(t, omitDate=false){
 
 function updateRecurrentsNavBadge(){
  const btn=$('navRecorrentesBtn');
- if(!btn)return;
  const pendingCount=(db.transactions||[]).filter(t=>t.status==='pending'&&t.recurrenceId).length;
- btn.innerHTML=pendingCount>0?`Recorrentes <span class="nav-badge">${pendingCount}</span>`:'Recorrentes';
+ if(btn)btn.innerHTML=pendingCount>0?`Recorrentes <span class="nav-badge">${pendingCount}</span>`:'Recorrentes';
+ const mBadge=$('mobileMoreBadge');
+ if(mBadge){
+   mBadge.hidden=pendingCount<=0;
+   mBadge.textContent=pendingCount>0?String(pendingCount):'';
+ }
+ const dBadge=$('drawerRecBadge');
+ if(dBadge){
+   dBadge.hidden=pendingCount<=0;
+   dBadge.textContent=pendingCount>0?String(pendingCount):'';
+ }
 }
 
 function render(){
@@ -723,6 +868,7 @@ function render(){
  drawAnalyticsChart();
  drawCalendar();
  renderRecurrences();
+ renderQuickTemplates();
  updateTxFormVisibility();
  checkNavScroll();
 }
@@ -796,6 +942,73 @@ function getFilteredMovements(){
  else if(quickStatusFilter==='installments')list=list.filter(t=>!!t.installmentGroupId);
  const hasExtraFilters=f!=='all'||cat!=='all'||per!=='all'||search.length>0||!!dFrom||!!dTo||quickStatusFilter!=='all';
  return {list,periodLabel,typeLabel:filterParts.join(' · '),hasExtraFilters};
+}
+
+
+function computeFrequentTemplates(){
+ const map=new Map();
+ const validCatSet=new Set((db.settings.categories||[]).map(c=>c.name));
+ const fallbackCat=validCatSet.has('Outros / imprevistos')?'Outros / imprevistos':(db.settings.categories[0]?.name||'');
+
+ (db.transactions||[]).forEach(t=>{
+   if(!t||t.type!=='expense'||t.status==='skipped')return;
+   const cleanDesc=String(t.description||'').replace(/\s*\(\d+\/\d+\)\s*$/,'').trim();
+   if(cleanDesc.length<2)return;
+   const key=cleanDesc.toLocaleLowerCase('pt-PT');
+   const prev=map.get(key)||{
+     description:cleanDesc,
+     category:validCatSet.has(t.category)?t.category:fallbackCat,
+     person:t.person||'Conta conjunta',
+     lastAmount:Number(t.amount)||0,
+     lastDate:t.date||'',
+     count:0
+   };
+   prev.count+=1;
+   if((t.date||'')>=prev.lastDate){
+     prev.lastDate=t.date||'';
+     prev.lastAmount=Number(t.amount)||0;
+     prev.category=validCatSet.has(t.category)?t.category:fallbackCat;
+     prev.person=t.person||prev.person;
+   }
+   map.set(key,prev);
+ });
+
+ const sorted=[...map.values()]
+   .filter(x=>x.count>=2)
+   .sort((a,b)=>b.count-a.count||b.lastDate.localeCompare(a.lastDate))
+   .slice(0,8);
+
+ if(sorted.length)return sorted;
+
+ return [
+   {description:'Supermercado',category:validCatSet.has('Supermercado')?'Supermercado':fallbackCat,person:'Conta conjunta',lastAmount:0},
+   {description:'Combustível',category:validCatSet.has('Transportes')?'Transportes':fallbackCat,person:'Conta conjunta',lastAmount:0},
+   {description:'Café / Pastelaria',category:validCatSet.has('Restaurantes e lazer')?'Restaurantes e lazer':fallbackCat,person:'Conta conjunta',lastAmount:0},
+   {description:'Farmácia',category:validCatSet.has('Saúde e farmácia')?'Saúde e farmácia':fallbackCat,person:'Conta conjunta',lastAmount:0}
+ ].filter(x=>x.category);
+}
+
+function renderQuickTemplates(){
+ const bar=$('quickTemplatesBar');
+ const listEl=$('quickTemplatesList');
+ if(!bar||!listEl)return;
+ const isEditing=!!$('txEditId')?.value;
+ if(isEditing){
+   bar.hidden=true;
+   return;
+ }
+ const tpls=computeFrequentTemplates();
+ if(!tpls.length){
+   bar.hidden=true;
+   return;
+ }
+ bar.hidden=false;
+ listEl.innerHTML=tpls.map((tpl,idx)=>{
+   const fakeTx={type:'expense',category:tpl.category};
+   const amtTag=tpl.lastAmount>0?`<span class="quick-tpl-amt">${eur(tpl.lastAmount)}</span>`:'';
+   return `<button type="button" class="quick-tpl-btn" data-tpl-idx="${idx}"><span>${categoryIcon(fakeTx)}</span><span>${esc(tpl.description)}</span>${amtTag}</button>`;
+ }).join('');
+ listEl._templates=tpls;
 }
 
 function renderTransactions(){
@@ -1727,6 +1940,8 @@ function resetTxForm(){
  $('amountLabel').textContent='Valor (€)';
  userTouchedCategory=false;
  if($('categoryAutoHint'))$('categoryAutoHint').textContent='';
+ if($('calcPreviewBadge'))$('calcPreviewBadge').hidden=true;
+ renderQuickTemplates();
  updateTxFormVisibility();
 }
 
@@ -1755,7 +1970,8 @@ function updateInstallmentPreview(){
  $('installmentsOptions').hidden=!isInst;
  const mode=$('installmentAmountMode').value;
  $('amountLabel').textContent=isInst&&mode==='total'?'Valor total a dividir (€)':'Valor (€)';
- const val=Number($('amount').value)||0;
+ const parsedVal=evaluateAmountExpression($('amount').value);
+ const val=Number.isFinite(parsedVal)?parsedVal:0;
  const count=Math.max(2,Math.min(60,Math.round(Number($('installmentCount').value)||3)));
  if(isInst&&val>0){
    const perMonth=mode==='total'?(val/count):val;
@@ -1769,7 +1985,56 @@ function updateInstallmentPreview(){
 $('isInstallment').onchange=updateInstallmentPreview;
 $('installmentCount').oninput=updateInstallmentPreview;
 $('installmentAmountMode').onchange=updateInstallmentPreview;
-$('amount').oninput=()=>{if($('isInstallment').checked)updateInstallmentPreview()};
+$('amount').oninput=()=>{
+ updateAmountCalcPreview();
+ if($('isInstallment').checked)updateInstallmentPreview();
+};
+$('amount').addEventListener('blur',()=>{
+ const v=evaluateAmountExpression($('amount').value);
+ if(Number.isFinite(v)&&v>0&&/[+\-*/×÷]/.test($('amount').value.trim().replace(/^[+-]/,''))){
+   $('amount').value=v.toFixed(2);
+   updateAmountCalcPreview();
+   if($('isInstallment').checked)updateInstallmentPreview();
+ }
+});
+document.querySelectorAll('[data-calc-op]').forEach(btn=>{
+ btn.onclick=()=>{
+   const inp=$('amount');
+   if(!inp)return;
+   const op=btn.dataset.calcOp;
+   const curVal=inp.value.trim();
+   inp.value=curVal?`${curVal} ${op} `:'';
+   inp.focus();
+   updateAmountCalcPreview();
+   haptic(8);
+ };
+});
+if($('calcEvalBtn'))$('calcEvalBtn').onclick=()=>{
+ const v=commitAmountCalculation(true);
+ if(Number.isFinite(v)&&v>0&&$('isInstallment').checked)updateInstallmentPreview();
+};
+if($('quickTemplatesList'))$('quickTemplatesList').addEventListener('click',e=>{
+ const btn=e.target.closest('[data-tpl-idx]');
+ if(!btn)return;
+ const tpls=$('quickTemplatesList')._templates||[];
+ const tpl=tpls[Number(btn.dataset.tplIdx)];
+ if(!tpl)return;
+ $('type').value='expense';
+ userTouchedCategory=true;
+ updateTxFormVisibility();
+ $('desc').value=tpl.description;
+ if(tpl.category&&[...$('category').options].some(o=>o.value===tpl.category))$('category').value=tpl.category;
+ if(tpl.person&&[...$('person').options].some(o=>o.value===tpl.person))$('person').value=tpl.person;
+ if(tpl.lastAmount>0){
+   $('amount').value=tpl.lastAmount.toFixed(2);
+ }else{
+   $('amount').value='';
+ }
+ updateAmountCalcPreview();
+ haptic(14);
+ $('amount').focus();
+ if(tpl.lastAmount>0)$('amount').select();
+});
 $('txCancelEditBtn').onclick=resetTxForm;
 $('quickAddFab').onclick=()=>{
  switchTab('movimentos');
@@ -1996,12 +2261,17 @@ function ensurePdfJs(){
  return pdfJsLoadingPromise;
 }
 
-async function extractTextLinesFromPdf(file){
+async function extractTextLinesFromPdf(file, onProgress=null){
+ if(typeof onProgress==='function')onProgress(0,0,'A carregar motor de leitura PDF…');
  const pdfjs=await ensurePdfJs();
  const arrayBuffer=await file.arrayBuffer();
  const pdf=await pdfjs.getDocument({data:arrayBuffer}).promise;
  const allLines=[];
  for(let pageNum=1;pageNum<=pdf.numPages;pageNum++){
+   if(typeof onProgress==='function'){
+     onProgress(pageNum,pdf.numPages,`A ler página ${pageNum} de ${pdf.numPages}…`);
+   }
+   await new Promise(r=>setTimeout(r,12));
    const page=await pdf.getPage(pageNum);
    const content=await page.getTextContent();
    const items=content.items
@@ -2433,13 +2703,21 @@ $('csvFileInput').onchange=async e=>{
  try{
    const isPdf=file.type==='application/pdf'||file.name.toLowerCase().endsWith('.pdf');
    if(isPdf){
-     $('csvPreviewContainer').hidden=false;
-     $('csvSummaryAlert').textContent='A ler o extrato PDF… aguarda um instante.';
-     $('csvPreviewList').innerHTML='';
-     const pdfLines=await extractTextLinesFromPdf(file);
+     $('csvPreviewContainer').hidden=true;
+     const pBox=$('pdfProgressBox'),pBar=$('pdfProgressBar'),pLbl=$('pdfProgressLabel'),pPct=$('pdfProgressPct');
+     if(pBox){pBox.hidden=false;pBar.style.width='6%';pLbl.textContent='A abrir extrato PDF…';pPct.textContent='0%';}
+     const pdfLines=await extractTextLinesFromPdf(file,(curPage,totalPages,label)=>{
+       if(!pBox)return;
+       const pct=totalPages>0?Math.round((curPage/totalPages)*100):10;
+       pBar.style.width=Math.max(8,pct)+'%';
+       pLbl.textContent=label;
+       pPct.textContent=pct+'%';
+     });
+     if(pBox)pBox.hidden=true;
      if(!pdfLines.length)throw new Error('Este PDF não contém texto selecionável (pode ser uma imagem digitalizada).');
      parsedCsvRows=parseStatementTextLines(pdfLines);
      if(!parsedCsvRows.length)throw new Error('Não foi possível identificar linhas de movimentos (Data, Descrição e Valor) neste PDF. Tenta copiar o texto do PDF e usar o botão «Colar texto».');
+     haptic([12,25,18]);
    }else{
      const text=await file.text();
      parsedCsvRows=parseCsvContent(text);
@@ -2447,6 +2725,7 @@ $('csvFileInput').onchange=async e=>{
    }
    renderCsvPreview();
  }catch(err){
+   if($('pdfProgressBox'))$('pdfProgressBox').hidden=true;
    $('csvPreviewContainer').hidden=true;
    alert(err.message||'Erro ao ler o ficheiro selecionado.');
  }
@@ -2957,7 +3236,17 @@ window.addEventListener('resize',()=>{
  if($('graficos').classList.contains('active'))drawAnalyticsChart();
 });
 
-document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
+document.querySelectorAll('nav button[data-tab]').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
+if($('mobileMoreBtn'))$('mobileMoreBtn').onclick=()=>{
+ const dr=$('mobileMoreDrawer');
+ if(dr&&!dr.hidden)closeMobileMoreDrawer();
+ else openMobileMoreDrawer();
+};
+if($('closeMobileMoreBtn'))$('closeMobileMoreBtn').onclick=closeMobileMoreDrawer;
+if($('mobileMoreBackdrop'))$('mobileMoreBackdrop').onclick=closeMobileMoreDrawer;
+document.querySelectorAll('[data-drawer-tab]').forEach(btn=>{
+ btn.onclick=()=>switchTab(btn.dataset.drawerTab);
+});
 
 $('calendarMonth').value=cur;$('calendarMonth').onchange=()=>{selected=$('calendarMonth').value+'-01';drawCalendar()};
 $('date').value=iso(now);
@@ -2993,6 +3282,8 @@ $('resetFiltersBtn').onclick=()=>{
 $('type').onchange=()=>{
  userTouchedCategory=false;
  if($('categoryAutoHint'))$('categoryAutoHint').textContent='';
+ if($('calcPreviewBadge'))$('calcPreviewBadge').hidden=true;
+ renderQuickTemplates();
  updateTxFormVisibility();
 };
 
@@ -3006,7 +3297,7 @@ $('printDadosGoalsBtn').onclick=()=>printReport('goals');
 
 $('txForm').onsubmit=e=>{
  e.preventDefault();
- let a=+$('amount').value;if(a<=0)return;
+ let a=evaluateAmountExpression($('amount').value);if(!Number.isFinite(a)||a<=0){alert('Introduz um valor ou expressão válida superior a zero.');$('amount').focus();return;}
  let t=$('type').value;
  const editId=$('txEditId').value;
  const catLabel=t==='expense'?$('category').value:t==='saving'?'Poupança':t==='saving_withdraw'?'Resgate de poupança':'Rendimento';
@@ -3036,6 +3327,7 @@ $('txForm').onsubmit=e=>{
    }
    resetTxForm();
    persist();
+   haptic([14,30,18]);
    return;
  }
 
@@ -3062,6 +3354,7 @@ $('txForm').onsubmit=e=>{
    }
    resetTxForm();
    persist();
+   haptic([14,30,18]);
    return;
  }
 
@@ -3071,12 +3364,13 @@ $('txForm').onsubmit=e=>{
  db.transactions.push(entry);
  resetTxForm();
  persist();
+ haptic([14,30,18]);
 };
 
 document.addEventListener('click',e=>{
  let ed=e.target.closest('[data-edit-tx]');if(ed){e.stopPropagation();openTransactionDetailModal(ed.dataset.editTx,true);return;}
  let b=e.target.closest('[data-del]');if(b){e.stopPropagation();deleteTransactionWithUndo(b.dataset.del);return;}
- let c=e.target.closest('[data-confirm-rec]');if(c){e.stopPropagation();let t=db.transactions.find(x=>String(x.id)===c.dataset.confirmRec);if(t&&t.status==='pending'){t.status='confirmed';t.confirmedAt=iso(new Date());t.updatedAt=Date.now();persist()}return;}
+ let c=e.target.closest('[data-confirm-rec]');if(c){e.stopPropagation();let t=db.transactions.find(x=>String(x.id)===c.dataset.confirmRec);if(t&&t.status==='pending'){t.status='confirmed';t.confirmedAt=iso(new Date());t.updatedAt=Date.now();persist();haptic(16)}return;}
  let sk=e.target.closest('[data-skip-rec]');if(sk){e.stopPropagation();let t=db.transactions.find(x=>String(x.id)===sk.dataset.skipRec);if(t&&t.status==='pending'&&confirm('Ignorar esta ocorrência? Não será contabilizada como despesa.')){t.status='skipped';t.updatedAt=Date.now();persist()}return;}
  let openTx=e.target.closest('[data-open-tx]');if(openTx){openTransactionDetailModal(openTx.dataset.openTx,false);return;}
  let d=e.target.closest('[data-day]');if(d)showDay(d.dataset.day);
@@ -4105,7 +4399,7 @@ render();
 if(!cloudConnected()&&generateDueOccurrences())render();
 if(cloudConnected())refreshToken().then(afterLogin).catch(e=>cloudMessage('A sessão expirou. Inicia sessão novamente: '+e.message,'alert red'));
 
-// Mostrar modal de novidades uma única vez após atualização para v6.5.0
+// Mostrar modal de novidades uma única vez após atualização para v6.6.0
 if(!appLocked && localStorage.getItem(CHANGELOG_KEY)!==APP_VERSION){
   setTimeout(openChangelogModal, 450);
 }

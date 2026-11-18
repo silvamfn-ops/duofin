@@ -14,7 +14,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; worker-src 'self' blob: https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co https://cdnjs.cloudflare.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self';">
   <link rel="stylesheet" href="./styles.css">
-  <title>DuoFin v6.5.0 — Gestão financeira a dois</title>
+  <title>DuoFin v6.6.0 — Gestão financeira a dois</title>
 </head>
 <body>
   <!-- Ecrã de Bloqueio Local (PIN / Biometria WebAuthn) -->
@@ -43,23 +43,53 @@
       <div class="header-actions">
         <button type="button" class="header-icon-btn" id="privacyToggleBtn" title="Ocultar ou mostrar valores monetários" aria-label="Modo privacidade">👁️</button>
         <button type="button" class="header-icon-btn" id="lockAppHeaderBtn" title="Bloquear aplicação agora" aria-label="Bloquear aplicação" hidden>🔒</button>
-        <button type="button" class="version-badge" id="versionBadgeBtn" title="Ver novidades desta versão">v6.5.0</button>
+        <button type="button" class="version-badge" id="versionBadgeBtn" title="Ver novidades desta versão">v6.6.0</button>
       </div>
     </div>
   </header>
   <div class="wrap">
     <div class="nav-wrapper" id="navWrapper">
       <nav id="mainNav" aria-label="Navegação principal">
-        <button class="active" data-tab="resumo">Resumo</button>
-        <button data-tab="movimentos">Movimentos</button>
-        <button data-tab="graficos">Gráficos</button>
-        <button data-tab="recorrentes" id="navRecorrentesBtn">Recorrentes</button>
-        <button data-tab="calendario">Calendário</button>
-        <button data-tab="orcamento">Orçamento</button>
-        <button data-tab="objetivo">Objetivos</button>
-        <button data-tab="dados">Dados</button>
+        <button class="active" data-tab="resumo"><span class="nav-ico" aria-hidden="true">🏠</span><span class="nav-lbl">Resumo</span></button>
+        <button data-tab="movimentos"><span class="nav-ico" aria-hidden="true">💸</span><span class="nav-lbl">Movimentos</span></button>
+        <button data-tab="graficos"><span class="nav-ico" aria-hidden="true">📊</span><span class="nav-lbl">Gráficos</span></button>
+        <button data-tab="objetivo"><span class="nav-ico" aria-hidden="true">🎯</span><span class="nav-lbl">Objetivos</span></button>
+        <button type="button" class="mobile-more-btn" id="mobileMoreBtn" aria-expanded="false" aria-controls="mobileMoreDrawer"><span class="nav-ico" aria-hidden="true">☰</span><span class="nav-lbl">Mais</span><span class="nav-badge" id="mobileMoreBadge" hidden></span></button>
+        <button class="desktop-only-tab" data-tab="recorrentes" id="navRecorrentesBtn">Recorrentes</button>
+        <button class="desktop-only-tab" data-tab="calendario">Calendário</button>
+        <button class="desktop-only-tab" data-tab="orcamento">Orçamento</button>
+        <button class="desktop-only-tab" data-tab="dados">Dados</button>
       </nav>
     </div>
+
+    <!-- Gaveta deslizante "Mais" para ecrãs mobile (< 680px) -->
+    <div id="mobileMoreBackdrop" class="mobile-drawer-backdrop" hidden></div>
+    <aside id="mobileMoreDrawer" class="mobile-more-drawer" aria-label="Mais secções" hidden>
+      <div class="drawer-handle" aria-hidden="true"></div>
+      <div class="row" style="margin-bottom:10px">
+        <strong style="font-size:15px">Mais ferramentas</strong>
+        <button type="button" class="icon-btn" id="closeMobileMoreBtn" aria-label="Fechar menu">✕</button>
+      </div>
+      <div class="drawer-grid">
+        <button type="button" class="drawer-item" data-drawer-tab="recorrentes" id="drawerRecorrentesBtn">
+          <span class="drawer-ico">🔁</span>
+          <span>Recorrentes</span>
+          <span class="nav-badge" id="drawerRecBadge" hidden></span>
+        </button>
+        <button type="button" class="drawer-item" data-drawer-tab="calendario">
+          <span class="drawer-ico">📅</span>
+          <span>Calendário</span>
+        </button>
+        <button type="button" class="drawer-item" data-drawer-tab="orcamento">
+          <span class="drawer-ico">⚖️</span>
+          <span>Orçamento</span>
+        </button>
+        <button type="button" class="drawer-item" data-drawer-tab="dados">
+          <span class="drawer-ico">⚙️</span>
+          <span>Dados</span>
+        </button>
+      </div>
+    </aside>
 
     <section id="resumo" class="view active">
       <div class="row cycle-header" style="flex-wrap:wrap;gap:8px">
@@ -139,6 +169,13 @@
           <h2 id="txFormTitle">Adicionar movimento</h2>
           <span class="pill" id="txEditBadge" hidden>Modo de edição</span>
         </div>
+        <div id="quickTemplatesBar" class="quick-templates-bar" hidden>
+          <div class="quick-templates-head">
+            <span class="small" style="font-weight:700">⚡ Atalhos frequentes</span>
+            <span class="small">Toca para preencher</span>
+          </div>
+          <div id="quickTemplatesList" class="quick-templates-list"></div>
+        </div>
         <form id="txForm">
           <input id="txEditId" type="hidden">
           <div class="grid">
@@ -156,7 +193,18 @@
           <label for="desc">Descrição</label>
           <input id="desc" required autocomplete="off">
           <div class="grid">
-            <div><label for="amount" id="amountLabel">Valor (€)</label><input id="amount" type="number" min=".01" step=".01" required></div>
+            <div>
+              <label for="amount" id="amountLabel">Valor (€) <span id="calcPreviewBadge" class="calc-preview-badge" hidden></span></label>
+              <div class="calc-input-wrap">
+                <input id="amount" type="text" inputmode="decimal" autocomplete="off" placeholder="Ex.: 42,50 ou 18,40 + 6,20" required>
+                <div class="calc-ops" aria-label="Operadores rápidos">
+                  <button type="button" class="calc-op-btn" data-calc-op="+">+</button>
+                  <button type="button" class="calc-op-btn" data-calc-op="-">−</button>
+                  <button type="button" class="calc-op-btn" data-calc-op="*">×</button>
+                  <button type="button" class="calc-op-btn calc-eq-btn" id="calcEvalBtn" title="Calcular expressão">=</button>
+                </div>
+              </div>
+            </div>
             <div id="categoryField">
               <label for="category">Categoria <span id="categoryAutoHint" class="small" style="font-weight:400"></span></label>
               <select id="category"></select>
@@ -500,6 +548,13 @@
             <button class="ghost" type="button" id="cancelPasteTextBtn">Fechar</button>
           </div>
         </div>
+        <div id="pdfProgressBox" class="pdf-progress-box" hidden>
+          <div class="row" style="margin-bottom:6px">
+            <strong id="pdfProgressLabel" style="font-size:13px">A preparar leitura do PDF…</strong>
+            <span id="pdfProgressPct" class="pill">0%</span>
+          </div>
+          <div class="progress" style="margin:0"><i id="pdfProgressBar" style="width:0%"></i></div>
+        </div>
         <div id="csvPreviewContainer" hidden>
           <div class="alert good" id="csvSummaryAlert" style="margin-top:12px"></div>
           <div class="row" style="margin:8px 0 4px">
@@ -687,10 +742,10 @@
       <div class="card">
         <div class="row" style="flex-wrap:wrap;gap:8px">
           <div>
-            <h2 style="margin:0">Sobre a DuoFin v6.5.0</h2>
+            <h2 style="margin:0">Sobre a DuoFin v6.6.0</h2>
             <div class="small">Consulta as melhorias mais recentes desta versão.</div>
           </div>
-          <button type="button" class="secondary" id="openChangelogBtn">✨ Ver novidades da v6.5.0</button>
+          <button type="button" class="secondary" id="openChangelogBtn">✨ Ver novidades da v6.6.0</button>
         </div>
       </div>
 
@@ -709,21 +764,21 @@
     <!-- Folha dedicada exclusivamente à impressão A4 / PDF -->
     <div id="printSheet" aria-hidden="true"></div>
 
-    <!-- Modal de Novidades da Versão (Changelog v6.5.0) -->
+    <!-- Modal de Novidades da Versão (Changelog v6.6.0) -->
     <div id="changelogModal" class="modal-backdrop" hidden>
       <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="changelogModalTitle">
         <div class="row" style="margin-bottom:8px">
           <div class="row" style="gap:8px">
             <span class="pill">Novidades</span>
-            <h2 id="changelogModalTitle" style="margin:0">DuoFin v6.5.0</h2>
+            <h2 id="changelogModalTitle" style="margin:0">DuoFin v6.6.0</h2>
           </div>
           <button type="button" class="icon-btn" id="closeChangelogBtn" aria-label="Fechar">✕</button>
         </div>
-        <p class="small" style="margin:0 0 8px">Esta atualização inaugura a evolução para uma experiência mais interativa e cuidada:</p>
+                <p class="small" style="margin:0 0 8px">Fase 2 concluída — experiência mobile nativa e registo instantâneo sem atrito:</p>
         <ul class="changelog-list">
-          <li><strong>Gráficos interativos:</strong> Toca ou passa o cursor sobre qualquer barra, ponto ou fatia nos gráficos do <em>Resumo</em> e de <em>Gráficos</em> para ver os valores exatos.</li>
-          <li><strong>Modo Privacidade corrigido (👁️):</strong> O botão no topo oculta agora todos os cartões de saldo, valores da lista de movimentos, barras por categoria e calendário.</li>
-          <li><strong>Versão uniformizada:</strong> Todos os ecrãs, cache offline e relatórios PDF apresentam agora a versão consistente <strong>v6.5.0</strong>.</li>
+          <li><strong>Barra de Navegação Inferior Fixa (Mobile):</strong> Em ecrãs pequenos, os 4 separadores principais (<em>Resumo, Movimentos, Gráficos, Objetivos</em>) ficam fixos na base com acesso rápido à gaveta <em>Mais</em>.</li>
+          <li><strong>Calculadora Inline & Atalhos Rápidos:</strong> Soma ou subtrai várias parcelas diretamente no campo de valor (ex.: <code>42,50 + 8,30</code>) e usa botões de despesas frequentes com um toque.</li>
+          <li><strong>Progresso Real na Leitura PDF & Feedback Háptico:</strong> Barra de progresso página a página ao importar extratos PDF e micro-vibração tátil nas ações principais.</li>
         </ul>
         <div class="actions" style="justify-content:flex-end;margin-top:16px">
           <button type="button" class="primary" id="confirmChangelogBtn">Entendido</button>
@@ -889,7 +944,7 @@
       </div>
     </div>
 
-    <footer>DuoFin · v6.5.0 · Gestão financeira a dois</footer>
+    <footer>DuoFin · v6.6.0 · Gestão financeira a dois</footer>
   </div>
   <script src="./app.js"></script>
 </body>
