@@ -1,3 +1,4 @@
+import { $, esc, eur, fmtDate, validDate, now } from './utils.js';
 // js/parser.js — Importação e parsing inteligente de extratos PDF (PDF.js) e CSV bancários
 let ctx = null;
 
@@ -241,7 +242,7 @@ export function guessCategory(desc){
 export function parseStatementTextLines(lines){
  const fullText=lines.join('\n');
  const yearMatches=fullText.match(/\b(20\d{2})\b/g);
- const fallbackYear=yearMatches&&yearMatches.length?yearMatches[0]:String(now.getFullYear());
+ const fallbackYear=yearMatches&&yearMatches.length?yearMatches[0]:String(now().getFullYear());
 
  if(/D[:.]?\s*valor/i.test(fullText)){
    const santanderRows=parseSantanderLines(lines,fallbackYear);
@@ -473,60 +474,6 @@ export function parseCsvContent(text){
  return rows;
 }
 
-$('togglePasteExtractBtn').onclick=()=>{
- const box=$('pasteExtractBox');
- box.hidden=!box.hidden;
- if(!box.hidden)$('pasteExtractText').focus();
-};
-$('cancelPasteTextBtn').onclick=()=>{$('pasteExtractBox').hidden=true;};
-$('parsePastedTextBtn').onclick=()=>{
- const raw=$('pasteExtractText').value.trim();
- if(!raw){alert('Cola primeiro o texto copiado do extrato bancário.');return;}
- const lines=raw.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
- const rows=parseStatementTextLines(lines);
- if(!rows.length){
-   alert('Não foi possível detetar movimentos com Data e Valor no texto colado. Confirma se copiaste as linhas completas do extrato.');
-   return;
- }
- parsedCsvRows=rows;
- $('pasteExtractBox').hidden=true;
- renderCsvPreview();
-};
-
-$('csvFileInput').onchange=async e=>{
- const file=e.target.files[0];if(!file)return;
- try{
-   const isPdf=file.type==='application/pdf'||file.name.toLowerCase().endsWith('.pdf');
-   if(isPdf){
-     $('csvPreviewContainer').hidden=true;
-     const pBox=$('pdfProgressBox'),pBar=$('pdfProgressBar'),pLbl=$('pdfProgressLabel'),pPct=$('pdfProgressPct');
-     if(pBox){pBox.hidden=false;pBar.style.width='6%';pLbl.textContent='A abrir extrato PDF…';pPct.textContent='0%';}
-     const pdfLines=await extractTextLinesFromPdf(file,(curPage,totalPages,label)=>{
-       if(!pBox)return;
-       const pct=totalPages>0?Math.round((curPage/totalPages)*100):10;
-       pBar.style.width=Math.max(8,pct)+'%';
-       pLbl.textContent=label;
-       pPct.textContent=pct+'%';
-     });
-     if(pBox)pBox.hidden=true;
-     if(!pdfLines.length)throw new Error('Este PDF não contém texto selecionável (pode ser uma imagem digitalizada).');
-     parsedCsvRows=parseStatementTextLines(pdfLines);
-     if(!parsedCsvRows.length)throw new Error('Não foi possível identificar linhas de movimentos (Data, Descrição e Valor) neste PDF. Tenta copiar o texto do PDF e usar o botão «Colar texto».');
-     ctx.haptic([12,25,18]);
-   }else{
-     const text=await file.text();
-     parsedCsvRows=parseCsvContent(text);
-     if(!parsedCsvRows.length)throw new Error('Não foi possível identificar movimentos válidos (Data, Descrição e Valor) neste ficheiro.');
-   }
-   renderCsvPreview();
- }catch(err){
-   if($('pdfProgressBox'))$('pdfProgressBox').hidden=true;
-   $('csvPreviewContainer').hidden=true;
-   alert(err.message||'Erro ao ler o ficheiro selecionado.');
- }
- e.target.value='';
-};
-
 function isDuplicateMovement(row){
  const amt=Number(row.amount);
  return ctx.db.transactions.some(t=>t.date===row.date&&Math.abs((Number(t.amount)||0)-amt)<0.005&&t.type===row.type);
@@ -648,6 +595,59 @@ function saveCurrentImportModal(){
 
 export function initParserModule(context) {
   ctx = context;
+$('togglePasteExtractBtn').onclick=()=>{
+ const box=$('pasteExtractBox');
+ box.hidden=!box.hidden;
+ if(!box.hidden)$('pasteExtractText').focus();
+};
+$('cancelPasteTextBtn').onclick=()=>{$('pasteExtractBox').hidden=true;};
+$('parsePastedTextBtn').onclick=()=>{
+ const raw=$('pasteExtractText').value.trim();
+ if(!raw){alert('Cola primeiro o texto copiado do extrato bancário.');return;}
+ const lines=raw.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+ const rows=parseStatementTextLines(lines);
+ if(!rows.length){
+   alert('Não foi possível detetar movimentos com Data e Valor no texto colado. Confirma se copiaste as linhas completas do extrato.');
+   return;
+ }
+ parsedCsvRows=rows;
+ $('pasteExtractBox').hidden=true;
+ renderCsvPreview();
+};
+
+$('csvFileInput').onchange=async e=>{
+ const file=e.target.files[0];if(!file)return;
+ try{
+   const isPdf=file.type==='application/pdf'||file.name.toLowerCase().endsWith('.pdf');
+   if(isPdf){
+     $('csvPreviewContainer').hidden=true;
+     const pBox=$('pdfProgressBox'),pBar=$('pdfProgressBar'),pLbl=$('pdfProgressLabel'),pPct=$('pdfProgressPct');
+     if(pBox){pBox.hidden=false;pBar.style.width='6%';pLbl.textContent='A abrir extrato PDF…';pPct.textContent='0%';}
+     const pdfLines=await extractTextLinesFromPdf(file,(curPage,totalPages,label)=>{
+       if(!pBox)return;
+       const pct=totalPages>0?Math.round((curPage/totalPages)*100):10;
+       pBar.style.width=Math.max(8,pct)+'%';
+       pLbl.textContent=label;
+       pPct.textContent=pct+'%';
+     });
+     if(pBox)pBox.hidden=true;
+     if(!pdfLines.length)throw new Error('Este PDF não contém texto selecionável (pode ser uma imagem digitalizada).');
+     parsedCsvRows=parseStatementTextLines(pdfLines);
+     if(!parsedCsvRows.length)throw new Error('Não foi possível identificar linhas de movimentos (Data, Descrição e Valor) neste PDF. Tenta copiar o texto do PDF e usar o botão «Colar texto».');
+     ctx.haptic([12,25,18]);
+   }else{
+     const text=await file.text();
+     parsedCsvRows=parseCsvContent(text);
+     if(!parsedCsvRows.length)throw new Error('Não foi possível identificar movimentos válidos (Data, Descrição e Valor) neste ficheiro.');
+   }
+   renderCsvPreview();
+ }catch(err){
+   if($('pdfProgressBox'))$('pdfProgressBox').hidden=true;
+   $('csvPreviewContainer').hidden=true;
+   alert(err.message||'Erro ao ler o ficheiro selecionado.');
+ }
+ e.target.value='';
+};
   $('impEditType').onchange=()=>{
    const tp=$('impEditType').value;
    $('impEditCatWrap').hidden=tp!=='expense';

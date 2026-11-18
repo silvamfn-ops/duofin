@@ -51,8 +51,31 @@ import {
 } from './js/snapshots.js';
 
 import {
+  $,
+  now(),
+  iso,
+  cur(),
+  esc,
+  eur,
+  sum,
+  isPaid,
+  isSavingTx,
+  savingSigned,
+  validDate,
+  capFirst,
+  mName,
+  fmtDate,
+  addDays,
+  daysBetween,
+  monthLast,
+  monthIndex,
+  dueDate
+} from './js/utils.js';
+
+import {
   initSyncModule,
   cloudConnected,
+  cloudMessage,
   refreshToken,
   afterLogin,
   syncNow,
@@ -60,7 +83,7 @@ import {
   queueCloudSave
 } from './js/sync.js';
 
-const $=id=>document.getElementById(id),KEY='orcamento-plus-v1',now=new Date(),iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'),cur=iso(now).slice(0,7);
+const KEY='orcamento-plus-v1';
 const APP_VERSION='v6.7.0';
 const CHANGELOG_KEY='duofin-seen-version-v1';
 const defs=[['Habitação',850],['Supermercado',450],['Água, luz e gás',180],['Transportes',250],['Telecomunicações',70],['Saúde e farmácia',80],['Crianças e família',150],['Restaurantes e lazer',150],['Vestuário e pessoal',120],['Outros / imprevistos',300]];
@@ -330,13 +353,8 @@ function commitAmountCalculation(playHaptic=true){
  return val;
 }
 
-let db=load(),selected=iso(now),selectedCycleKey=null,activeCycle=null,activeCycles=[];
-const eur=n=>new Intl.NumberFormat('pt-PT',{style:'currency',currency:'EUR'}).format(+n||0),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const sum=a=>a.reduce((s,t)=>s+(Number(t.amount)||0),0),isPaid=t=>t.status!=='pending'&&t.status!=='skipped',mName=m=>new Date(m+'-02T12:00:00').toLocaleDateString('pt-PT',{month:'long',year:'numeric'});
-const capFirst=s=>s?s.charAt(0).toUpperCase()+s.slice(1):'';
+let db=load(),selected=iso(now()),selectedCycleKey=null,activeCycle=null,activeCycles=[];
 const DAY_MS=86400000,dateMs=s=>Date.parse(s+'T00:00:00Z'),validDate=s=>/^\d{4}-\d{2}-\d{2}$/.test(String(s||''))&&Number.isFinite(dateMs(s)),addDays=(s,n)=>new Date(dateMs(s)+n*DAY_MS).toISOString().slice(0,10),daysBetween=(a,b)=>Math.round((dateMs(b)-dateMs(a))/DAY_MS),monthLast=m=>{const [y,mo]=m.split('-').map(Number);return `${m}-${String(new Date(y,mo,0).getDate()).padStart(2,'0')}`},fmtDate=d=>new Date(d+'T12:00:00').toLocaleDateString('pt-PT',{day:'2-digit',month:'short',year:'numeric'});
-const isSavingTx=t=>t&&(t.type==='saving'||t.type==='saving_withdraw');
-const savingSigned=t=>t.type==='saving_withdraw'?-(Number(t.amount)||0):(Number(t.amount)||0);
 
 function recordDeletedId(id){
  if(!Array.isArray(db.deletedIds))db.deletedIds=[];
@@ -365,7 +383,7 @@ function categoryIcon(t){
 }
 
 function friendlyDateHeading(dateStr){
- const today=iso(now);
+ const today=iso(now());
  if(dateStr===today)return 'Hoje · '+fmtDate(dateStr);
  if(dateStr===addDays(today,-1))return 'Ontem · '+fmtDate(dateStr);
  return fmtDate(dateStr);
@@ -430,7 +448,7 @@ function line(t, omitDate=false){
    const g=(db.savingsGoals||[]).find(x=>x.id===t.goalId);
    if(g)state+=` · <em>Objetivo: ${esc(g.name)}</em>`;
  }
- if(t.date>iso(now))state+=' · <em>Agendado</em>';
+ if(t.date>iso(now()))state+=' · <em>Agendado</em>';
  let actions=t.status==='pending'?`<button class="secondary" data-confirm-rec="${esc(String(t.id))}">Confirmar</button><button class="danger" data-skip-rec="${esc(String(t.id))}">Ignorar</button>`:'';
  const cls=t.type==='income'?'plus':t.type==='saving_withdraw'?'neutral':'minus';
  const badgeCls=t.type==='income'?'is-inc':isSavingTx(t)?'is-sav':'';
@@ -484,7 +502,7 @@ function render(){
    if(prevCat&&[...aCatSel.options].some(o=>o.value===prevCat))aCatSel.value=prevCat;
  }
 
- const today=iso(now);
+ const today=iso(now());
  const tx=cycleTransactions(cycle).filter(t=>t.date<=today);
  const ex=tx.filter(t=>t.type==='expense'&&isPaid(t)),inc=tx.filter(t=>t.type==='income'&&isPaid(t));
  const svIn=tx.filter(t=>t.type==='saving'&&isPaid(t)),svOut=tx.filter(t=>t.type==='saving_withdraw'&&isPaid(t));
@@ -559,7 +577,7 @@ function render(){
          <div class="alert-choice-bar">
            <span>Ocultar este aviso:</span>
            <div class="alert-choice-actions">
-             <button type="button" class="secondary" data-alert-hide-now="${esc(a.id)}">Só agora</button>
+             <button type="button" class="secondary" data-alert-hide-now()="${esc(a.id)}">Só agora</button>
              <button type="button" class="primary" data-alert-hide-cycle="${esc(a.id)}">Até ao próximo ciclo</button>
              <button type="button" class="ghost" data-alert-cancel-hide>Cancelar</button>
            </div>
@@ -700,7 +718,7 @@ document.querySelectorAll('[data-quick-status]').forEach(btn=>{
 function getFilteredMovements(){
  const f=$('filter').value,period=$('movementCycle').value,search=$('filterSearch').value.trim().toLocaleLowerCase('pt-PT'),cat=$('filterCategory').value,per=$('filterPerson').value;
  const dFrom=$('filterDateFrom').value,dTo=$('filterDateTo').value;
- const today=iso(now);
+ const today=iso(now());
  let list=[...db.transactions],periodLabel='Todos os movimentos';
 
  if(period==='selected'&&activeCycle){
@@ -827,7 +845,7 @@ function exportFilteredCsv(){
  list.forEach(t=>{
    const signedAmt=t.type==='income'?Number(t.amount):-Number(t.amount);
    const fmtAmt=signedAmt.toFixed(2).replace('.',',');
-   const st=t.status==='pending'?'Pendente':t.status==='skipped'?'Ignorada':t.date>iso(now)?'Agendado':'Confirmado';
+   const st=t.status==='pending'?'Pendente':t.status==='skipped'?'Ignorada':t.date>iso(now())?'Agendado':'Confirmado';
    lines.push([
      t.date,
      txTypeLabel(t),
@@ -842,7 +860,7 @@ function exportFilteredCsv(){
  const url=URL.createObjectURL(csvBlob);
  const a=document.createElement('a');
  a.href=url;
- a.download=`duofin-movimentos-${iso(now)}.csv`;
+ a.download=`duofin-movimentos-${iso(now())}.csv`;
  a.click();
  URL.revokeObjectURL(url);
 }
@@ -873,7 +891,7 @@ function openTransactionDetailModal(id, startInEdit=false){
  let extraInfo='';
  if(t.status==='pending')extraInfo='Pendente de confirmação';
  else if(t.status==='skipped')extraInfo='Ignorada';
- else if(t.date>iso(now))extraInfo='Agendado (futuro)';
+ else if(t.date>iso(now()))extraInfo='Agendado (futuro)';
  else if(t.type==='income')extraInfo=t.countsForCycle===false?'Rendimento extra (não fecha ciclo)':'Define o início do ciclo financeiro';
  else if(isSavingTx(t)&&t.goalId){
    const g=(db.savingsGoals||[]).find(x=>x.id===t.goalId);
@@ -887,7 +905,7 @@ function openTransactionDetailModal(id, startInEdit=false){
  const applyAllWrap=$('modalEditApplyAllInstWrap');
  if(t.installmentGroupId){
    const groupItems=db.transactions.filter(x=>x.installmentGroupId===t.installmentGroupId);
-   const today=iso(now);
+   const today=iso(now());
    const futureItems=groupItems.filter(x=>x.date>today);
    const totalGroup=sum(groupItems);
    const remainingGroup=sum(futureItems);
@@ -951,7 +969,7 @@ $('txModalDuplicateBtn').onclick=()=>{
  $('txDetailModal').hidden=true;
  switchTab('movimentos');
  resetTxForm();
- $('date').value=iso(now);
+ $('date').value=iso(now());
  $('type').value=t.type;
  updateTxFormVisibility();
  // Remove eventual sufixo de prestação ex.: " (1/3)"
@@ -972,7 +990,7 @@ $('txModalDeleteFutureInstBtn').onclick=()=>{
  const id=$('modalTxId').value;
  const target=db.transactions.find(t=>String(t.id)===String(id));
  if(!target||!target.installmentGroupId)return;
- const today=iso(now);
+ const today=iso(now());
  const futureItems=db.transactions.filter(x=>x.installmentGroupId===target.installmentGroupId&&x.date>today);
  if(!futureItems.length)return;
  if(confirm(`Apagar as ${futureItems.length} prestações futuras deste grupo (mantendo as já vencidas/pagas)?`)){
@@ -1018,7 +1036,7 @@ $('txModalEditForm').onsubmit=e=>{
  if(existing.installmentGroupId){
    const applyCatPerson=$('modalEditApplyAllInst').checked;
    const applyFutureAmt=$('modalEditApplyFutureAmountInst').checked;
-   const todayStr=iso(now);
+   const todayStr=iso(now());
    if(applyCatPerson||applyFutureAmt){
      db.transactions.forEach(item=>{
        if(item.installmentGroupId===existing.installmentGroupId&&item.id!==existing.id){
@@ -1049,7 +1067,7 @@ function computeGoalForecast(g){
  const left=Math.max(0,target-saved);
  if(left<=0)return {text:'Objetivo concluído!',kind:'is-done'};
 
- const today=iso(now);
+ const today=iso(now());
  const cycles=buildCycles().filter(c=>!c.preCycle&&!c.fallback);
  const recentClosed=cycles.slice(-4);
  let avgPerCycle=0;
@@ -1097,7 +1115,7 @@ function renderGoals(){
 
  $('goalList').innerHTML=goals.length?goals.map(g=>{
   const tx=goalTransactions(g).sort((a,b)=>b.date.localeCompare(a.date)),total=goalTotal(g),pct=g.target>0?Math.min(100,total/Number(g.target)*100):0,left=Math.max(0,Number(g.target)-total);
-  const savings=db.transactions.filter(t=>isSavingTx(t)&&isPaid(t)&&String(t.date||'')<=iso(now)).sort((a,b)=>b.date.localeCompare(a.date));
+  const savings=db.transactions.filter(t=>isSavingTx(t)&&isPaid(t)&&String(t.date||'')<=iso(now())).sort((a,b)=>b.date.localeCompare(a.date));
   const options=savings.filter(t=>t.goalId!==g.id).map(t=>{
     const current=db.savingsGoals.find(x=>x.id===t.goalId)||db.savingsGoals.find(x=>(x.legacyTransactionIds||[]).map(String).includes(String(t.id))&&!t.goalId);
     const kind=t.type==='saving_withdraw'?'[Resgate] ':'';
@@ -1119,7 +1137,7 @@ function resetTxForm(){
  $('txEditBadge').hidden=true;
  $('txSaveBtn').textContent='Guardar movimento';
  $('txCancelEditBtn').hidden=true;
- $('date').value=iso(now);
+ $('date').value=iso(now());
  $('incomeCountsForCycle').checked=true;
  $('isInstallment').checked=false;
  $('installmentsOptions').hidden=true;
@@ -1352,7 +1370,7 @@ function printReport(mode){
    title='Extrato de Movimentos';
    bodyHtml=buildMovementsReportHtml(list,`${periodLabel} (${typeLabel})`,false);
  }else{
-   const today=iso(now);
+   const today=iso(now());
    const tx=[...cycleTransactions(cycle)].filter(t=>t.date<=today).sort((a,b)=>b.date.localeCompare(a.date));
    title='Relatório do Ciclo Financeiro e Objetivos';
    bodyHtml=buildMovementsReportHtml(tx,cycleName(cycle),true)+buildGoalsReportHtml();
@@ -1401,7 +1419,7 @@ function roundSmartBudget(val){
 }
 
 function getReferenceMonthlyIncome(){
- const today=iso(now);
+ const today=iso(now());
  const cycles=buildCycles().filter(c=>!c.preCycle&&!c.fallback);
  const closed=cycles.filter(c=>!c.open).slice(-4);
  const sample=closed.length?closed:cycles.slice(-4);
@@ -1419,7 +1437,7 @@ function getReferenceMonthlyIncome(){
 }
 
 function computeSmartBudgetInsights(){
- const today=iso(now);
+ const today=iso(now());
  const cycles=buildCycles().filter(c=>!c.preCycle);
  const closedCycles=cycles.filter(c=>!c.open).slice(-4);
  const currentCyc=currentCycle(cycles);
@@ -1548,8 +1566,8 @@ function updateBudget(){
 }
 
 function drawCalendar(){
- let m=$('calendarMonth').value||cur,[y,mo]=m.split('-').map(Number),off=(new Date(y,mo-1,1).getDay()+6)%7,days=new Date(y,mo,0).getDate(),s=['2ª','3ª','4ª','5ª','6ª','Sáb','Dom'].map(x=>`<div class="dayname">${x}</div>`).join('');
- const today=iso(now);
+ let m=$('calendarMonth').value||cur(),[y,mo]=m.split('-').map(Number),off=(new Date(y,mo-1,1).getDay()+6)%7,days=new Date(y,mo,0).getDate(),s=['2ª','3ª','4ª','5ª','6ª','Sáb','Dom'].map(x=>`<div class="dayname">${x}</div>`).join('');
+ const today=iso(now());
  for(let i=0;i<off;i++)s+='<div></div>';
  for(let d=1;d<=days;d++){
    let dt=m+'-'+String(d).padStart(2,'0');
@@ -1599,8 +1617,8 @@ document.querySelectorAll('[data-drawer-tab]').forEach(btn=>{
  btn.onclick=()=>switchTab(btn.dataset.drawerTab);
 });
 
-$('calendarMonth').value=cur;$('calendarMonth').onchange=()=>{selected=$('calendarMonth').value+'-01';drawCalendar()};
-$('date').value=iso(now);
+$('calendarMonth').value=cur();$('calendarMonth').onchange=()=>{selected=$('calendarMonth').value+'-01';drawCalendar()};
+$('date').value=iso(now());
 
 $('cycleSelect').onchange=()=>{selectedCycleKey=$('cycleSelect').value;render()};
 $('prevCycleBtn').onclick=()=>{
@@ -1729,26 +1747,6 @@ document.addEventListener('click',e=>{
 
 // Despesas recorrentes
 if(!Array.isArray(db.recurringExpenses))db.recurringExpenses=[];
-function monthIndex(m){const [y,mo]=m.split('-').map(Number);return y*12+mo-1}
-function dueDate(year,month,day){const last=new Date(year,month,0).getDate();return `${year}-${String(month).padStart(2,'0')}-${String(Math.min(day,last)).padStart(2,'0')}`}
-function generateDueOccurrences(){
- const today=iso(new Date()),current=today.slice(0,7);let changed=false;
- const deletedSet=new Set((db.deletedIds||[]).map(x=>String(x.id)));
- db.recurringExpenses.forEach(r=>{
-  if(!r.active||!r.startMonth)return;
-  const from=monthIndex(r.startMonth),to=Math.min(monthIndex(current),r.endMonth?monthIndex(r.endMonth):monthIndex(current));
-  for(let idx=from;idx<=to;idx++){
-   const year=Math.floor(idx/12),month=idx%12+1,date=dueDate(year,month,Number(r.day)||1),key=`${r.id}:${year}-${String(month).padStart(2,'0')}`;
-   const occId='rec-'+key.replace(/[^a-zA-Z0-9_-]/g,'-');
-   if(date>today)continue;
-   if(deletedSet.has(occId))continue;
-   if(db.transactions.some(t=>t.occurrenceKey===key||String(t.id)===occId))continue;
-   db.transactions.push({id:occId,date,type:'expense',description:r.description,amount:Number(r.amount),category:r.category,person:r.person,status:'pending',recurrenceId:r.id,occurrenceKey:key,updatedAt:Date.now()});changed=true;
-  }
- });
- if(changed){localStorage.setItem(KEY,JSON.stringify(db));queueCloudSave()}
- return changed;
-}
 function renderRecurrences(){
  const cats=$('recurrenceCategory'),people=$('recurrencePerson');if(!cats||!people)return;
  const prevCat=cats.value,prevPerson=people.value;
@@ -1775,8 +1773,8 @@ function loadRecurrenceForm(r){
  if(![...$('recurrencePerson').options].some(o=>o.value===r.person)){const o=document.createElement('option');o.value=r.person;o.textContent=r.person;$('recurrencePerson').append(o)}
  $('recurrenceCategory').value=r.category;$('recurrencePerson').value=r.person;$('recurrenceDay').value=r.day;$('recurrenceStart').value=r.startMonth;$('recurrenceEnd').value=r.endMonth||'';$('recurrenceFormTitle').textContent='Editar despesa recorrente';$('recurrenceSave').textContent='Guardar alterações';$('recurrenceCancel').hidden=false;
 }
-function resetRecurrenceForm(){ $('recurrenceForm').reset();$('recurrenceId').value='';$('recurrenceDay').value='1';$('recurrenceStart').value=cur;$('recurrenceFormTitle').textContent='Nova despesa recorrente';$('recurrenceSave').textContent='Guardar recorrência';$('recurrenceCancel').hidden=true; }
-$('recurrenceStart').value=cur;
+function resetRecurrenceForm(){ $('recurrenceForm').reset();$('recurrenceId').value='';$('recurrenceDay').value='1';$('recurrenceStart').value=cur();$('recurrenceFormTitle').textContent='Nova despesa recorrente';$('recurrenceSave').textContent='Guardar recorrência';$('recurrenceCancel').hidden=true; }
+$('recurrenceStart').value=cur();
 $('recurrenceForm').onsubmit=e=>{
  e.preventDefault();const id=$('recurrenceId').value,description=$('recurrenceDescription').value.trim(),amount=Number($('recurrenceAmount').value),day=Number($('recurrenceDay').value),startMonth=$('recurrenceStart').value,endMonth=$('recurrenceEnd').value;
  if(!description||!Number.isFinite(amount)||amount<=0||!Number.isInteger(day)||day<1||day>31||!startMonth||(endMonth&&endMonth<startMonth)){alert('Confirma a descrição, o valor, o dia e o período da recorrência.');return;}
@@ -2032,7 +2030,7 @@ $('alerts').addEventListener('click', e => {
     render();
     return;
   }
-  const nowBtn = e.target.closest('[data-alert-hide-now]');
+  const nowBtn = e.target.closest('[data-alert-hide-now()]');
   if (nowBtn && activeCycle) {
     dismissAlertForNow(activeCycle.key, nowBtn.dataset.alertHideNow);
     return;
@@ -2107,7 +2105,7 @@ $('goalList').addEventListener('click',e=>{
 });
 
 $('saveCycleGrouping').onclick=()=>{const n=Number($('cycleGroupingDays').value);if(!Number.isInteger(n)||n<0||n>20){alert('Indica um número inteiro entre 0 e 20 dias.');return;}db.settings.cycleGroupingDays=n;selectedCycleKey=null;persist();showToast('Definição dos ciclos guardada.',{type:'success'});};
-function shift(n){let d=new Date(($('calendarMonth').value||cur)+'-02T12:00:00');d.setMonth(d.getMonth()+n);$('calendarMonth').value=iso(d).slice(0,7);selected=iso(d).slice(0,7)+'-01';drawCalendar()}
+function shift(n){let d=new Date(($('calendarMonth').value||cur())+'-02T12:00:00');d.setMonth(d.getMonth()+n);$('calendarMonth').value=iso(d).slice(0,7);selected=iso(d).slice(0,7)+'-01';drawCalendar()}
 $('prev').onclick=()=>shift(-1);$('next').onclick=()=>shift(1);
 
 // ============================================================================
@@ -2477,9 +2475,9 @@ const sharedContext = {
   normalizeDb,
   persist,
   render,
-  now: () => now,
+  now,
   iso,
-  cur: () => cur,
+  cur,
   eur,
   esc,
   sum,

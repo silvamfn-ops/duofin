@@ -1,3 +1,4 @@
+import { $, esc, eur, sum, isPaid, mName, capFirst, addDays, daysBetween, monthLast, fmtDate, validDate, cur } from './utils.js';
 // js/cycles.js — Motor de ciclos de rendimento, rollover de sobras e projeção de fecho
 let ctx = null;
 export function initCyclesModule(context) {
@@ -196,7 +197,7 @@ export function getSelectedCycle(){
  const cycles=buildCycles();
  let c=cycles.find(x=>x.key===ctx.getSelectedCycleKey())||currentCycle(cycles);
  if(!c){
-   c={key:'month:'+ctx.cur(),start:cur+'-01',end:monthLast(cur),fallback:true,preCycle:false,open:false};
+   c={key:'month:'+ctx.cur(),start:cur()+'-01',end:monthLast(cur()),fallback:true,preCycle:false,open:false};
    c.monthLabel=computeCycleReferenceMonth(c);
  }
  ctx.setSelectedCycleState(c.key, c, cycles);

@@ -1,3 +1,4 @@
+import { $, esc, eur, sum, isPaid, isSavingTx, savingSigned, addDays, daysBetween, fmtDate } from './utils.js';
 // js/charts.js — Gráficos interativos Canvas (Evolução da Poupança + Análise de Ciclos)
 let ctx = null;
 export function initChartsModule(context) {
@@ -246,9 +247,9 @@ export function drawAnalyticsChart(){
  const h=Math.max(220,Math.round(rect.height||265));
  canvas.width=w*dpr;
  canvas.height=h*dpr;
- const ctx=canvas.getContext('2d');
- ctx.setTransform(dpr,0,0,dpr,0,0);
- ctx.clearRect(0,0,w,h);
+ const g2d=canvas.getContext('2d');
+ g2d.setTransform(dpr,0,0,dpr,0,0);
+ g2d.clearRect(0,0,w,h);
 
  const styles=getComputedStyle(document.documentElement);
  const lineCol=styles.getPropertyValue('--line').trim()||'#dce4ec';
@@ -262,10 +263,10 @@ export function drawAnalyticsChart(){
  const totalVal=items.reduce((s,x)=>s+x.value,0);
 
  if(!items.length){
-   ctx.fillStyle=mutedCol;
-   ctx.font='13px system-ui,sans-serif';
-   ctx.textAlign='center';
-   ctx.fillText('Sem dados suficientes para gerar o gráfico selecionado.',w/2,h/2);
+   g2d.fillStyle=mutedCol;
+   g2d.font='13px system-ui,sans-serif';
+   g2d.textAlign='center';
+   g2d.fillText('Sem dados suficientes para gerar o gráfico selecionado.',w/2,h/2);
    $('analyticsLegend').innerHTML='';
    $('analyticsSummaryTable').innerHTML='<div class="empty">Regista movimentos para visualizar estatísticas.</div>';
    return;
@@ -277,15 +278,15 @@ export function drawAnalyticsChart(){
    const plotW=w-padL-padR,plotH=h-padT-padB;
    const maxVal=Math.max(50,...items.map(x=>Math.max(x.income,x.expense)))*1.15;
 
-   ctx.strokeStyle=lineCol;
-   ctx.lineWidth=1;
-   ctx.fillStyle=mutedCol;
-   ctx.font='10.5px system-ui,sans-serif';
-   ctx.textAlign='right';
+   g2d.strokeStyle=lineCol;
+   g2d.lineWidth=1;
+   g2d.fillStyle=mutedCol;
+   g2d.font='10.5px system-ui,sans-serif';
+   g2d.textAlign='right';
    for(let i=0;i<=4;i++){
      const y=padT+plotH*i/4;
-     ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(w-padR,y);ctx.stroke();
-     ctx.fillText(Math.round(maxVal*(1-i/4))+'€',padL-6,y+3.5);
+     g2d.beginPath();g2d.moveTo(padL,y);g2d.lineTo(w-padR,y);g2d.stroke();
+     g2d.fillText(Math.round(maxVal*(1-i/4))+'€',padL-6,y+3.5);
    }
 
    const slotW=plotW/items.length;
@@ -296,15 +297,15 @@ export function drawAnalyticsChart(){
      const incH=(item.income/maxVal)*plotH;
      const expH=(item.expense/maxVal)*plotH;
 
-     ctx.fillStyle='#245d49';
-     ctx.beginPath();
-     ctx.roundRect(cx-barW-2,padT+plotH-incH,barW,Math.max(2,incH),[4,4,0,0]);
-     ctx.fill();
+     g2d.fillStyle='#245d49';
+     g2d.beginPath();
+     g2d.roundRect(cx-barW-2,padT+plotH-incH,barW,Math.max(2,incH),[4,4,0,0]);
+     g2d.fill();
 
-     ctx.fillStyle='#b54747';
-     ctx.beginPath();
-     ctx.roundRect(cx+2,padT+plotH-expH,barW,Math.max(2,expH),[4,4,0,0]);
-     ctx.fill();
+     g2d.fillStyle='#b54747';
+     g2d.beginPath();
+     g2d.roundRect(cx+2,padT+plotH-expH,barW,Math.max(2,expH),[4,4,0,0]);
+     g2d.fill();
 
      const diff=item.income-item.expense;
      chartHitAreas.analyticsCanvas.push({
@@ -320,11 +321,11 @@ export function drawAnalyticsChart(){
        subText:`Saldo ciclo: ${diff>=0?'+':''}${eur(diff)}`
      });
 
-     ctx.fillStyle=mutedCol;
-     ctx.font='10px system-ui,sans-serif';
-     ctx.textAlign='center';
+     g2d.fillStyle=mutedCol;
+     g2d.font='10px system-ui,sans-serif';
+     g2d.textAlign='center';
      const shortLbl=item.label.length>10?item.label.slice(0,9)+'…':item.label;
-     ctx.fillText(shortLbl,cx,h-12);
+     g2d.fillText(shortLbl,cx,h-12);
    });
 
    const avgInc=items.reduce((s,x)=>s+x.income,0)/items.length;
@@ -346,15 +347,15 @@ export function drawAnalyticsChart(){
    items.forEach(item=>{
      const slice=(item.value/totalVal)*Math.PI*2;
      const endAngle=startAngle+slice;
-     ctx.beginPath();
-     ctx.moveTo(cx,cy);
-     ctx.arc(cx,cy,radius,startAngle,endAngle);
-     ctx.closePath();
-     ctx.fillStyle=item.color;
-     ctx.fill();
-     ctx.lineWidth=2;
-     ctx.strokeStyle=surfaceCol;
-     ctx.stroke();
+     g2d.beginPath();
+     g2d.moveTo(cx,cy);
+     g2d.arc(cx,cy,radius,startAngle,endAngle);
+     g2d.closePath();
+     g2d.fillStyle=item.color;
+     g2d.fill();
+     g2d.lineWidth=2;
+     g2d.strokeStyle=surfaceCol;
+     g2d.stroke();
 
      const midAngle=startAngle+slice/2;
      const midR=(radius+innerR)/2;
@@ -372,18 +373,18 @@ export function drawAnalyticsChart(){
 
      startAngle=endAngle;
    });
-   ctx.beginPath();
-   ctx.arc(cx,cy,innerR,0,Math.PI*2);
-   ctx.fillStyle=surfaceCol;
-   ctx.fill();
+   g2d.beginPath();
+   g2d.arc(cx,cy,innerR,0,Math.PI*2);
+   g2d.fillStyle=surfaceCol;
+   g2d.fill();
 
-   ctx.fillStyle=mutedCol;
-   ctx.font='11px system-ui,sans-serif';
-   ctx.textAlign='center';
-   ctx.fillText('TOTAL',cx,cy-6);
-   ctx.fillStyle=inkCol;
-   ctx.font='700 14px system-ui,sans-serif';
-   ctx.fillText(eur(totalVal),cx,cy+13);
+   g2d.fillStyle=mutedCol;
+   g2d.font='11px system-ui,sans-serif';
+   g2d.textAlign='center';
+   g2d.fillText('TOTAL',cx,cy-6);
+   g2d.fillStyle=inkCol;
+   g2d.font='700 14px system-ui,sans-serif';
+   g2d.fillText(eur(totalVal),cx,cy+13);
  }else if(chartType==='hbar'){
    const visible=items.slice(0,9);
    const padL=112,padR=54,padT=14,padB=16;
@@ -394,22 +395,22 @@ export function drawAnalyticsChart(){
 
    visible.forEach((item,idx)=>{
      const y=padT+idx*rowH+(rowH-barH)/2;
-     ctx.fillStyle=inkCol;
-     ctx.font='11.5px system-ui,sans-serif';
-     ctx.textAlign='right';
+     g2d.fillStyle=inkCol;
+     g2d.font='11.5px system-ui,sans-serif';
+     g2d.textAlign='right';
      const shortName=item.label.length>15?item.label.slice(0,14)+'…':item.label;
-     ctx.fillText(shortName,padL-8,y+barH*0.72);
+     g2d.fillText(shortName,padL-8,y+barH*0.72);
 
      if(dataset.isComparison&&item.budget>0){
        const bw=(item.budget/maxVal)*plotW;
-       ctx.fillStyle='rgba(197,165,107,0.35)';
-       ctx.fillRect(padL,y,bw,barH);
+       g2d.fillStyle='rgba(197,165,107,0.35)';
+       g2d.fillRect(padL,y,bw,barH);
      }
      const vw=(item.value/maxVal)*plotW;
-     ctx.fillStyle=(dataset.isComparison||metric==='category_trend')&&item.budget>0&&item.value>item.budget?'#b54747':item.color;
-     ctx.beginPath();
-     ctx.roundRect(padL,y,Math.max(3,vw),barH,4);
-     ctx.fill();
+     g2d.fillStyle=(dataset.isComparison||metric==='category_trend')&&item.budget>0&&item.value>item.budget?'#b54747':item.color;
+     g2d.beginPath();
+     g2d.roundRect(padL,y,Math.max(3,vw),barH,4);
+     g2d.fill();
 
      const pct=totalVal>0?((item.value/totalVal)*100).toFixed(1):'0.0';
      const sub=dataset.isComparison&&item.budget>0?`Limite: ${eur(item.budget)} (${Math.round(item.value/item.budget*100)}%)`:`${pct}% do total`;
@@ -426,35 +427,35 @@ export function drawAnalyticsChart(){
        subText:sub
      });
 
-     ctx.fillStyle=mutedCol;
-     ctx.font='600 11px system-ui,sans-serif';
-     ctx.textAlign='left';
-     ctx.fillText(Math.round(item.value)+'€',padL+Math.max(3,vw)+6,y+barH*0.72);
+     g2d.fillStyle=mutedCol;
+     g2d.font='600 11px system-ui,sans-serif';
+     g2d.textAlign='left';
+     g2d.fillText(Math.round(item.value)+'€',padL+Math.max(3,vw)+6,y+barH*0.72);
    });
  }else if(chartType==='line'){
    const padL=48,padR=20,padT=20,padB=32;
    const plotW=w-padL-padR,plotH=h-padT-padB;
    const maxVal=Math.max(10,...items.map(x=>Math.max(x.value,x.budget||0)))*1.15;
 
-   ctx.strokeStyle=lineCol;
-   ctx.lineWidth=1;
-   ctx.fillStyle=mutedCol;
-   ctx.font='10.5px system-ui,sans-serif';
-   ctx.textAlign='right';
+   g2d.strokeStyle=lineCol;
+   g2d.lineWidth=1;
+   g2d.fillStyle=mutedCol;
+   g2d.font='10.5px system-ui,sans-serif';
+   g2d.textAlign='right';
    for(let i=0;i<=4;i++){
      const y=padT+plotH*i/4;
-     ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(w-padR,y);ctx.stroke();
-     ctx.fillText(Math.round(maxVal*(1-i/4))+'€',padL-6,y+3.5);
+     g2d.beginPath();g2d.moveTo(padL,y);g2d.lineTo(w-padR,y);g2d.stroke();
+     g2d.fillText(Math.round(maxVal*(1-i/4))+'€',padL-6,y+3.5);
    }
 
    if(metric==='category_trend'&&dataset.targetBudget>0){
      const by=padT+plotH*(1-dataset.targetBudget/maxVal);
-     ctx.save();
-     ctx.strokeStyle=goldCol;
-     ctx.lineWidth=1.8;
-     ctx.setLineDash([5,4]);
-     ctx.beginPath();ctx.moveTo(padL,by);ctx.lineTo(w-padR,by);ctx.stroke();
-     ctx.restore();
+     g2d.save();
+     g2d.strokeStyle=goldCol;
+     g2d.lineWidth=1.8;
+     g2d.setLineDash([5,4]);
+     g2d.beginPath();g2d.moveTo(padL,by);g2d.lineTo(w-padR,by);g2d.stroke();
+     g2d.restore();
    }
 
    const pts=items.map((item,i)=>({
@@ -464,31 +465,31 @@ export function drawAnalyticsChart(){
    }));
 
    if(pts.length>1){
-     const grad=ctx.createLinearGradient(0,padT,0,padT+plotH);
+     const grad=g2d.createLinearGradient(0,padT,0,padT+plotH);
      grad.addColorStop(0,'rgba(57,106,148,0.28)');
      grad.addColorStop(1,'rgba(57,106,148,0.0)');
-     ctx.fillStyle=grad;
-     ctx.beginPath();
-     ctx.moveTo(pts[0].x,padT+plotH);
-     pts.forEach(p=>ctx.lineTo(p.x,p.y));
-     ctx.lineTo(pts[pts.length-1].x,padT+plotH);
-     ctx.closePath();
-     ctx.fill();
+     g2d.fillStyle=grad;
+     g2d.beginPath();
+     g2d.moveTo(pts[0].x,padT+plotH);
+     pts.forEach(p=>g2d.lineTo(p.x,p.y));
+     g2d.lineTo(pts[pts.length-1].x,padT+plotH);
+     g2d.closePath();
+     g2d.fill();
    }
 
-   ctx.strokeStyle=gCol;
-   ctx.lineWidth=2.8;
-   ctx.lineJoin='round';
-   ctx.beginPath();
-   pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));
-   ctx.stroke();
+   g2d.strokeStyle=gCol;
+   g2d.lineWidth=2.8;
+   g2d.lineJoin='round';
+   g2d.beginPath();
+   pts.forEach((p,i)=>i?g2d.lineTo(p.x,p.y):g2d.moveTo(p.x,p.y));
+   g2d.stroke();
 
    const labelStep=Math.max(1,Math.ceil(pts.length/6));
    pts.forEach((p,i)=>{
-     ctx.fillStyle=surfaceCol;
-     ctx.strokeStyle=(metric==='category_trend'&&dataset.targetBudget>0&&p.item.value>dataset.targetBudget)?'#b54747':gCol;
-     ctx.lineWidth=2.2;
-     ctx.beginPath();ctx.arc(p.x,p.y,4,0,Math.PI*2);ctx.fill();ctx.stroke();
+     g2d.fillStyle=surfaceCol;
+     g2d.strokeStyle=(metric==='category_trend'&&dataset.targetBudget>0&&p.item.value>dataset.targetBudget)?'#b54747':gCol;
+     g2d.lineWidth=2.2;
+     g2d.beginPath();g2d.arc(p.x,p.y,4,0,Math.PI*2);g2d.fill();g2d.stroke();
 
      let sub='';
      if(metric==='daily_flow')sub=`Gasto no dia: ${eur(p.item.daySpent||0)}`;
@@ -506,11 +507,11 @@ export function drawAnalyticsChart(){
      });
 
      if(i%labelStep===0||i===pts.length-1){
-       ctx.fillStyle=mutedCol;
-       ctx.font='10px system-ui,sans-serif';
-       ctx.textAlign='center';
+       g2d.fillStyle=mutedCol;
+       g2d.font='10px system-ui,sans-serif';
+       g2d.textAlign='center';
        const lbl=p.item.label.length>9?p.item.label.slice(0,8)+'…':p.item.label;
-       ctx.fillText(lbl,p.x,h-10);
+       g2d.fillText(lbl,p.x,h-10);
      }
    });
  }else{
@@ -519,25 +520,25 @@ export function drawAnalyticsChart(){
    const plotW=w-padL-padR,plotH=h-padT-padB;
    const maxVal=Math.max(10,...visible.map(x=>Math.max(x.value,x.budget||0)))*1.15;
 
-   ctx.strokeStyle=lineCol;
-   ctx.lineWidth=1;
-   ctx.fillStyle=mutedCol;
-   ctx.font='10.5px system-ui,sans-serif';
-   ctx.textAlign='right';
+   g2d.strokeStyle=lineCol;
+   g2d.lineWidth=1;
+   g2d.fillStyle=mutedCol;
+   g2d.font='10.5px system-ui,sans-serif';
+   g2d.textAlign='right';
    for(let i=0;i<=4;i++){
      const y=padT+plotH*i/4;
-     ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(w-padR,y);ctx.stroke();
-     ctx.fillText(Math.round(maxVal*(1-i/4))+'€',padL-6,y+3.5);
+     g2d.beginPath();g2d.moveTo(padL,y);g2d.lineTo(w-padR,y);g2d.stroke();
+     g2d.fillText(Math.round(maxVal*(1-i/4))+'€',padL-6,y+3.5);
    }
 
    if(metric==='category_trend'&&dataset.targetBudget>0){
      const by=padT+plotH*(1-dataset.targetBudget/maxVal);
-     ctx.save();
-     ctx.strokeStyle=goldCol;
-     ctx.lineWidth=1.8;
-     ctx.setLineDash([5,4]);
-     ctx.beginPath();ctx.moveTo(padL,by);ctx.lineTo(w-padR,by);ctx.stroke();
-     ctx.restore();
+     g2d.save();
+     g2d.strokeStyle=goldCol;
+     g2d.lineWidth=1.8;
+     g2d.setLineDash([5,4]);
+     g2d.beginPath();g2d.moveTo(padL,by);g2d.lineTo(w-padR,by);g2d.stroke();
+     g2d.restore();
    }
 
    const slotW=plotW/visible.length;
@@ -547,14 +548,14 @@ export function drawAnalyticsChart(){
      const cx=padL+i*slotW+slotW/2;
      if(dataset.isComparison&&item.budget>0){
        const bh=(item.budget/maxVal)*plotH;
-       ctx.fillStyle='rgba(197,165,107,0.38)';
-       ctx.fillRect(cx-barW*0.6,padT+plotH-bh,barW*1.2,bh);
+       g2d.fillStyle='rgba(197,165,107,0.38)';
+       g2d.fillRect(cx-barW*0.6,padT+plotH-bh,barW*1.2,bh);
      }
      const vh=(item.value/maxVal)*plotH;
-     ctx.fillStyle=(dataset.isComparison||metric==='category_trend')&&item.budget>0&&item.value>item.budget?'#b54747':item.color;
-     ctx.beginPath();
-     ctx.roundRect(cx-barW/2,padT+plotH-vh,barW,Math.max(2,vh),[5,5,0,0]);
-     ctx.fill();
+     g2d.fillStyle=(dataset.isComparison||metric==='category_trend')&&item.budget>0&&item.value>item.budget?'#b54747':item.color;
+     g2d.beginPath();
+     g2d.roundRect(cx-barW/2,padT+plotH-vh,barW,Math.max(2,vh),[5,5,0,0]);
+     g2d.fill();
 
      const pct=totalVal>0?((item.value/totalVal)*100).toFixed(1):'0.0';
      let sub=`${pct}% do total`;
@@ -576,11 +577,11 @@ export function drawAnalyticsChart(){
        subText:sub
      });
 
-     ctx.fillStyle=mutedCol;
-     ctx.font='10px system-ui,sans-serif';
-     ctx.textAlign='center';
+     g2d.fillStyle=mutedCol;
+     g2d.font='10px system-ui,sans-serif';
+     g2d.textAlign='center';
      const shortLbl=item.label.length>8?item.label.slice(0,7)+'…':item.label;
-     ctx.fillText(shortLbl,cx,h-12);
+     g2d.fillText(shortLbl,cx,h-12);
    });
  }
 
@@ -631,9 +632,9 @@ export function drawChart(){
  const h=Math.max(180,Math.round(rect.height||200));
  c.width=w*dpr;
  c.height=h*dpr;
- const ctx=c.getContext('2d');
- ctx.setTransform(dpr,0,0,dpr,0,0);
- ctx.clearRect(0,0,w,h);
+ const g2d=c.getContext('2d');
+ g2d.setTransform(dpr,0,0,dpr,0,0);
+ g2d.clearRect(0,0,w,h);
 
  const cycles=ctx.buildCycles();
  let total=0;
@@ -655,16 +656,16 @@ export function drawChart(){
  const plotW=w-padLeft-padRight,plotH=h-padTop-padBottom;
  const max=Math.max(100,...series.map(x=>x.value))*1.15;
 
- ctx.strokeStyle=lineCol;
- ctx.lineWidth=1;
- ctx.fillStyle=mutedCol;
- ctx.font='10.5px system-ui,sans-serif';
- ctx.textAlign='right';
+ g2d.strokeStyle=lineCol;
+ g2d.lineWidth=1;
+ g2d.fillStyle=mutedCol;
+ g2d.font='10.5px system-ui,sans-serif';
+ g2d.textAlign='right';
  for(let i=0;i<=4;i++){
    const y=padTop+plotH*i/4;
-   ctx.beginPath();ctx.moveTo(padLeft,y);ctx.lineTo(w-padRight,y);ctx.stroke();
+   g2d.beginPath();g2d.moveTo(padLeft,y);g2d.lineTo(w-padRight,y);g2d.stroke();
    const val=Math.round(max*(1-i/4));
-   ctx.fillText(val+'€',padLeft-6,y+3.5);
+   g2d.fillText(val+'€',padLeft-6,y+3.5);
  }
 
  const pts=series.map((item,i)=>({
@@ -674,35 +675,35 @@ export function drawChart(){
  }));
 
  if(pts.length>1){
-   const grad=ctx.createLinearGradient(0,padTop,0,padTop+plotH);
+   const grad=g2d.createLinearGradient(0,padTop,0,padTop+plotH);
    grad.addColorStop(0,'rgba(197,165,107,0.26)');
    grad.addColorStop(1,'rgba(197,165,107,0.0)');
-   ctx.fillStyle=grad;
-   ctx.beginPath();
-   ctx.moveTo(pts[0].x,padTop+plotH);
-   pts.forEach(p=>ctx.lineTo(p.x,p.y));
-   ctx.lineTo(pts[pts.length-1].x,padTop+plotH);
-   ctx.closePath();
-   ctx.fill();
+   g2d.fillStyle=grad;
+   g2d.beginPath();
+   g2d.moveTo(pts[0].x,padTop+plotH);
+   pts.forEach(p=>g2d.lineTo(p.x,p.y));
+   g2d.lineTo(pts[pts.length-1].x,padTop+plotH);
+   g2d.closePath();
+   g2d.fill();
  }
 
- ctx.strokeStyle=goldCol;
- ctx.lineWidth=3;
- ctx.lineJoin='round';
- ctx.lineCap='round';
- ctx.beginPath();
- pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));
- ctx.stroke();
+ g2d.strokeStyle=goldCol;
+ g2d.lineWidth=3;
+ g2d.lineJoin='round';
+ g2d.lineCap='round';
+ g2d.beginPath();
+ pts.forEach((p,i)=>i?g2d.lineTo(p.x,p.y):g2d.moveTo(p.x,p.y));
+ g2d.stroke();
 
- ctx.textAlign='center';
+ g2d.textAlign='center';
  pts.forEach((p,i)=>{
-   ctx.fillStyle=surfaceCol;
-   ctx.strokeStyle=goldCol;
-   ctx.lineWidth=2.5;
-   ctx.beginPath();
-   ctx.arc(p.x,p.y,4,0,Math.PI*2);
-   ctx.fill();
-   ctx.stroke();
+   g2d.fillStyle=surfaceCol;
+   g2d.strokeStyle=goldCol;
+   g2d.lineWidth=2.5;
+   g2d.beginPath();
+   g2d.arc(p.x,p.y,4,0,Math.PI*2);
+   g2d.fill();
+   g2d.stroke();
 
    const cycTitle=p.item.cycle.monthLabel||ctx.computeCycleReferenceMonth(p.item.cycle);
    const deltaSign=p.item.delta>0?'+':p.item.delta<0?'−':'';
@@ -719,14 +720,14 @@ export function drawChart(){
    });
 
    const label=p.item.cycle.open?'Atual':fmtDate(p.item.cycle.end).replace(/ \d{4}$/,'');
-   ctx.fillStyle=mutedCol;
-   ctx.font='10.5px system-ui,sans-serif';
-   ctx.fillText(label,p.x,h-8);
+   g2d.fillStyle=mutedCol;
+   g2d.font='10.5px system-ui,sans-serif';
+   g2d.fillText(label,p.x,h-8);
 
    if(i===pts.length-1){
-     ctx.fillStyle=inkCol;
-     ctx.font='700 11px system-ui,sans-serif';
-     ctx.fillText(eur(p.item.value),Math.min(w-34,Math.max(padLeft+20,p.x)),Math.max(13,p.y-9));
+     g2d.fillStyle=inkCol;
+     g2d.font='700 11px system-ui,sans-serif';
+     g2d.fillText(eur(p.item.value),Math.min(w-34,Math.max(padLeft+20,p.x)),Math.max(13,p.y-9));
    }
  });
 }
