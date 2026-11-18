@@ -14,7 +14,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; worker-src 'self' blob: https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co https://cdnjs.cloudflare.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self';">
   <link rel="stylesheet" href="./styles.css">
-  <title>DuoFin v6.4.1 — Gestão financeira a dois</title>
+  <title>DuoFin v6.5.0 — Gestão financeira a dois</title>
 </head>
 <body>
   <!-- Ecrã de Bloqueio Local (PIN / Biometria WebAuthn) -->
@@ -43,7 +43,7 @@
       <div class="header-actions">
         <button type="button" class="header-icon-btn" id="privacyToggleBtn" title="Ocultar ou mostrar valores monetários" aria-label="Modo privacidade">👁️</button>
         <button type="button" class="header-icon-btn" id="lockAppHeaderBtn" title="Bloquear aplicação agora" aria-label="Bloquear aplicação" hidden>🔒</button>
-        <span class="version-badge">v6.4.1</span>
+        <button type="button" class="version-badge" id="versionBadgeBtn" title="Ver novidades desta versão">v6.5.0</button>
       </div>
     </div>
   </header>
@@ -113,9 +113,13 @@
         <div class="card"><h2>Despesas por adulto</h2><div id="persons"></div></div>
       </div>
       <div class="card">
-        <h2>Evolução da poupança acumulada por ciclo</h2>
+        <div class="row" style="margin-bottom:6px">
+          <h2 style="margin:0">Evolução da poupança acumulada por ciclo</h2>
+          <span class="small">Toca nos pontos para ver o valor</span>
+        </div>
         <div class="chart-wrap">
           <canvas id="chart"></canvas>
+          <div id="chartTooltip" class="chart-tooltip" hidden></div>
         </div>
         <p class="small">Saldo acumulado das transferências de poupança menos resgates registados em cada ciclo.</p>
       </div>
@@ -320,7 +324,9 @@
 
         <div class="analytics-canvas-box">
           <canvas id="analyticsCanvas"></canvas>
+          <div id="analyticsTooltip" class="chart-tooltip" hidden></div>
         </div>
+        <p class="small" style="margin:6px 0 0;text-align:right">Toca ou passa o cursor no gráfico para ver detalhes</p>
         <div id="analyticsLegend" class="analytics-legend"></div>
       </div>
 
@@ -679,6 +685,16 @@
       </div>
 
       <div class="card">
+        <div class="row" style="flex-wrap:wrap;gap:8px">
+          <div>
+            <h2 style="margin:0">Sobre a DuoFin v6.5.0</h2>
+            <div class="small">Consulta as melhorias mais recentes desta versão.</div>
+          </div>
+          <button type="button" class="secondary" id="openChangelogBtn">✨ Ver novidades da v6.5.0</button>
+        </div>
+      </div>
+
+      <div class="card">
         <h2>Repor dados</h2>
         <button class="danger" id="reset">Apagar todos os dados</button>
       </div>
@@ -692,6 +708,28 @@
 
     <!-- Folha dedicada exclusivamente à impressão A4 / PDF -->
     <div id="printSheet" aria-hidden="true"></div>
+
+    <!-- Modal de Novidades da Versão (Changelog v6.5.0) -->
+    <div id="changelogModal" class="modal-backdrop" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="changelogModalTitle">
+        <div class="row" style="margin-bottom:8px">
+          <div class="row" style="gap:8px">
+            <span class="pill">Novidades</span>
+            <h2 id="changelogModalTitle" style="margin:0">DuoFin v6.5.0</h2>
+          </div>
+          <button type="button" class="icon-btn" id="closeChangelogBtn" aria-label="Fechar">✕</button>
+        </div>
+        <p class="small" style="margin:0 0 8px">Esta atualização inaugura a evolução para uma experiência mais interativa e cuidada:</p>
+        <ul class="changelog-list">
+          <li><strong>Gráficos interativos:</strong> Toca ou passa o cursor sobre qualquer barra, ponto ou fatia nos gráficos do <em>Resumo</em> e de <em>Gráficos</em> para ver os valores exatos.</li>
+          <li><strong>Modo Privacidade corrigido (👁️):</strong> O botão no topo oculta agora todos os cartões de saldo, valores da lista de movimentos, barras por categoria e calendário.</li>
+          <li><strong>Versão uniformizada:</strong> Todos os ecrãs, cache offline e relatórios PDF apresentam agora a versão consistente <strong>v6.5.0</strong>.</li>
+        </ul>
+        <div class="actions" style="justify-content:flex-end;margin-top:16px">
+          <button type="button" class="primary" id="confirmChangelogBtn">Entendido</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Modal de detalhe e edição rápida de movimento (para telemóvel e desktop) -->
     <div id="txDetailModal" class="modal-backdrop" hidden>
@@ -851,7 +889,7 @@
       </div>
     </div>
 
-    <footer>DuoFin · V6.3.0 · Gestão financeira a dois</footer>
+    <footer>DuoFin · v6.5.0 · Gestão financeira a dois</footer>
   </div>
   <script src="./app.js"></script>
 </body>

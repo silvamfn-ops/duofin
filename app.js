@@ -1,4 +1,6 @@
 const $=id=>document.getElementById(id),KEY='orcamento-plus-v1',now=new Date(),iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'),cur=iso(now).slice(0,7);
+const APP_VERSION='v6.5.0';
+const CHANGELOG_KEY='duofin-seen-version-v1';
 const defs=[['Habitação',850],['Supermercado',450],['Água, luz e gás',180],['Transportes',250],['Telecomunicações',70],['Saúde e farmácia',80],['Crianças e família',150],['Restaurantes e lazer',150],['Vestuário e pessoal',120],['Outros / imprevistos',300]];
 const fresh=()=>({settings:{income:3200,target:6000,start:'2026-11-01',deadline:'2027-08-31',cycleGroupingDays:14,people:['Adulto 1','Adulto 2'],categories:defs.map(([name,budget])=>({name,budget})),categoryRules:[]},transactions:[],recurringExpenses:[],savingsGoals:[],deletedIds:[],handledCycleRollovers:[]});
 let dbNeedsSync=false;
@@ -131,7 +133,7 @@ function deleteTransactionWithUndo(id){
      undoLabel:'Desfazer',
      onUndo:()=>{
        const curTx=db.transactions.find(t=>String(t.id)===String(id));
-       if(curTx){curTx.status='pending';curTx.updatedAt=Date.now();persist();showToast('Ocorrência restaurada.','success');}
+       if(curTx){curTx.status='pending';curTx.updatedAt=Date.now();persist();showToast('Ocorrência restaurada.',{type:'success'});}
      }
    });
  }else{
@@ -481,6 +483,8 @@ function switchTab(tabId){
  document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id===tabId));
  const fab=$('quickAddFab');
  if(fab)fab.hidden=tabId!=='resumo';
+ hideChartTooltip('chartTooltip');
+ hideChartTooltip('analyticsTooltip');
  if(tabId==='resumo')requestAnimationFrame(drawChart);
  if(tabId==='graficos')requestAnimationFrame(drawAnalyticsChart);
 }
@@ -742,7 +746,6 @@ $('learnedRulesList').addEventListener('click',e=>{
    persist();
  }
 });
-
 
 let quickStatusFilter='all';
 document.querySelectorAll('[data-quick-status]').forEach(btn=>{
@@ -1028,6 +1031,84 @@ $('txModalEditForm').onsubmit=e=>{
  persist();
 };
 
+// ============================================================================
+// TOOLTIPS INTERATIVOS PARA GRÁFICOS CANVAS (v6.5.0)
+// ============================================================================
+const chartHitAreas={chart:[],analyticsCanvas:[]};
+
+function hideChartTooltip(tipId){
+ const tip=$(tipId);
+ if(tip)tip.hidden=true;
+}
+
+function showChartTooltip(tipId, containerEl, x, y, title, valText, subText=''){
+ const tip=$(tipId);
+ if(!tip||!containerEl)return;
+ if(document.body.classList.contains('privacy-masked')){
+   valText='•••• €';
+   subText=subText?'Valor oculto (Modo Privacidade)':'';
+ }
+ tip.innerHTML=`<div class="chart-tooltip-title">${esc(title)}</div><div class="chart-tooltip-val">${esc(valText)}</div>${subText?`<div class="chart-tooltip-sub">${esc(subText)}</div>`:''}`;
+ tip.hidden=false;
+
+ const cw=containerEl.clientWidth||320;
+ const ch=containerEl.clientHeight||220;
+ const clampedX=Math.max(76,Math.min(cw-76,x));
+ const placeBelow=y<58;
+ tip.style.left=clampedX+'px';
+ tip.style.top=(placeBelow?Math.min(ch-16,y+16):y)+'px';
+ tip.style.transform=placeBelow?'translate(-50%, 0)':'translate(-50%, -112%)';
+}
+
+function hitTestArea(area, px, py){
+ if(area.shape==='circle'){
+   const dx=px-area.cx,dy=py-area.cy;
+   return (dx*dx+dy*dy)<=area.r*area.r;
+ }
+ if(area.shape==='donut'){
+   const dx=px-area.cx,dy=py-area.cy;
+   const dist=Math.sqrt(dx*dx+dy*dy);
+   if(dist<area.innerR||dist>area.outerR)return false;
+   let ang=Math.atan2(dy,dx);
+   if(ang<-Math.PI/2)ang+=Math.PI*2;
+   return ang>=area.startAngle&&ang<=area.endAngle;
+ }
+ return px>=area.x&&px<=area.x+area.w&&py>=area.y&&py<=area.y+area.h;
+}
+
+function bindInteractiveCanvas(canvasId, tipId){
+ const canvas=$(canvasId);
+ if(!canvas||canvas.dataset.tooltipBound==='1')return;
+ canvas.dataset.tooltipBound='1';
+ const container=canvas.parentElement;
+
+ const handlePointer=e=>{
+   const areas=chartHitAreas[canvasId]||[];
+   if(!areas.length){hideChartTooltip(tipId);return;}
+   const rect=canvas.getBoundingClientRect();
+   const px=e.clientX-rect.left;
+   const py=e.clientY-rect.top;
+   let found=null;
+   for(let i=areas.length-1;i>=0;i--){
+     if(hitTestArea(areas[i],px,py)){found=areas[i];break;}
+   }
+   if(found){
+     canvas.style.cursor='pointer';
+     showChartTooltip(tipId,container,found.tipX,found.tipY,found.title,found.valText,found.subText);
+   }else{
+     canvas.style.cursor='default';
+     hideChartTooltip(tipId);
+   }
+ };
+
+ canvas.addEventListener('pointermove',handlePointer);
+ canvas.addEventListener('pointerdown',handlePointer);
+ canvas.addEventListener('pointerleave',()=>{
+   canvas.style.cursor='default';
+   hideChartTooltip(tipId);
+ });
+}
+
 // SEPARADOR GRÁFICOS: ANÁLISE VISUAL DE CICLO E HISTÓRICO MULTI-CICLO
 const CHART_PALETTE=['#173653','#c5a56b','#245d49','#b54747','#396a94','#c97a1e','#5a4b81','#2e86ab','#7a8b99','#9c4f6e','#49796b','#b07d4f'];
 
@@ -1118,6 +1199,7 @@ function buildAnalyticsDataset(cycle, metric){
      if(i%step===0||i===days-1){
        items.push({
          label:fmtDate(d).replace(/ \d{4}$/,''),
+         fullDate:fmtDate(d),
          value:Number(running.toFixed(2)),
          daySpent:dayExp,
          color:'#173653'
@@ -1149,6 +1231,9 @@ function buildAnalyticsDataset(cycle, metric){
 function drawAnalyticsChart(){
  const canvas=$('analyticsCanvas');
  if(!canvas)return;
+ bindInteractiveCanvas('analyticsCanvas','analyticsTooltip');
+ hideChartTooltip('analyticsTooltip');
+ chartHitAreas.analyticsCanvas=[];
  syncAnalyticsControlsVisibility();
 
  const cycleKey=$('analyticsCycleSelect')?.value||selectedCycleKey;
@@ -1243,6 +1328,20 @@ function drawAnalyticsChart(){
      ctx.roundRect(cx+2,padT+plotH-expH,barW,Math.max(2,expH),[4,4,0,0]);
      ctx.fill();
 
+     const diff=item.income-item.expense;
+     chartHitAreas.analyticsCanvas.push({
+       shape:'rect',
+       x:padL+i*slotW+2,
+       y:padT,
+       w:slotW-4,
+       h:plotH,
+       tipX:cx+10,
+       tipY:padT+plotH-Math.max(incH,expH)+10,
+       title:item.label,
+       valText:`Rend.: ${eur(item.income)} · Desp.: ${eur(item.expense)}`,
+       subText:`Saldo ciclo: ${diff>=0?'+':''}${eur(diff)}`
+     });
+
      ctx.fillStyle=mutedCol;
      ctx.font='10px system-ui,sans-serif';
      ctx.textAlign='center';
@@ -1268,16 +1367,32 @@ function drawAnalyticsChart(){
    let startAngle=-Math.PI/2;
    items.forEach(item=>{
      const slice=(item.value/totalVal)*Math.PI*2;
+     const endAngle=startAngle+slice;
      ctx.beginPath();
      ctx.moveTo(cx,cy);
-     ctx.arc(cx,cy,radius,startAngle,startAngle+slice);
+     ctx.arc(cx,cy,radius,startAngle,endAngle);
      ctx.closePath();
      ctx.fillStyle=item.color;
      ctx.fill();
      ctx.lineWidth=2;
      ctx.strokeStyle=surfaceCol;
      ctx.stroke();
-     startAngle+=slice;
+
+     const midAngle=startAngle+slice/2;
+     const midR=(radius+innerR)/2;
+     const pct=totalVal>0?((item.value/totalVal)*100).toFixed(1):'0.0';
+     chartHitAreas.analyticsCanvas.push({
+       shape:'donut',
+       cx,cy,innerR,outerR:radius,
+       startAngle,endAngle,
+       tipX:cx+Math.cos(midAngle)*midR+10,
+       tipY:cy+Math.sin(midAngle)*midR+10,
+       title:item.label,
+       valText:eur(item.value),
+       subText:`${pct}% do total`
+     });
+
+     startAngle=endAngle;
    });
    ctx.beginPath();
    ctx.arc(cx,cy,innerR,0,Math.PI*2);
@@ -1317,6 +1432,21 @@ function drawAnalyticsChart(){
      ctx.beginPath();
      ctx.roundRect(padL,y,Math.max(3,vw),barH,4);
      ctx.fill();
+
+     const pct=totalVal>0?((item.value/totalVal)*100).toFixed(1):'0.0';
+     const sub=dataset.isComparison&&item.budget>0?`Limite: ${eur(item.budget)} (${Math.round(item.value/item.budget*100)}%)`:`${pct}% do total`;
+     chartHitAreas.analyticsCanvas.push({
+       shape:'rect',
+       x:padL,
+       y:padT+idx*rowH,
+       w:plotW+40,
+       h:rowH,
+       tipX:padL+Math.min(plotW-20,Math.max(24,vw/2))+10,
+       tipY:y+10,
+       title:item.label,
+       valText:eur(item.value),
+       subText:sub
+     });
 
      ctx.fillStyle=mutedCol;
      ctx.font='600 11px system-ui,sans-serif';
@@ -1381,6 +1511,22 @@ function drawAnalyticsChart(){
      ctx.strokeStyle=(metric==='category_trend'&&dataset.targetBudget>0&&p.item.value>dataset.targetBudget)?'#b54747':gCol;
      ctx.lineWidth=2.2;
      ctx.beginPath();ctx.arc(p.x,p.y,4,0,Math.PI*2);ctx.fill();ctx.stroke();
+
+     let sub='';
+     if(metric==='daily_flow')sub=`Gasto no dia: ${eur(p.item.daySpent||0)}`;
+     else if(metric==='category_trend'&&dataset.targetBudget>0)sub=`Limite: ${eur(dataset.targetBudget)}`;
+     chartHitAreas.analyticsCanvas.push({
+       shape:'circle',
+       cx:p.x,
+       cy:p.y,
+       r:18,
+       tipX:p.x+10,
+       tipY:p.y+10,
+       title:p.item.fullDate||p.item.label,
+       valText:eur(p.item.value),
+       subText:sub
+     });
+
      if(i%labelStep===0||i===pts.length-1){
        ctx.fillStyle=mutedCol;
        ctx.font='10px system-ui,sans-serif';
@@ -1431,6 +1577,26 @@ function drawAnalyticsChart(){
      ctx.beginPath();
      ctx.roundRect(cx-barW/2,padT+plotH-vh,barW,Math.max(2,vh),[5,5,0,0]);
      ctx.fill();
+
+     const pct=totalVal>0?((item.value/totalVal)*100).toFixed(1):'0.0';
+     let sub=`${pct}% do total`;
+     if((dataset.isComparison||metric==='category_trend')&&item.budget>0){
+       sub=`Limite: ${eur(item.budget)} (${Math.round(item.value/item.budget*100)}%)`;
+     }else if(metric==='daily_flow'){
+       sub=`Gasto no dia: ${eur(item.daySpent||0)}`;
+     }
+     chartHitAreas.analyticsCanvas.push({
+       shape:'rect',
+       x:padL+i*slotW+2,
+       y:padT,
+       w:slotW-4,
+       h:plotH,
+       tipX:cx+10,
+       tipY:padT+plotH-Math.max(12,vh)+10,
+       title:item.fullDate||item.label,
+       valText:eur(item.value),
+       subText:sub
+     });
 
      ctx.fillStyle=mutedCol;
      ctx.font='10px system-ui,sans-serif';
@@ -1744,7 +1910,7 @@ function printReport(mode){
  $('printSheet').innerHTML=`
    <div class="print-header">
      <div><h1>DuoFin · ${esc(title)}</h1><div class="small">${esc(peopleNames)}</div></div>
-     <div class="print-meta">Emitido em ${esc(emitted)}<br>DuoFin V6.3.0</div>
+     <div class="print-meta">Emitido em ${esc(emitted)}<br>DuoFin ${APP_VERSION}</div>
    </div>
    ${bodyHtml}
    <div class="print-footer"><span>DuoFin — Gestão Financeira a Dois</span><span>Documento gerado localmente no dispositivo</span></div>
@@ -1800,7 +1966,6 @@ function saveLearnedCategoryRule(keyword, category, type='expense'){
  else db.settings.categoryRules.unshift({keyword:cleanKey,category:catVal,type});
 }
 
-const PDFJS_SRI_HASH='sha384-1Am7+2B4z4xM/P2n7B/aT1Q4e/S7l2rQ9Z3e9c8W5p8f+N2y3d1x0r6w4t5u6v7w';
 function ensurePdfJs(){
  if(window.pdfjsLib){
    window.pdfjsLib.GlobalWorkerOptions.workerSrc=`${PDFJS_CDN_BASE}/pdf.worker.min.js`;
@@ -2487,6 +2652,10 @@ $('csvConfirmImportBtn').onclick=()=>{
 
 function drawChart(){
  const c=$('chart');if(!c)return;
+ bindInteractiveCanvas('chart','chartTooltip');
+ hideChartTooltip('chartTooltip');
+ chartHitAreas.chart=[];
+
  const rect=c.getBoundingClientRect();
  const dpr=window.devicePixelRatio||1;
  const w=Math.max(300,Math.round(rect.width||c.parentElement?.clientWidth||680));
@@ -2502,7 +2671,7 @@ function drawChart(){
  const series=cycles.map(cy=>{
    const delta=cycleTransactions(cy).filter(t=>isSavingTx(t)&&isPaid(t)).reduce((s,t)=>s+savingSigned(t),0);
    total=Math.max(0,total+delta);
-   return {cycle:cy,value:total};
+   return {cycle:cy,value:total,delta};
  }).slice(-12);
  if(!series.length)return;
 
@@ -2566,6 +2735,20 @@ function drawChart(){
    ctx.fill();
    ctx.stroke();
 
+   const cycTitle=p.item.cycle.monthLabel||computeCycleReferenceMonth(p.item.cycle);
+   const deltaSign=p.item.delta>0?'+':p.item.delta<0?'−':'';
+   chartHitAreas.chart.push({
+     shape:'circle',
+     cx:p.x,
+     cy:p.y,
+     r:18,
+     tipX:p.x,
+     tipY:p.y,
+     title:cycTitle,
+     valText:eur(p.item.value),
+     subText:`Variação no ciclo: ${deltaSign}${eur(Math.abs(p.item.delta))}`
+   });
+
    const label=p.item.cycle.open?'Atual':fmtDate(p.item.cycle.end).replace(/ \d{4}$/,'');
    ctx.fillStyle=mutedCol;
    ctx.font='10.5px system-ui,sans-serif';
@@ -2579,8 +2762,7 @@ function drawChart(){
  });
 }
 
-
-// MOTOR DE ORÇAMENTO INTELIGENTE E EQUILÍBRIO RECEITA vs. DESPESA (v6.3.0)
+// MOTOR DE ORÇAMENTO INTELIGENTE E EQUILÍBRIO RECEITA vs. DESPESA
 function roundSmartBudget(val){
  if(!Number.isFinite(val)||val<=0)return 0;
  if(val<=25)return Math.ceil(val);
@@ -3282,8 +3464,29 @@ $('goalList').addEventListener('click',e=>{
 $('saveCycleGrouping').onclick=()=>{const n=Number($('cycleGroupingDays').value);if(!Number.isInteger(n)||n<0||n>20){alert('Indica um número inteiro entre 0 e 20 dias.');return;}db.settings.cycleGroupingDays=n;selectedCycleKey=null;persist();showToast('Definição dos ciclos guardada.',{type:'success'});};
 function shift(n){let d=new Date(($('calendarMonth').value||cur)+'-02T12:00:00');d.setMonth(d.getMonth()+n);$('calendarMonth').value=iso(d).slice(0,7);selected=iso(d).slice(0,7)+'-01';drawCalendar()}
 $('prev').onclick=()=>shift(-1);$('next').onclick=()=>shift(1);
+
 // ============================================================================
-// CAMADA DE SEGURANÇA & PRIVACIDADE (v6.4.0)
+// MODAL DE NOVIDADES DA VERSÃO (CHANGELOG v6.5.0)
+// ============================================================================
+function openChangelogModal(){
+ const m=$('changelogModal');
+ if(m)m.hidden=false;
+}
+function closeChangelogModal(){
+ const m=$('changelogModal');
+ if(m)m.hidden=true;
+ localStorage.setItem(CHANGELOG_KEY,APP_VERSION);
+}
+if($('versionBadgeBtn'))$('versionBadgeBtn').onclick=openChangelogModal;
+if($('openChangelogBtn'))$('openChangelogBtn').onclick=openChangelogModal;
+if($('closeChangelogBtn'))$('closeChangelogBtn').onclick=closeChangelogModal;
+if($('confirmChangelogBtn'))$('confirmChangelogBtn').onclick=closeChangelogModal;
+if($('changelogModal'))$('changelogModal').addEventListener('click',e=>{
+ if(e.target===$('changelogModal'))closeChangelogModal();
+});
+
+// ============================================================================
+// CAMADA DE SEGURANÇA & PRIVACIDADE
 // Web Crypto API (AES-256-GCM + PBKDF2 + SHA-256), PIN Local, WebAuthn, E2EE
 // ============================================================================
 const SEC_KEY='duofin-security-v1';
@@ -3363,6 +3566,8 @@ function applyPrivacyMask(){
     btn.classList.toggle('is-active',!!secCfg.privacyMask);
     btn.title=secCfg.privacyMask?'Mostrar valores monetários':'Ocultar valores monetários';
   }
+  hideChartTooltip('chartTooltip');
+  hideChartTooltip('analyticsTooltip');
 }
 function togglePrivacyMask(){
   secCfg.privacyMask=!secCfg.privacyMask;
@@ -3899,5 +4104,10 @@ paintCloud();
 render();
 if(!cloudConnected()&&generateDueOccurrences())render();
 if(cloudConnected())refreshToken().then(afterLogin).catch(e=>cloudMessage('A sessão expirou. Inicia sessão novamente: '+e.message,'alert red'));
+
+// Mostrar modal de novidades uma única vez após atualização para v6.5.0
+if(!appLocked && localStorage.getItem(CHANGELOG_KEY)!==APP_VERSION){
+  setTimeout(openChangelogModal, 450);
+}
 
 if('serviceWorker'in navigator&&location.protocol.startsWith('http'))addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));

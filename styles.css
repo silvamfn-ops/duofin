@@ -23,7 +23,9 @@ header{
 .version-badge{
   background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);
   color:#e1c58f;font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px;
+  cursor:pointer;transition:background-color .15s;
 }
+.version-badge:hover{background:rgba(255,255,255,0.22)}
 .wrap{max-width:860px;margin:auto;padding:0 14px}
 h1{margin:0;font-size:24px;letter-spacing:-0.3px}
 header p{margin:4px 0 0;color:#d6e2ee;font-size:14px}
@@ -199,7 +201,7 @@ button:active{transform:scale(0.98)}
 .day em{display:block;color:var(--red);font-size:9.5px;font-style:normal;font-weight:650}
 
 .chart-wrap{width:100%;height:200px;position:relative}
-canvas{width:100%;height:100%;display:block}
+canvas{width:100%;height:100%;display:block;touch-action:manipulation}
 .empty{text-align:center;color:var(--muted);padding:20px;font-size:13px}
 footer{text-align:center;color:var(--muted);font-size:12px;padding:20px;padding-bottom:calc(28px + env(safe-area-inset-bottom))}
 
@@ -220,6 +222,21 @@ footer{text-align:center;color:var(--muted);font-size:12px;padding:20px;padding-
 .legend-left{display:flex;align-items:center;gap:7px;min-width:0}
 .legend-swatch{width:11px;height:11px;border-radius:3px;flex:0 0 auto}
 .legend-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+
+/* Tooltip interativo para gráficos Canvas (v6.5.0) */
+.chart-tooltip{
+  position:absolute;z-index:25;pointer-events:none;
+  background:rgba(17,37,60,0.96);color:#fff;
+  border:1px solid rgba(225,197,143,0.45);border-radius:10px;
+  padding:7px 11px;font-size:12px;line-height:1.35;
+  box-shadow:0 8px 20px rgba(0,0,0,0.28);
+  transform:translate(-50%,-112%);white-space:nowrap;
+  transition:opacity .12s ease;
+}
+.chart-tooltip[hidden]{display:none}
+.chart-tooltip-title{font-weight:700;color:#e1c58f;margin-bottom:2px;font-size:11.5px}
+.chart-tooltip-val{font-weight:800;font-size:13px}
+.chart-tooltip-sub{font-size:11px;color:#d6e2ee;margin-top:1px}
 
 /* Modal de Detalhe de Movimento */
 .tx-modal-hero{
@@ -290,6 +307,10 @@ footer{text-align:center;color:var(--muted);font-size:12px;padding:20px;padding-
 }
 @media(min-width:600px){.modal-backdrop{align-items:center}}
 @keyframes slideUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+
+/* Lista de novidades (Changelog) */
+.changelog-list{margin:10px 0 0;padding-left:18px;font-size:13.5px;line-height:1.55;color:var(--ink)}
+.changelog-list li{margin:7px 0}
 
 /* ÁREA DE RELATÓRIOS PARA IMPRESSÃO */
 #printSheet{display:none}
@@ -369,7 +390,6 @@ html.density-detailed input,html.density-detailed select{min-height:47px;padding
   .analytics-canvas-box{height:255px}
 }
 
-
 /* Chips de filtro rápido */
 .quick-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
 .chip{
@@ -410,8 +430,7 @@ html.density-detailed input,html.density-detailed select{min-height:47px;padding
 @keyframes toastIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @media print{.toast-container,.quick-chips{display:none !important}}
 
-
-/* Motor de Orçamento Inteligente (v6.3.0) */
+/* Motor de Orçamento Inteligente */
 .budget-health-box{
   background:var(--surface-2);border:1px solid var(--line);border-radius:13px;
   padding:12px 14px;margin-top:10px;
@@ -448,8 +467,7 @@ html.density-detailed input,html.density-detailed select{min-height:47px;padding
   .budget-health-grid{grid-template-columns:1fr;gap:6px}
 }
 
-
-/* Camada de Segurança & Privacidade (v6.4.0) */
+/* Camada de Segurança & Privacidade (Corrigido na v6.5.0) */
 .header-actions{display:flex;align-items:center;gap:8px}
 .header-icon-btn{
   background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);
@@ -459,13 +477,22 @@ html.density-detailed input,html.density-detailed select{min-height:47px;padding
 .header-icon-btn:hover{background:rgba(255,255,255,0.2)}
 .header-icon-btn.is-active{background:#e1c58f;color:#11253c;border-color:#e1c58f}
 
-body.privacy-masked .big,
-body.privacy-masked .tx-amount,
+body.privacy-masked .stat b,
+body.privacy-masked .projected-sub strong,
+body.privacy-masked .amount,
 body.privacy-masked .tx-modal-amount,
+body.privacy-masked .barline-val b,
+body.privacy-masked #persons .item b,
+body.privacy-masked #goalsSummary .small,
+body.privacy-masked #goalList .row b:first-child,
+body.privacy-masked #forecastText .small strong,
+body.privacy-masked #filterCountLabel,
+body.privacy-masked .legend-pill b,
+body.privacy-masked #analyticsSummaryTable .item b:last-child,
+body.privacy-masked .day em,
 body.privacy-masked .budget-health-grid b,
-body.privacy-masked .kpi-val,
-body.privacy-masked .goal-amounts,
-body.privacy-masked .cal-cell small,
+body.privacy-masked #budgetTotal,
+body.privacy-masked .rollover-amount,
 body.privacy-masked [data-sensitive-amount]{
   filter:blur(6px);
   user-select:none;
@@ -490,8 +517,7 @@ body.privacy-masked [data-sensitive-amount]{
 }
 .pin-dots span.filled{background:var(--g);border-color:var(--g)}
 
-
-/* Cartões de aviso deslizáveis e ocultáveis (v6.4.1) */
+/* Cartões de aviso deslizáveis e ocultáveis */
 .swipe-alert-wrap {
   position: relative;
   overflow: hidden;
