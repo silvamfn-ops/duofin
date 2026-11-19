@@ -1,5 +1,5 @@
 const $=id=>document.getElementById(id),KEY='orcamento-plus-v1',now=new Date(),iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'),cur=iso(now).slice(0,7);
-const APP_VERSION='v6.6.0';
+const APP_VERSION='v6.7.0';
 const CHANGELOG_KEY='duofin-seen-version-v1';
 const defs=[['Habitação',850],['Supermercado',450],['Água, luz e gás',180],['Transportes',250],['Telecomunicações',70],['Saúde e farmácia',80],['Crianças e família',150],['Restaurantes e lazer',150],['Vestuário e pessoal',120],['Outros / imprevistos',300]];
 const fresh=()=>({settings:{income:3200,target:6000,start:'2026-11-01',deadline:'2027-08-31',cycleGroupingDays:14,people:['Adulto 1','Adulto 2'],categories:defs.map(([name,budget])=>({name,budget})),categoryRules:[]},transactions:[],recurringExpenses:[],savingsGoals:[],deletedIds:[],handledCycleRollovers:[]});
@@ -157,7 +157,7 @@ function deleteTransactionWithUndo(id){
 
 
 // ============================================================================
-// FEEDBACK HÁPTICO (MICRO-VIBRAÇÕES) & CALCULADORA INLINE (v6.6.0)
+// FEEDBACK HÁPTICO (MICRO-VIBRAÇÕES) & CALCULADORA INLINE
 // ============================================================================
 function haptic(pattern=12){
  try{
@@ -514,7 +514,7 @@ $('rolloverDismissBtn').onclick=()=>{
  persist();
 };
 
-// PROJEÇÃO DE FECHO DE CICLO (SALDO REAL VS. PREVISTO INCLUINDO POUPANÇAS AGENDADAS)
+// PROJEÇÃO DE FECHO DE CICLO & ORÇAMENTO DIÁRIO DISPONÍVEL (BURN RATE - FASE 3)
 function computeCycleProjection(cycle, currentBalance){
  const today=iso(now);
  if(!cycle.open&&cycle.end<=today)return null;
@@ -557,7 +557,6 @@ function computeCycleProjection(cycle, currentBalance){
  const committedOut=sum(pendingInCycle)+sum(scheduledFutureExp)+sum(scheduledFutureSavOut)+upcomingRulesTotal;
  const committedIn=sum(futureInc)+sum(scheduledFutureSavIn);
  const totalItems=pendingInCycle.length+scheduledFutureExp.length+scheduledFutureSavOut.length+scheduledFutureSavIn.length+upcomingRulesCount+futureInc.length;
- if(totalItems===0)return null;
 
  return {
    projectedBalance:currentBalance+committedIn-committedOut,
@@ -566,6 +565,101 @@ function computeCycleProjection(cycle, currentBalance){
    horizonEnd,
    itemCount:totalItems
  };
+}
+
+function computeDailyBurnRate(cycle, currentBalance){
+ const today=iso(now);
+ if(!cycle)return null;
+ // Só faz sentido para o ciclo atual / em curso ou com dias restantes até ao fecho
+ const isCurrent=(cycle.start<=today&&(cycle.open||cycle.end>=today));
+ if(!isCurrent)return null;
+ const estimatedEnd=cycle.open?addDays(addMonthsClamp(cycle.start,1),-1):cycle.end;
+ const daysLeft=Math.max(1,daysBetween(today,estimatedEnd)+1);
+ const proj=computeCycleProjection(cycle,currentBalance);
+ const freeToSpend=proj?proj.projectedBalance:currentBalance;
+ const dailyAllowance=freeToSpend/daysLeft;
+ return {
+   dailyAllowance,
+   freeToSpend,
+   daysLeft,
+   estimatedEnd,
+   hasCommitments:!!(proj&&proj.itemCount>0)
+ };
+}
+
+// ============================================================================
+// FASE 3: DETEÇÃO DE ANOMALIAS EM FATURAS & DESPESAS VARIÁVEIS (>20% vs 3 CICLOS)
+// ============================================================================
+function detectInvoiceAnomalies(selectedCycle){
+ const today=iso(now);
+ const cycles=buildCycles().filter(c=>!c.preCycle&&!c.fallback);
+ const idx=cycles.findIndex(c=>c.key===selectedCycle.key);
+ if(idx<1)return [];
+ const prevCycles=cycles.slice(Math.max(0,idx-3),idx);
+ if(!prevCycles.length)return [];
+
+ const anomalies=[];
+ const curTxs=cycleTransactions(selectedCycle).filter(t=>t.date<=today&&isPaid(t)&&t.type==='expense');
+
+ // 1. Verificar despesas recorrentes confirmadas neste ciclo face aos últimos até 3 ciclos
+ const seenRecIds=new Set();
+ curTxs.filter(t=>t.recurrenceId).forEach(tx=>{
+   if(seenRecIds.has(tx.recurrenceId))return;
+   seenRecIds.add(tx.recurrenceId);
+   const curVal=sum(curTxs.filter(x=>x.recurrenceId===tx.recurrenceId));
+   const histVals=[];
+   prevCycles.forEach(pc=>{
+     const pTxs=cycleTransactions(pc).filter(x=>isPaid(x)&&x.type==='expense'&&x.recurrenceId===tx.recurrenceId);
+     if(pTxs.length)histVals.push(sum(pTxs));
+   });
+   if(histVals.length>=1){
+     const avg=histVals.reduce((a,b)=>a+b,0)/histVals.length;
+     if(avg>=10&&curVal>avg*1.20){
+       const pct=Math.round(((curVal-avg)/avg)*100);
+       anomalies.push({
+         id:`anom-rec:${tx.recurrenceId}`,
+         title:tx.description,
+         current:curVal,
+         avg,
+         pct,
+         sampleCount:histVals.length,
+         kind:'recurrence'
+       });
+     }
+   }
+ });
+
+ // 2. Verificar categorias variáveis essenciais (Água/luz/gás, Supermercado, Telecomunicações, Transportes)
+ const variableKeywords=['água','luz','gás','supermercado','telecom','transport','saúde','farmácia'];
+ db.settings.categories.forEach(cat=>{
+   const low=cat.name.toLocaleLowerCase('pt-PT');
+   if(!variableKeywords.some(k=>low.includes(k)))return;
+   // Evitar duplicar se a categoria apenas tiver a recorrência já reportada
+   const curVal=sum(curTxs.filter(x=>x.category===cat.name));
+   if(curVal<=15)return;
+   const histVals=[];
+   prevCycles.forEach(pc=>{
+     const v=sum(cycleTransactions(pc).filter(x=>isPaid(x)&&x.type==='expense'&&x.category===cat.name));
+     if(v>0)histVals.push(v);
+   });
+   if(histVals.length>=2){
+     const avg=histVals.reduce((a,b)=>a+b,0)/histVals.length;
+     if(avg>=20&&curVal>avg*1.20){
+       const pct=Math.round(((curVal-avg)/avg)*100);
+       anomalies.push({
+         id:`anom-cat:${cat.name}`,
+         title:cat.name,
+         current:curVal,
+         avg,
+         pct,
+         sampleCount:histVals.length,
+         kind:'category'
+       });
+     }
+   }
+ });
+
+ return anomalies;
 }
 
 function currentCycle(cycles){
@@ -623,6 +717,7 @@ function switchTab(tabId){
  haptic(8);
  if(tabId==='resumo')requestAnimationFrame(drawChart);
  if(tabId==='graficos')requestAnimationFrame(drawAnalyticsChart);
+ if(tabId==='orcamento')runImpactSimulator();
 }
 
 function line(t, omitDate=false){
@@ -704,10 +799,25 @@ function render(){
  $('savm').textContent=eur(netSaving);
  $('savm').className=netSaving>0?'plus':netSaving<0?'minus':'';
 
+ // Orçamento Diário Disponível (Burn Rate - Fase 3)
+ const burn=computeDailyBurnRate(cycle,cycleBalance);
+ const burnEl=$('dailyBurnRateLine');
+ if(burn&&burnEl){
+   burnEl.hidden=false;
+   burnEl.classList.toggle('is-danger',burn.dailyAllowance<=0);
+   burnEl.classList.toggle('is-tight',burn.dailyAllowance>0&&burn.dailyAllowance<15);
+   const safeDaily=Math.max(0,burn.dailyAllowance);
+   burnEl.innerHTML=burn.dailyAllowance<=0
+     ?`⚠️ Orçamento diário esgotado (${burn.daysLeft}d até fecho)`
+     :`📅 Disponível/dia: <strong>${eur(safeDaily)}</strong> (${burn.daysLeft}d até fecho)`;
+ }else if(burnEl){
+   burnEl.hidden=true;
+ }
+
  // Projeção de fecho de ciclo
  const proj=computeCycleProjection(cycle,cycleBalance);
  const projEl=$('projectedBalLine');
- if(proj&&projEl){
+ if(proj&&proj.itemCount>0&&projEl){
    projEl.hidden=false;
    projEl.classList.toggle('is-warn',proj.projectedBalance<0);
    projEl.innerHTML=`Previsto no fecho: <strong>${eur(proj.projectedBalance)}</strong> (${proj.itemCount} agend./pend.)`;
@@ -716,6 +826,19 @@ function render(){
  }
 
  let rawAlerts = [];
+
+ // 1. Alertas de Anomalias em Faturas & Despesas Variáveis (> 20% vs últimos 3 ciclos - Fase 3)
+ const anomalies = detectInvoiceAnomalies(cycle);
+ anomalies.forEach(an => {
+   const labelBase = an.kind === 'recurrence' ? `Fatura «${esc(an.title)}»` : `Despesa variável em «${esc(an.title)}»`;
+   rawAlerts.push({
+     id: an.id,
+     cls: an.pct >= 35 ? 'alert red' : 'alert',
+     html: `📈 <strong>Anomalia detetada (+${an.pct}%):</strong> ${labelBase} está em <strong>${eur(an.current)}</strong> neste ciclo (média dos últimos ${an.sampleCount} ciclo(s): <strong>${eur(an.avg)}</strong>).`
+   });
+ });
+
+ // 2. Alertas de Limites de Categoria
  db.settings.categories.forEach(c => {
    let v = sum(ex.filter(t => t.category === c.name));
    if (v > c.budget) {
@@ -756,7 +879,7 @@ function render(){
  const hiddenCount = rawAlerts.length - visibleAlerts.length;
 
  if (!rawAlerts.length) {
-   $('alerts').innerHTML = '<div class="alert good">Despesas dentro dos limites definidos neste ciclo.</div>';
+   $('alerts').innerHTML = '<div class="alert good">Despesas dentro dos limites e padrões habituais neste ciclo.</div>';
  } else {
    const cardsHtml = visibleAlerts.map(a => {
      if (pendingAlertChoiceId === a.id) {
@@ -804,6 +927,14 @@ function render(){
  $('category').innerHTML=db.settings.categories.map(c=>`<option>${esc(c.name)}</option>`).join('');
  if(prevCatVal&&[...$('category').options].some(o=>o.value===prevCatVal))$('category').value=prevCatVal;
 
+ // Sincroniza categorias do Simulador de Impacto
+ const simCatSel=$('simCategory');
+ if(simCatSel){
+   const prevSimCat=simCatSel.value;
+   simCatSel.innerHTML=db.settings.categories.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
+   if(prevSimCat&&[...simCatSel.options].some(o=>o.value===prevSimCat))simCatSel.value=prevSimCat;
+ }
+
  $('incomePlan').value=db.settings.income??0;
  $('adult1').value=db.settings.people[0];
  $('adult2').value=db.settings.people[1];
@@ -832,6 +963,7 @@ function render(){
    </div>`;
  }).join('');
  updateBudget();
+ runImpactSimulator();
 
  $('categoryManager').innerHTML=db.settings.categories.map((c,i)=>`<div class="item" data-category-row="${i}"><div class="grid"><div><label>Nome da categoria</label><input data-cat-name="${i}" maxlength="50" value="${esc(c.name)}"></div><div><label>Limite por ciclo (€)</label><input data-cat-budget="${i}" type="number" min="0" step=".01" value="${Number(c.budget)||0}"></div></div><div class="actions"><button class="secondary" type="button" data-cat-save="${i}">Guardar alterações</button><button class="danger" type="button" data-cat-delete="${i}">Eliminar</button></div></div>`).join('')||'<div class="empty">Ainda não existem categorias.</div>';
 
@@ -872,6 +1004,152 @@ function render(){
  updateTxFormVisibility();
  checkNavScroll();
 }
+
+// ============================================================================
+// FASE 3: SIMULADOR DE IMPACTO ("E SE...?")
+// ============================================================================
+function runImpactSimulator(){
+ const box=$('simResultBox');
+ const actions=$('simActions');
+ if(!box)return;
+ const rawAmt=parseFloat($('simAmount')?.value||'');
+ if(!Number.isFinite(rawAmt)||rawAmt<=0){
+   box.hidden=true;
+   if(actions)actions.hidden=true;
+   return;
+ }
+ const count=Math.max(1,parseInt($('simInstallments')?.value||'1',10));
+ const perCycle=rawAmt/count;
+ const catName=$('simCategory')?.value||(db.settings.categories[0]?.name||'');
+ const source=$('simSource')?.value||'balance';
+
+ const cycles=buildCycles();
+ const curCyc=currentCycle(cycles)||activeCycle;
+ const today=iso(now);
+ const curBal=curCyc?computeCycleBalance(curCyc,today):0;
+ const proj=curCyc?computeCycleProjection(curCyc,curBal):null;
+ const baseEndBal=proj?proj.projectedBalance:curBal;
+ const newEndBal=source==='balance'?(baseEndBal-perCycle):baseEndBal;
+
+ // Impacto no burn rate diário do ciclo atual
+ const burn=curCyc?computeDailyBurnRate(curCyc,curBal):null;
+ const baseDaily=burn?Math.max(0,burn.dailyAllowance):0;
+ const newDaily=burn&&source==='balance'?Math.max(0,(burn.freeToSpend-perCycle)/burn.daysLeft):baseDaily;
+
+ // Impacto na categoria escolhida no ciclo atual
+ const catObj=db.settings.categories.find(c=>c.name===catName);
+ const catBudget=Number(catObj?.budget)||0;
+ const catSpentNow=curCyc?sum(cycleTransactions(curCyc).filter(t=>t.date<=today&&isPaid(t)&&t.type==='expense'&&t.category===catName)):0;
+ const catAfter=catSpentNow+perCycle;
+
+ // Impacto nos ciclos futuros (margem média livre)
+ const refIncome=getReferenceMonthlyIncome();
+ const avgExp=db.settings.categories.reduce((s,c)=>s+(Number(c.budget)||0),0);
+ const typicalFreeMargin=refIncome>0?(refIncome-avgExp):0;
+
+ // Impacto nos prazos dos objetivos ativos
+ const activeGoals=(db.savingsGoals||[]).filter(g=>g.status==='active');
+ const closedCycles=cycles.filter(c=>!c.preCycle&&!c.fallback).slice(-4);
+ let goalsHtml='';
+ if(activeGoals.length){
+   const goalLines=activeGoals.map(g=>{
+     const left=Math.max(0,(Number(g.target)||0)-goalTotal(g));
+     if(left<=0)return `<div class="sim-goal-line"><span>🎯 ${esc(g.name)}</span><strong class="plus">Já concluído</strong></div>`;
+     const gTxs=goalTransactions(g);
+     let avgSav=0;
+     if(closedCycles.length){
+       avgSav=closedCycles.reduce((acc,cy)=>acc+gTxs.filter(t=>t.date>=cy.start&&t.date<=cy.end).reduce((s,t)=>s+savingSigned(t),0),0)/closedCycles.length;
+     }
+     if(avgSav<=0){
+       return `<div class="sim-goal-line"><span>🎯 ${esc(g.name)}</span><span class="small">Sem ritmo histórico registado</span></div>`;
+     }
+     const baseMonths=Math.ceil(left/avgSav);
+     const shareOfCut=source==='saving_pace'?(perCycle/activeGoals.length):Math.max(0,perCycle-Math.max(0,typicalFreeMargin))/activeGoals.length;
+     const reducedSav=Math.max(5,avgSav-shareOfCut);
+     const newMonths=Math.ceil(left/reducedSav);
+     const delay=Math.max(0,newMonths-baseMonths);
+     const impactTxt=delay>0
+       ?`<strong class="minus">+${delay} ciclo(s) de atraso</strong> (${baseMonths} → ${newMonths} ciclos)`
+       :`<strong class="plus">Sem atraso previsto</strong> (~${baseMonths} ciclo(s))`;
+     return `<div class="sim-goal-line"><span>🎯 ${esc(g.name)}</span><span>${impactTxt}</span></div>`;
+   }).join('');
+   goalsHtml=`<div class="sim-goals-impact"><strong>Efeito nos prazos dos objetivos ativos:</strong>${goalLines}</div>`;
+ }
+
+ const verdictCls=newEndBal<0?'alert red':(catBudget>0&&catAfter>catBudget)?'alert':'alert good';
+ let verdictMsg='';
+ if(newEndBal<0){
+   verdictMsg=`⚠️ Atenção: esta despesa deixaria o saldo previsto deste ciclo negativo em <strong>${eur(newEndBal)}</strong>.`;
+ }else if(catBudget>0&&catAfter>catBudget){
+   verdictMsg=`⚠️ O saldo global aguenta (${eur(newEndBal)} no fecho), mas ultrapassa o limite de <strong>${esc(catName)}</strong> em ${eur(catAfter-catBudget)}.`;
+ }else{
+   verdictMsg=`✅ Comportável: manténs <strong>${eur(newEndBal)}</strong> previstos no fecho${count>1?` e um encargo de <strong>${eur(perCycle)}/ciclo</strong> durante ${count} meses`:''}.`;
+ }
+
+ box.hidden=false;
+ if(actions)actions.hidden=false;
+ box.innerHTML=`
+   <div class="${verdictCls}" style="margin:0 0 10px">${verdictMsg}</div>
+   <div class="sim-kpis">
+     <div class="sim-kpi">
+       <span>Impacto por ciclo (${count}x)</span>
+       <b class="minus">− ${eur(perCycle)}</b>
+     </div>
+     <div class="sim-kpi">
+       <span>Saldo previsto no fecho</span>
+       <b class="${newEndBal<0?'minus':'plus'}">${eur(newEndBal)}</b>
+     </div>
+     <div class="sim-kpi">
+       <span>Disponível/dia após compra</span>
+       <b>${burn?eur(newDaily):'—'} <span class="small" style="display:inline">(antes: ${burn?eur(baseDaily):'—'})</span></b>
+     </div>
+   </div>
+   <div class="small">Categoria <strong>${esc(catName)}</strong> neste ciclo: passaria de ${eur(catSpentNow)} para <strong>${eur(catAfter)}</strong>${catBudget>0?` (limite: ${eur(catBudget)})`:''}.</div>
+   ${goalsHtml}
+ `;
+}
+
+if($('simDesc'))$('simDesc').oninput=runImpactSimulator;
+if($('simAmount'))$('simAmount').oninput=runImpactSimulator;
+if($('simInstallments'))$('simInstallments').onchange=runImpactSimulator;
+if($('simCategory'))$('simCategory').onchange=runImpactSimulator;
+if($('simSource'))$('simSource').onchange=runImpactSimulator;
+if($('simResetBtn'))$('simResetBtn').onclick=()=>{
+ $('simDesc').value='';
+ $('simAmount').value='';
+ $('simInstallments').value='1';
+ runImpactSimulator();
+};
+if($('simConvertToTxBtn'))$('simConvertToTxBtn').onclick=()=>{
+ const amt=parseFloat($('simAmount')?.value||'');
+ if(!Number.isFinite(amt)||amt<=0)return;
+ const desc=($('simDesc')?.value||'').trim()||'Compra planeada';
+ const count=Math.max(1,parseInt($('simInstallments')?.value||'1',10));
+ const cat=$('simCategory')?.value||'';
+ switchTab('movimentos');
+ resetTxForm();
+ $('type').value='expense';
+ updateTxFormVisibility();
+ $('desc').value=desc;
+ $('amount').value=amt.toFixed(2);
+ if(cat&&[...$('category').options].some(o=>o.value===cat))$('category').value=cat;
+ if(count>1){
+   $('isInstallment').checked=true;
+   $('installmentCount').value=String(count);
+   $('installmentAmountMode').value='total';
+   updateInstallmentPreview();
+ }
+ updateAmountCalcPreview();
+ $('txFormCard').scrollIntoView({behavior:'smooth',block:'start'});
+};
+if($('openSimulatorShortcutBtn'))$('openSimulatorShortcutBtn').onclick=()=>{
+ switchTab('orcamento');
+ setTimeout(()=>{
+   const card=$('impactSimulatorCard');
+   if(card)card.scrollIntoView({behavior:'smooth',block:'start'});
+   if($('simDesc'))$('simDesc').focus();
+ },120);
+};
 
 function renderLearnedRules(){
  const container=$('learnedRulesList');
@@ -1159,7 +1437,6 @@ $('txModalDuplicateBtn').onclick=()=>{
  $('date').value=iso(now);
  $('type').value=t.type;
  updateTxFormVisibility();
- // Remove eventual sufixo de prestação ex.: " (1/3)"
  $('desc').value=String(t.description||'').replace(/\s*\(\d+\/\d+\)\s*$/,'');
  $('amount').value=Number(t.amount)||'';
  if(t.type==='expense'&&[...$('category').options].some(o=>o.value===t.category))$('category').value=t.category;
@@ -1219,7 +1496,6 @@ $('txModalEditForm').onsubmit=e=>{
    delete existing.goalId;
  }
 
- // Aplicar categoria/responsável/valor futuro ao grupo de prestações se marcado
  if(existing.installmentGroupId){
    const applyCatPerson=$('modalEditApplyAllInst').checked;
    const applyFutureAmt=$('modalEditApplyFutureAmountInst').checked;
@@ -1245,7 +1521,7 @@ $('txModalEditForm').onsubmit=e=>{
 };
 
 // ============================================================================
-// TOOLTIPS INTERATIVOS PARA GRÁFICOS CANVAS (v6.5.0)
+// TOOLTIPS INTERATIVOS PARA GRÁFICOS CANVAS
 // ============================================================================
 const chartHitAreas={chart:[],analyticsCanvas:[]};
 
@@ -2205,8 +2481,9 @@ function updateTxFormVisibility(){
  }
 }
 
-// IMPORTADOR DE EXTRATOS BANCÁRIOS (PDF & CSV) COM APRENDIZAGEM DE CATEGORIAS
+// IMPORTADOR DE EXTRATOS BANCÁRIOS (PDF & CSV) COM APRENDIZAGEM E DETEÇÃO DE SUBSCRIÇÕES (FASE 3)
 let parsedCsvRows=[];
+let detectedSubscriptions=[];
 const PDFJS_CDN_BASE='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174';
 let pdfJsLoadingPromise=null;
 
@@ -2230,6 +2507,101 @@ function saveLearnedCategoryRule(keyword, category, type='expense'){
  if(existing){existing.category=catVal;existing.type=type;}
  else db.settings.categoryRules.unshift({keyword:cleanKey,category:catVal,type});
 }
+
+// Detetor de padrões repetidos / subscrições na importação (Fase 3)
+function detectSubscriptionCandidates(rows){
+ const subKeywords=['netflix','spotify','disney','hbo','max ','amazon prime','prime video','apple.com/bill','icloud','google one','youtube premium','microsoft 365','adobe','chatgpt','openai','ginásio','ginasio','holmes place','fitness hut','solinca','via verde','meo','nos ','vodafone','digi','edp','endesa','iberdrola','epal','seguro','fidelidade','allianz','tranquilidade','ok! teleseguros','ageas'];
+ const groups=new Map();
+
+ rows.forEach(r=>{
+   if(r.type!=='expense')return;
+   const norm=extractKeywordFromDesc(r.description);
+   const key=norm.length>=3?norm:r.description.trim().toUpperCase().slice(0,24);
+   if(!groups.has(key))groups.set(key,[]);
+   groups.get(key).push(r);
+ });
+
+ const existingRecNames=new Set((db.recurringExpenses||[]).map(x=>String(x.description||'').trim().toUpperCase()));
+ const candidates=[];
+
+ groups.forEach((items,key)=>{
+   const lowDesc=items[0].description.toLocaleLowerCase('pt-PT');
+   const matchesBrand=subKeywords.some(k=>lowDesc.includes(k));
+   // Padrão 1: Aparece 2+ vezes no extrato com valores idênticos ou muito próximos
+   // Padrão 2: Aparece 1+ vez e corresponde a marca/serviço conhecido de subscrição ou débito direto mensal
+   const isDirectDebit=/\b(dd|debito direto|débito direto|subscricao|subscrição|mensalidade)\b/i.test(items[0].description);
+   if(items.length>=2||matchesBrand||isDirectDebit){
+     const sorted=[...items].sort((a,b)=>b.date.localeCompare(a.date));
+     const latest=sorted[0];
+     const dayNum=Math.max(1,Math.min(31,parseInt(latest.date.slice(8,10),10)||1));
+     const cleanTitle=latest.description.replace(/\s+/g,' ').trim().slice(0,48);
+     const alreadyRule=existingRecNames.has(cleanTitle.toUpperCase())||(db.recurringExpenses||[]).some(rec=>cleanTitle.toUpperCase().includes(rec.description.toUpperCase())&&Math.abs(rec.amount-latest.amount)<1.5);
+     candidates.push({
+       key,
+       description:cleanTitle,
+       amount:Number(latest.amount.toFixed(2)),
+       category:latest.category,
+       day:dayNum,
+       occurrences:items.length,
+       reason:items.length>=2?`${items.length}x no extrato`:matchesBrand?'Subscrição / serviço mensal':'Débito direto',
+       added:alreadyRule
+     });
+   }
+ });
+
+ return candidates.slice(0,8);
+}
+
+function renderDetectedSubscriptions(){
+ const box=$('detectedSubscriptionsBox');
+ const listEl=$('detectedSubscriptionsList');
+ const countEl=$('detectedSubsCount');
+ if(!box||!listEl)return;
+ if(!detectedSubscriptions.length){
+   box.hidden=true;
+   return;
+ }
+ box.hidden=false;
+ if(countEl)countEl.textContent=`${detectedSubscriptions.length} detetada(s)`;
+ listEl.innerHTML=detectedSubscriptions.map((sub,idx)=>`
+   <div class="sub-item-row">
+     <div class="sub-item-info">
+       <b>${esc(sub.description)}</b>
+       <div class="small"><span class="sub-item-amt">${eur(sub.amount)}</span> · dia ${sub.day} · ${esc(sub.category)} · <em>${esc(sub.reason)}</em></div>
+     </div>
+     <button type="button" class="sub-add-btn ${sub.added?'is-added':''}" data-create-sub="${idx}" ${sub.added?'disabled':''}>
+       ${sub.added?'✓ Regra ativa':'+ Criar recorrência'}
+     </button>
+   </div>
+ `).join('');
+}
+
+if($('detectedSubscriptionsList'))$('detectedSubscriptionsList').addEventListener('click',e=>{
+ const btn=e.target.closest('[data-create-sub]');
+ if(!btn)return;
+ const idx=Number(btn.dataset.createSub);
+ const sub=detectedSubscriptions[idx];
+ if(!sub||sub.added)return;
+ const person=$('csvDefaultPerson')?.value||'Conta conjunta';
+ const rule={
+   id:'rr-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7),
+   description:sub.description,
+   amount:sub.amount,
+   category:sub.category,
+   person,
+   day:sub.day,
+   startMonth:cur,
+   endMonth:null,
+   active:true,
+   updatedAt:Date.now()
+ };
+ db.recurringExpenses.push(rule);
+ sub.added=true;
+ renderDetectedSubscriptions();
+ persist();
+ haptic(16);
+ showToast(`Regra recorrente «${sub.description}» criada (dia ${sub.day}).`,{type:'success'});
+});
 
 function ensurePdfJs(){
  if(window.pdfjsLib){
@@ -2393,7 +2765,6 @@ function guessMovementTypeAndCategory(desc, rawAmount){
  const d=desc.toLocaleLowerCase('pt-PT');
  const avail=new Set(db.settings.categories.map(c=>c.name));
 
- // 1. Regras personalizadas aprendidas (podem guardar type e category)
  for(const rule of (db.settings.categoryRules||[])){
    if(d.includes(rule.keyword.toLocaleLowerCase('pt-PT'))){
      if(rule.type==='saving')return {type:'saving',category:'Poupança'};
@@ -2403,7 +2774,6 @@ function guessMovementTypeAndCategory(desc, rawAmount){
    }
  }
 
- // 2. Deteção automática de movimentos de poupança / conta prazo / PPR / Certificados
  const savingKeywords=['poupanca','poupança','conta prazo','deposito a prazo','depósito a prazo','certificados de aforro','igcp','ppr ','plano poupanca','reforco poupanca','reforço poupança','cofre','vault'];
  if(savingKeywords.some(k=>d.includes(k))){
    if(rawAmount<0)return {type:'saving',category:'Poupança'};
@@ -2419,14 +2789,12 @@ function guessCategory(desc){
  const d=desc.toLocaleLowerCase('pt-PT');
  const avail=new Set(db.settings.categories.map(c=>c.name));
 
- // 1. Verificar primeiro regras personalizadas aprendidas pelo utilizador
  for(const rule of (db.settings.categoryRules||[])){
    if(avail.has(rule.category)&&d.includes(rule.keyword.toLocaleLowerCase('pt-PT'))){
      return rule.category;
    }
  }
 
- // 2. Regras gerais de estabelecimentos em Portugal
  const rules=[
    ['Supermercado',['continente','pingo doce','lidl','aldi','auchan','intermarche','mercadona','minipreco','supercor','talho','padaria','mercearia']],
    ['Transportes',['galp','repsol','bp ','cepsa','prio','via verde','uber','bolt','cp ','carris','metro','estacionamento','parque','auto','oficina','pneus']],
@@ -2694,6 +3062,7 @@ $('parsePastedTextBtn').onclick=()=>{
    return;
  }
  parsedCsvRows=rows;
+ detectedSubscriptions=detectSubscriptionCandidates(rows);
  $('pasteExtractBox').hidden=true;
  renderCsvPreview();
 };
@@ -2723,6 +3092,7 @@ $('csvFileInput').onchange=async e=>{
      parsedCsvRows=parseCsvContent(text);
      if(!parsedCsvRows.length)throw new Error('Não foi possível identificar movimentos válidos (Data, Descrição e Valor) neste ficheiro.');
    }
+   detectedSubscriptions=detectSubscriptionCandidates(parsedCsvRows);
    renderCsvPreview();
  }catch(err){
    if($('pdfProgressBox'))$('pdfProgressBox').hidden=true;
@@ -2739,6 +3109,7 @@ function isDuplicateMovement(row){
 
 function renderCsvPreview(){
  $('csvPreviewContainer').hidden=false;
+ renderDetectedSubscriptions();
  parsedCsvRows.forEach(r=>{
    if(r._checkedDup===undefined){
      r.isDup=isDuplicateMovement(r);
@@ -2901,7 +3272,7 @@ $('csvPreviewList').addEventListener('click',e=>{
  }
 });
 
-$('csvCancelImportBtn').onclick=()=>{parsedCsvRows=[];$('csvPreviewContainer').hidden=true;};
+$('csvCancelImportBtn').onclick=()=>{parsedCsvRows=[];detectedSubscriptions=[];$('csvPreviewContainer').hidden=true;};
 $('csvConfirmImportBtn').onclick=()=>{
  const toImport=parsedCsvRows.filter(r=>r.selected);
  if(!toImport.length){alert('Seleciona pelo menos um movimento para importar.');return;}
@@ -2923,6 +3294,7 @@ $('csvConfirmImportBtn').onclick=()=>{
    db.transactions.push(entry);
  });
  parsedCsvRows=[];
+ detectedSubscriptions=[];
  $('csvPreviewContainer').hidden=true;
  const autoUpdated=runAutoBudgetAdjustment(true);
  persist();
@@ -2962,7 +3334,7 @@ function drawChart(){
  const inkCol=styles.getPropertyValue('--ink').trim()||'#192838';
 
  const padLeft=48,padRight=24,padTop=22,padBottom=28;
- const plotW=w-padLeft-padRight,plotH=h-padTop-padBottom;
+ const plotW=w-padLeft-padRight,plotH=h-padTop-padB;
  const max=Math.max(100,...series.map(x=>x.value))*1.15;
 
  ctx.strokeStyle=lineCol;
@@ -3089,7 +3461,6 @@ function computeSmartBudgetInsights(){
        else break;
      }
    }
-   // Considerar também despesas recorrentes ativas desta categoria como piso mínimo
    const recFloor=(db.recurringExpenses||[])
      .filter(r=>r.active&&r.category===c.name)
      .reduce((s,r)=>s+(Number(r.amount)||0),0);
@@ -3110,7 +3481,6 @@ function computeSmartBudgetInsights(){
    };
  });
 
- // Garantir que a soma das sugestões não ultrapassa a receita de referência (se existir receita > 0)
  let totalSuggested=catStats.reduce((s,x)=>s+(x.locked?x.currentBudget:x.suggestedBudget),0);
  if(refIncome>0&&totalSuggested>refIncome){
    const lockedSum=catStats.filter(x=>x.locked).reduce((s,x)=>s+x.currentBudget,0);
@@ -3123,7 +3493,6 @@ function computeSmartBudgetInsights(){
          x.suggestedBudget=Math.max(0,roundSmartBudget(x.suggestedBudget*ratio));
        }
      });
-     // Ajuste fino caso arredondamento ainda passe ligeiramente o teto
      let checkTotal=catStats.reduce((s,x)=>s+(x.locked?x.currentBudget:x.suggestedBudget),0);
      if(checkTotal>refIncome){
        const largest=[...catStats].filter(x=>!x.locked&&x.suggestedBudget>0).sort((a,b)=>b.suggestedBudget-a.suggestedBudget)[0];
@@ -3153,7 +3522,6 @@ function runAutoBudgetAdjustment(silent=true){
    if(st.locked||!st.hasSample)return;
    const cat=db.settings.categories[st.index];
    if(!cat)return;
-   // Atualizar se houver diferença relevante (>= 5€ ou >= 10%)
    if(Math.abs(cat.budget-st.suggestedBudget)>=5){
      cat.budget=st.suggestedBudget;
      cat.updatedAt=nowTs;
@@ -3571,7 +3939,6 @@ $('balanceToIncomeBtn').onclick=()=>{
      db.settings.categories[x.idx].updatedAt=nowTs;
    }
  });
- // Garantir que não ultrapassa nem 1 euro após arredondamento
  let totalAfter=db.settings.categories.reduce((s,c)=>s+(Number(c.budget)||0),0);
  if(totalAfter>refInc){
    const biggest=db.settings.categories.filter(c=>!c.locked&&c.budget>0).sort((a,b)=>b.budget-a.budget)[0];
@@ -3760,7 +4127,7 @@ function shift(n){let d=new Date(($('calendarMonth').value||cur)+'-02T12:00:00')
 $('prev').onclick=()=>shift(-1);$('next').onclick=()=>shift(1);
 
 // ============================================================================
-// MODAL DE NOVIDADES DA VERSÃO (CHANGELOG v6.5.0)
+// MODAL DE NOVIDADES DA VERSÃO (CHANGELOG v6.7.0)
 // ============================================================================
 function openChangelogModal(){
  const m=$('changelogModal');
@@ -4163,245 +4530,225 @@ async function decodeCloudPayload(rawPayload){
 try{cloud={...cloud,...JSON.parse(localStorage.getItem(CLOUD_KEY)||'{}')}}catch(e){}
 if(dbNeedsSync){cloud.dirty=true;localStorage.setItem(CLOUD_KEY,JSON.stringify(cloud));}
 let cloudSaveTimer=null,cloudBusy=false;
-function saveCloud(){localStorage.setItem(CLOUD_KEY,JSON.stringify(cloud))}
-function cloudMessage(msg,kind='alert'){const el=$('cloudStatus');if(!el)return;el.className=kind;el.textContent=msg}
-function cloudConfigured(){return /^https:\/\/[a-z0-9.-]+$/i.test(cloud.url)&&!!cloud.key}
-function cloudConnected(){return cloudConfigured()&&!!cloud.access_token&&!!cloud.user}
+function saveCloud(){localStorage.setItem(CLOUD_KEY,JSON.stringify(cloud));paintCloud()}
+function cloudConfigured(){return /^https:\/\/.+\.supabase\.co$/i.test(cloud.url.trim())&&cloud.key.trim().length>20}
+function cloudConnected(){return cloudConfigured()&&!!cloud.access_token}
+function setCloudStatus(msg,kind=''){const el=$('cloudStatus');el.textContent=msg;el.className='alert'+(kind?' '+kind:'')}
 function paintCloud(){
-  if(!$('cloudStatus'))return;
-  $('sbUrl').value=cloud.url||'';$('sbKey').value=cloud.key||'';
-  $('cloudLogout').hidden=!cloudConnected();$('authPanel').hidden=cloudConnected();$('householdPanel').hidden=!cloudConnected();
-  if(!cloudConfigured())cloudMessage('Ainda não configurada. Introduz o URL e a chave pública do projeto Supabase.');
-  else if(!cloudConnected())cloudMessage('Projeto configurado. Inicia sessão ou cria uma conta para ativar a sincronização.','alert good');
-  else if(!cloud.household_id)cloudMessage('Sessão iniciada. Cria um orçamento partilhado ou associa-te com um código de convite.','alert good');
-  else cloudMessage(cloud.dirty?'Existem alterações locais por enviar.':'Conta ligada. Orçamento partilhado: '+cloud.household_id.slice(0,8)+'… · revisão '+(cloud.revision??'—'),'alert good');
-  $('householdInfo').textContent=cloud.household_id?'Orçamento partilhado ativo. As alterações são sincronizadas automaticamente quando possível.':'Ainda não estás associado a um orçamento.';
+  $('sbUrl').value=cloud.url;$('sbKey').value=cloud.key;
+  $('cloudLogout').hidden=!cloudConnected();
+  $('householdPanel').hidden=!cloudConnected();
+  if(!cloudConfigured()){setCloudStatus('Ainda não configurada. Preenche o URL e a chave pública do projeto Supabase.');return}
+  if(!cloudConnected()){setCloudStatus('Configurada. Inicia sessão ou cria uma conta para sincronizar.');return}
+  $('householdInfo').textContent=cloud.household_id?'Orçamento partilhado associado (rev. '+(cloud.revision??0)+').':'Sessão iniciada como '+(cloud.user?.email||'utilizador')+'. Cria ou associa um orçamento partilhado.';
+  if(cloud.dirty)setCloudStatus('Alterações locais por enviar para o servidor.','');
+  else if(cloud.household_id)setCloudStatus('Sincronizado com '+ (cloud.user?.email||'a conta'), 'good');
+  else setCloudStatus('Sessão iniciada. Falta criar ou associar o orçamento partilhado.','');
 }
-function saveCloudConfig(){let u=$('sbUrl').value.trim().replace(/\/$/,'');let k=$('sbKey').value.trim();if(!/^https:\/\/[a-z0-9.-]+$/i.test(u)||!k){alert('Introduz um URL HTTPS válido e a chave pública do projeto.');return}if((u!==cloud.url||k!==cloud.key)&&cloud.access_token){if(!confirm('Alterar o projeto termina a sessão atual neste dispositivo. Continuar?'))return;cloud.access_token='';cloud.refresh_token='';cloud.expires_at=0;cloud.user=null;cloud.household_id=null;cloud.revision=null;cloud.dirty=false}cloud.url=u;cloud.key=k;saveCloud();paintCloud();}
-$('saveCloudConfig').onclick=saveCloudConfig;
-async function authFetch(path,body){const r=await fetch(cloud.url+'/auth/v1/'+path,{method:'POST',headers:{'Content-Type':'application/json','apikey':cloud.key},body:JSON.stringify(body)});let j={};try{j=await r.json()}catch(e){}if(!r.ok)throw new Error(j.msg||j.message||j.error_description||j.error||('Erro de autenticação ('+r.status+')'));return j}
-async function refreshToken(){if(!cloud.refresh_token)return;if(cloud.expires_at>Date.now()+60000)return;const j=await authFetch('token?grant_type=refresh_token',{refresh_token:cloud.refresh_token});setSession(j)}
-function setSession(j){cloud.access_token=j.access_token;cloud.refresh_token=j.refresh_token||cloud.refresh_token;cloud.expires_at=Date.now()+(j.expires_in||3600)*1000;cloud.user=j.user||cloud.user;saveCloud()}
-async function api(path,opts={}){await refreshToken();const headers={'apikey':cloud.key,'Authorization':'Bearer '+(cloud.access_token||cloud.key),'Content-Type':'application/json',...(opts.headers||{})};const r=await fetch(cloud.url+'/rest/v1/'+path,{...opts,headers});let j=null;try{j=await r.json()}catch(e){}if(!r.ok){let msg=j?.message||j?.details||j?.hint||('Erro do servidor ('+r.status+')');throw new Error(msg)}return j}
-async function rpc(name,args){return api('rpc/'+name,{method:'POST',body:JSON.stringify(args)})}
-function validPayload(p){return !!(p&&p.settings&&Array.isArray(p.transactions))}
-function hasLocalData(){return JSON.stringify(db)!==JSON.stringify(fresh())}
-function setLocalData(p){const n=normalizeDb(p);db=n.db;localStorage.setItem(KEY,JSON.stringify(db));render();return n.changed;}
 
-function tryMergePayloads(localRaw, remoteRaw){
-  const local=normalizeDb(JSON.parse(JSON.stringify(localRaw))).db;
-  const remote=normalizeDb(JSON.parse(JSON.stringify(remoteRaw))).db;
+function mergeArrayById(localArr, remoteArr, deletedSet){
+  const map=new Map();
+  (remoteArr||[]).forEach(item=>{
+    if(!item||item.id===undefined||item.id===null)return;
+    const id=String(item.id);
+    if(deletedSet.has(id))return;
+    map.set(id,{...item});
+  });
+  (localArr||[]).forEach(item=>{
+    if(!item||item.id===undefined||item.id===null)return;
+    const id=String(item.id);
+    if(deletedSet.has(id))return;
+    const existing=map.get(id);
+    if(!existing){
+      map.set(id,{...item});
+    }else{
+      const locTs=Number(item.updatedAt)||0;
+      const remTs=Number(existing.updatedAt)||0;
+      if(locTs>=remTs)map.set(id,{...existing,...item});
+      else map.set(id,{...item,...existing});
+    }
+  });
+  return Array.from(map.values());
+}
 
-  // União de tombstones (registos apagados recentemente)
+function mergeDatabases(localDb, remoteDb){
+  const loc=normalizeDb(JSON.parse(JSON.stringify(localDb))).db;
+  const rem=normalizeDb(JSON.parse(JSON.stringify(remoteDb))).db;
+
   const delMap=new Map();
-  [...(remote.deletedIds||[]),...(local.deletedIds||[])].forEach(d=>{
+  [...(rem.deletedIds||[]),...(loc.deletedIds||[])].forEach(d=>{
     if(d&&d.id){
-      const id=String(d.id);
-      const prev=delMap.get(id);
-      if(!prev||(d.at||0)>(prev.at||0))delMap.set(id,{id,at:d.at||Date.now()});
+      const k=String(d.id);
+      const prev=delMap.get(k);
+      if(!prev||(Number(d.at)||0)>(Number(prev.at)||0))delMap.set(k,{id:k,at:Number(d.at)||Date.now()});
     }
   });
   const deletedSet=new Set(delMap.keys());
 
-  const txMap=new Map();
-  remote.transactions.forEach(t=>{if(!deletedSet.has(String(t.id)))txMap.set(String(t.id),t);});
-  for(const t of local.transactions){
-    const id=String(t.id);
-    if(deletedSet.has(id))continue;
-    if(!txMap.has(id)){
-      txMap.set(id,t);
-    }else{
-      const rTx=txMap.get(id);
-      if(JSON.stringify(rTx)!==JSON.stringify(t)){
-        if(rTx.status==='pending'&&t.status!=='pending')txMap.set(id,t);
-        else if(t.status==='pending'&&rTx.status!=='pending')txMap.set(id,rTx);
-        else{
-          const lTime=Number(t.updatedAt)||0;
-          const rTime=Number(rTx.updatedAt)||0;
-          if(lTime>0||rTime>0)txMap.set(id,lTime>=rTime?t:rTx);
-          else return null;
-        }
-      }
-    }
-  }
+  const mergedTransactions=mergeArrayById(loc.transactions,rem.transactions,deletedSet);
+  const mergedRecurrences=mergeArrayById(loc.recurringExpenses,rem.recurringExpenses,deletedSet);
+  const mergedGoals=mergeArrayById(loc.savingsGoals,rem.savingsGoals,deletedSet);
 
-  const recMap=new Map();
-  (remote.recurringExpenses||[]).forEach(r=>{if(!deletedSet.has(String(r.id)))recMap.set(String(r.id),r);});
-  for(const r of (local.recurringExpenses||[])){
-    const id=String(r.id);
-    if(deletedSet.has(id))continue;
-    if(!recMap.has(id))recMap.set(id,r);
-    else{
-      const rRec=recMap.get(id);
-      if(JSON.stringify(rRec)!==JSON.stringify(r)){
-        const lTime=Number(r.updatedAt)||0;
-        const rTime=Number(rRec.updatedAt)||0;
-        if(lTime>0||rTime>0)recMap.set(id,lTime>=rTime?r:rRec);
-        else return null;
-      }
-    }
-  }
-
-  const goalMap=new Map();
-  (remote.savingsGoals||[]).forEach(g=>{if(!deletedSet.has(String(g.id)))goalMap.set(String(g.id),g);});
-  for(const g of (local.savingsGoals||[])){
-    const id=String(g.id);
-    if(deletedSet.has(id))continue;
-    if(!goalMap.has(id))goalMap.set(id,g);
-    else{
-      const rGoal=goalMap.get(id);
-      if(JSON.stringify(rGoal)!==JSON.stringify(g)){
-        const lTime=Number(g.updatedAt)||0;
-        const rTime=Number(rGoal.updatedAt)||0;
-        if(lTime>0||rTime>0)goalMap.set(id,lTime>=rTime?g:rGoal);
-        else return null;
-      }
-    }
-  }
-
-  // Fundir decisões de sobras de ciclo (handledCycleRollovers)
-  const rollMap=new Map();
-  [...(remote.handledCycleRollovers||[]),...(local.handledCycleRollovers||[])].forEach(h=>{
-    if(h&&h.cycleKey){
-      const prev=rollMap.get(h.cycleKey);
-      if(!prev||(h.at||0)<(prev.at||0))rollMap.set(h.cycleKey,h);
-    }
-  });
-
-  // Fundir regras aprendidas sem gerar conflito
-  const rulesMap=new Map();
-  [...(remote.settings.categoryRules||[]),...(local.settings.categoryRules||[])].forEach(rl=>{
-    if(rl&&rl.keyword)rulesMap.set(rl.keyword.toUpperCase(),rl);
-  });
-  const mergedSettings={...remote.settings,categoryRules:[...rulesMap.values()]};
-
-  // Fundir categorias por nome se não houver eliminação conflitante
   const catMap=new Map();
-  (remote.settings.categories||[]).forEach(c=>catMap.set(c.name.toLocaleLowerCase('pt-PT'),{...c}));
-  (local.settings.categories||[]).forEach(c=>{
-    const k=c.name.toLocaleLowerCase('pt-PT');
-    if(!catMap.has(k)){
-      catMap.set(k,{...c});
-    }else{
-      const rCat=catMap.get(k);
-      const lTime=Number(c.updatedAt)||0;
-      const rTime=Number(rCat.updatedAt)||0;
-      if(lTime>rTime)catMap.set(k,{...c});
-    }
-  });
-  mergedSettings.categories=[...catMap.values()];
+  (rem.settings.categories||[]).forEach(c=>{if(c&&c.name)catMap.set(c.name,{...c});});
+  (loc.settings.categories||[]).forEach(c=>{if(c&&c.name)catMap.set(c.name,{...c});});
 
-  return {
-    settings:mergedSettings,
-    transactions:[...txMap.values()],
-    recurringExpenses:[...recMap.values()],
-    savingsGoals:[...goalMap.values()],
-    deletedIds:[...delMap.values()],
-    handledCycleRollovers:[...rollMap.values()]
+  const rulesMap=new Map();
+  (rem.settings.categoryRules||[]).forEach(r=>{if(r&&r.keyword)rulesMap.set(r.keyword.toUpperCase(),{...r});});
+  (loc.settings.categoryRules||[]).forEach(r=>{if(r&&r.keyword)rulesMap.set(r.keyword.toUpperCase(),{...r});});
+
+  const rolloverMap=new Map();
+  (rem.handledCycleRollovers||[]).forEach(h=>{if(h&&h.cycleKey)rolloverMap.set(h.cycleKey,{...h});});
+  (loc.handledCycleRollovers||[]).forEach(h=>{if(h&&h.cycleKey)rolloverMap.set(h.cycleKey,{...h});});
+
+  const mergedSettings={
+    ...rem.settings,
+    ...loc.settings,
+    categories:Array.from(catMap.values()),
+    categoryRules:Array.from(rulesMap.values())
   };
+
+  return normalizeDb({
+    settings:mergedSettings,
+    transactions:mergedTransactions,
+    recurringExpenses:mergedRecurrences,
+    savingsGoals:mergedGoals,
+    deletedIds:Array.from(delMap.values()),
+    handledCycleRollovers:Array.from(rolloverMap.values())
+  }).db;
 }
 
-async function memberships(){const rows=await api('household_members?select=household_id&user_id=eq.'+encodeURIComponent(cloud.user.id));return rows||[]}
-async function afterLogin(){const ms=await memberships();let ids=ms.map(x=>x.household_id);if(cloud.household_id&&!ids.includes(cloud.household_id))cloud.household_id=null;if(!cloud.household_id&&ids.length)cloud.household_id=ids[0];saveCloud();paintCloud();if(cloud.household_id)await syncNow(false,true);if(generateDueOccurrences())render()}
-async function loginOrSignup(signup){if(!saveCloudConfigIfNeeded())throw new Error('A configuração do projeto não foi alterada. Confirma o URL e a chave pública.');if(!cloudConfigured())throw new Error('Guarda primeiro o URL e a chave pública do Supabase.');const email=$('cloudEmail').value.trim(),password=$('cloudPassword').value;if(!email||password.length<6)throw new Error('Indica um email e uma palavra-passe com pelo menos 6 caracteres.');const j=await authFetch(signup?('signup?redirect_to='+encodeURIComponent(location.href)):'token?grant_type=password',{email,password});if(!j.access_token){cloudMessage('Conta criada. Confirma o email recebido e depois inicia sessão.','alert good');return}setSession(j);await afterLogin();}
-function saveCloudConfigIfNeeded(){if($('sbUrl').value.trim()!==cloud.url||$('sbKey').value.trim()!==cloud.key){saveCloudConfig();return $('sbUrl').value.trim().replace(/\/$/,'')===cloud.url&&$('sbKey').value.trim()===cloud.key}return true}
-$('cloudLogin').onclick=async()=>{try{await loginOrSignup(false);cloudMessage('Sessão iniciada.','alert good')}catch(e){cloudMessage(e.message,'alert red')}};
-$('cloudSignup').onclick=async()=>{try{await loginOrSignup(true)}catch(e){cloudMessage(e.message,'alert red')}};
-$('cloudLogout').onclick=async()=>{try{if(cloud.access_token)await fetch(cloud.url+'/auth/v1/logout',{method:'POST',headers:{'apikey':cloud.key,'Authorization':'Bearer '+cloud.access_token}})}catch(e){}cloud.access_token='';cloud.refresh_token='';cloud.expires_at=0;cloud.user=null;cloud.household_id=null;cloud.revision=null;cloud.dirty=false;saveCloud();paintCloud();cloudMessage('Sessão terminada. Os dados locais continuam neste telemóvel.','alert good')};
-$('createHousehold').onclick=async()=>{try{const name=$('householdName').value.trim()||'Orçamento do casal';const id=await rpc('create_household',{p_name:name});cloud.household_id=typeof id==='string'?id:id?.id;cloud.revision=0;cloud.dirty=true;saveCloud();paintCloud();await pushCloud(false);cloudMessage('Orçamento criado e primeira cópia enviada. Agora gera um convite para o outro adulto.','alert good')}catch(e){cloudMessage(e.message,'alert red')}};
-$('createInvite').onclick=async()=>{try{if(!cloud.household_id)throw new Error('Cria ou associa primeiro um orçamento.');const code=await rpc('create_invite',{p_household_id:cloud.household_id});$('inviteResult').hidden=false;$('inviteResult').textContent='Código de convite (válido durante 48 horas e para uma utilização): '+String(code).replace(/^"|"$/g,'');}catch(e){cloudMessage(e.message,'alert red')}};
-$('joinHousehold').onclick=async()=>{try{const code=$('inviteCode').value.trim();if(!code)throw new Error('Introduz o código de convite.');const id=await rpc('join_household',{p_code:code});cloud.household_id=typeof id==='string'?id:id?.id;cloud.revision=null;cloud.dirty=false;saveCloud();paintCloud();await syncNow(true,true);cloudMessage('Telemóvel associado. Confirma o estado da sincronização acima.','alert good')}catch(e){cloudMessage(e.message,'alert red')}};
-
-async function getCloudRow(){const rows=await api('household_data?select=household_id,payload,revision,updated_at&household_id=eq.'+encodeURIComponent(cloud.household_id));if(!rows||!rows.length)throw new Error('Não foi encontrado o registo do orçamento partilhado. Confirma a configuração SQL.');return rows[0]}
-
-async function pushCloud(overwrite=false){
- if(!cloudConnected()||!cloud.household_id)return;
- if(cloudBusy)return;
- cloudBusy=true;
- try{
-   const row=await getCloudRow();
-   const remoteDecrypted=await decodeCloudPayload(row.payload);
-   if(!overwrite&&cloud.revision!==null&&row.revision!==cloud.revision){
-     const merged=validPayload(remoteDecrypted)?tryMergePayloads(db,remoteDecrypted):null;
-     if(merged){
-       setLocalData(merged);
-       cloud.revision=row.revision;
-     }else{
-       cloud.dirty=true;saveCloud();
-       cloudMessage('Conflito: o outro telemóvel alterou definições ou o mesmo registo. Escolhe “Carregar versão partilhada” ou “Enviar versão deste telemóvel”.','alert red');
-       return;
-     }
-   }
-   if(overwrite&&!confirm('Isto vai substituir a versão partilhada pela versão guardada neste telemóvel. Continuar?'))return;
-   const expected=overwrite?row.revision:(cloud.revision===null?row.revision:cloud.revision);
-   const wirePayload=await encodeCloudPayload(db);
-   const result=await rpc('save_household_data',{p_household_id:cloud.household_id,p_payload:wirePayload,p_expected_revision:expected});
-   const r=Array.isArray(result)?result[0]:result;
-   if(!r?.ok){
-     cloud.dirty=true;cloud.revision=r?.revision??row.revision;saveCloud();
-     cloudMessage('Conflito de sincronização. Carrega a versão partilhada ou volta a enviar explicitamente.','alert red');
-     return;
-   }
-   cloud.revision=r.revision;cloud.dirty=false;saveCloud();paintCloud();
- }finally{cloudBusy=false}
+async function sbFetch(path,{method='GET',body,auth=true,headers={}}={}){
+  if(!cloudConfigured())throw new Error('Configura primeiro o projeto Supabase.');
+  if(auth&&cloud.expires_at&&Date.now()>cloud.expires_at-30000&&cloud.refresh_token)await refreshSession();
+  const h={'apikey':cloud.key.trim(),'Content-Type':'application/json',...headers};
+  if(auth&&cloud.access_token)h['Authorization']='Bearer '+cloud.access_token;
+  const r=await fetch(cloud.url.trim().replace(/\/$/,'')+path,{method,headers:h,body:body!==undefined?JSON.stringify(body):undefined});
+  const text=await r.text();
+  let data=null;try{data=text?JSON.parse(text):null}catch(e){data=text}
+  if(!r.ok){
+    if(r.status===401&&auth&&cloud.refresh_token){await refreshSession();return sbFetch(path,{method,body,auth,headers})}
+    throw new Error(data?.msg||data?.error_description||data?.message||('Erro '+r.status));
+  }
+  return data;
+}
+async function refreshSession(){
+  const data=await sbFetch('/auth/v1/token?grant_type=refresh_token',{method:'POST',auth:false,body:{refresh_token:cloud.refresh_token}});
+  cloud.access_token=data.access_token;cloud.refresh_token=data.refresh_token||cloud.refresh_token;cloud.expires_at=Date.now()+(data.expires_in||3600)*1000;cloud.user=data.user||cloud.user;saveCloud();
+}
+async function loadMembership(){
+  const rows=await sbFetch('/rest/v1/household_members?select=household_id,role&limit=1');
+  cloud.household_id=rows?.[0]?.household_id||null;saveCloud();
+  if(cloud.household_id)await pullCloud(false);
+}
+async function pullCloud(manual=true){
+  if(!cloudConnected()||!cloud.household_id)return;
+  const rows=await sbFetch('/rest/v1/household_state?household_id=eq.'+encodeURIComponent(cloud.household_id)+'&select=payload,revision,updated_at');
+  const row=rows?.[0];if(!row)return;
+  const decodedPayload=await decodeCloudPayload(row.payload);
+  if(decodedPayload&&decodedPayload.settings&&Array.isArray(decodedPayload.transactions)){
+    if(cloud.dirty){
+      db=mergeDatabases(db,decodedPayload);
+      localStorage.setItem(KEY,JSON.stringify(db));
+      cloud.revision=row.revision;
+      await pushCloud(false);
+      render();
+      if(manual)setCloudStatus('Dados locais e partilhados fundidos com sucesso.','good');
+      return;
+    }else{
+      const n=normalizeDb(decodedPayload);
+      db=n.db;
+      localStorage.setItem(KEY,JSON.stringify(db));
+      cloud.revision=row.revision;
+      cloud.dirty=false;
+      saveCloud();
+      generateDueOccurrences();
+      render();
+    }
+  }
+  if(manual)setCloudStatus('Versão partilhada carregada.','good');
+}
+async function pushCloud(manual=true){
+  if(!cloudConnected()||!cloud.household_id||cloudBusy)return;
+  cloudBusy=true;
+  try{
+    const rows=await sbFetch('/rest/v1/household_state?household_id=eq.'+encodeURIComponent(cloud.household_id)+'&select=payload,revision');
+    const remote=rows?.[0];
+    if(remote&&cloud.revision!==null&&remote.revision!==cloud.revision&&remote.payload){
+      const decodedRemote=await decodeCloudPayload(remote.payload);
+      if(decodedRemote&&decodedRemote.settings){
+        db=mergeDatabases(db,decodedRemote);
+        localStorage.setItem(KEY,JSON.stringify(db));
+        cloud.revision=remote.revision;
+        render();
+      }
+    }
+    const nextRev=(cloud.revision??0)+1;
+    const encodedPayload=await encodeCloudPayload(db);
+    await sbFetch('/rest/v1/household_state?household_id=eq.'+encodeURIComponent(cloud.household_id),{method:'PATCH',headers:{'Prefer':'return=representation'},body:{payload:encodedPayload,revision:nextRev,updated_by:cloud.user?.id||null,updated_at:new Date().toISOString()}});
+    cloud.revision=nextRev;cloud.dirty=false;saveCloud();
+    if(manual)setCloudStatus('Dados enviados e sincronizados.','good');
+  }catch(e){cloud.dirty=true;saveCloud();setCloudStatus('Sincronização pendente: '+e.message,'red')}
+  finally{cloudBusy=false}
+}
+function queueCloudSave(){
+  if(!cloudConnected()||!cloud.household_id)return;
+  cloud.dirty=true;saveCloud();clearTimeout(cloudSaveTimer);cloudSaveTimer=setTimeout(()=>pushCloud(false),1200);
+}
+$('saveCloudConfig').onclick=()=>{cloud.url=$('sbUrl').value.trim();cloud.key=$('sbKey').value.trim();saveCloud()};
+$('cloudLogin').onclick=async()=>{
+  try{
+    cloud.url=$('sbUrl').value.trim();cloud.key=$('sbKey').value.trim();
+    const data=await sbFetch('/auth/v1/token?grant_type=password',{method:'POST',auth:false,body:{email:$('cloudEmail').value.trim(),password:$('cloudPassword').value}});
+    cloud.access_token=data.access_token;cloud.refresh_token=data.refresh_token;cloud.expires_at=Date.now()+(data.expires_in||3600)*1000;cloud.user=data.user;saveCloud();await loadMembership();
+  }catch(e){setCloudStatus('Não foi possível entrar: '+e.message,'red')}
+};
+$('cloudSignup').onclick=async()=>{
+  try{
+    cloud.url=$('sbUrl').value.trim();cloud.key=$('sbKey').value.trim();
+    const data=await sbFetch('/auth/v1/signup',{method:'POST',auth:false,body:{email:$('cloudEmail').value.trim(),password:$('cloudPassword').value}});
+    if(data.access_token){cloud.access_token=data.access_token;cloud.refresh_token=data.refresh_token;cloud.expires_at=Date.now()+(data.expires_in||3600)*1000;cloud.user=data.user;saveCloud();await loadMembership();}
+    else setCloudStatus('Conta criada. Confirma o email se o Supabase pedir verificação e depois entra.','good');
+  }catch(e){setCloudStatus('Não foi possível criar conta: '+e.message,'red')}
+};
+$('cloudLogout').onclick=()=>{cloud={...cloud,access_token:'',refresh_token:'',expires_at:0,user:null,household_id:null,revision:null,dirty:false};saveCloud()};
+$('createHousehold').onclick=async()=>{
+  try{
+    const encodedInitial=await encodeCloudPayload(db);
+    const id=await sbFetch('/rest/v1/rpc/create_household',{method:'POST',body:{p_name:$('householdName').value.trim()||'Orçamento do casal',p_payload:encodedInitial}});
+    cloud.household_id=id;cloud.revision=1;cloud.dirty=false;saveCloud();await pullCloud(true);
+  }catch(e){setCloudStatus('Erro ao criar orçamento partilhado: '+e.message,'red')}
+};
+$('createInvite').onclick=async()=>{
+  try{
+    const code=await sbFetch('/rest/v1/rpc/create_household_invite',{method:'POST',body:{p_household:cloud.household_id}});
+    $('inviteResult').hidden=false;$('inviteResult').textContent='Código de convite (válido por 7 dias): '+code;
+  }catch(e){setCloudStatus('Erro ao gerar convite: '+e.message,'red')}
+};
+$('joinHousehold').onclick=async()=>{
+  try{
+    const id=await sbFetch('/rest/v1/rpc/accept_household_invite',{method:'POST',body:{p_code:$('inviteCode').value.trim()}});
+    cloud.household_id=id;cloud.dirty=false;saveCloud();await pullCloud(true);
+  }catch(e){setCloudStatus('Erro ao usar convite: '+e.message,'red')}
+};
+$('syncNow').onclick=async()=>{try{if(cloud.dirty)await pushCloud(true);else await pullCloud(true)}catch(e){setCloudStatus(e.message,'red')}};
+$('cloudPull').onclick=async()=>{try{cloud.dirty=false;await pullCloud(true)}catch(e){setCloudStatus(e.message,'red')}};
+$('cloudPush').onclick=async()=>{try{await pushCloud(true)}catch(e){setCloudStatus(e.message,'red')}};
+setInterval(()=>{if(document.visibilityState==='visible'&&cloudConnected()&&cloud.household_id&&!cloudBusy){if(cloud.dirty)pushCloud(false);else pullCloud(false).catch(()=>{})}},15000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&cloudConnected()&&cloud.household_id){if(cloud.dirty)pushCloud(false);else pullCloud(false).catch(()=>{})}});
+if('serviceWorker' in navigator && location.protocol.startsWith('http')){
+  window.addEventListener('load',()=>{navigator.serviceWorker.register('./sw.js').catch(()=>{})});
 }
 
-async function syncNow(forcePull=false,silent=false){
- if(!cloudConnected()||!cloud.household_id)return;
- try{
-   const row=await getCloudRow();
-   const remotePayload=await decodeCloudPayload(row.payload);
-   if(!validPayload(remotePayload)){cloud.revision=row.revision;cloud.dirty=true;saveCloud();await pushCloud(false);return}
-   if(forcePull){
-     if(hasLocalData()&&!confirm('Carregar a versão partilhada vai substituir os dados locais deste telemóvel. Continuar?'))return;
-     const migrated=setLocalData(remotePayload);cloud.revision=row.revision;cloud.dirty=migrated;saveCloud();paintCloud();
-     if(migrated)await pushCloud(false);
-     if(generateDueOccurrences())render();
-     return;
-   }
-   if(cloud.revision===null){
-     if(hasLocalData()){cloud.revision=row.revision;cloud.dirty=true;saveCloud();cloudMessage('Este telemóvel já tem dados locais. Exporta uma cópia e escolhe qual versão deve prevalecer.','alert red');return}
-     const migrated=setLocalData(remotePayload);cloud.revision=row.revision;cloud.dirty=migrated;saveCloud();paintCloud();
-     if(migrated)await pushCloud(false);
-     if(generateDueOccurrences())render();
-     return;
-   }
-   if(row.revision!==cloud.revision){
-     if(cloud.dirty){
-       const merged=tryMergePayloads(db,remotePayload);
-       if(merged){
-         setLocalData(merged);cloud.revision=row.revision;cloud.dirty=true;saveCloud();
-         await pushCloud(false);
-         if(!silent)cloudMessage('Alterações simultâneas fundidas com sucesso. Revisão '+cloud.revision+'.','alert good');
-         return;
-       }
-       cloudMessage('Conflito: existem alterações incompatíveis neste telemóvel e na versão partilhada. Escolhe uma das duas ações.','alert red');
-       return;
-     }
-     const migrated=setLocalData(remotePayload);cloud.revision=row.revision;cloud.dirty=migrated;saveCloud();paintCloud();
-     if(migrated)await pushCloud(false);
-     if(generateDueOccurrences())render();
-     return;
-   }
-   if(cloud.dirty)await pushCloud(false);
-   else if(!silent)cloudMessage('Tudo sincronizado. Revisão '+cloud.revision+'.','alert good');
- }catch(e){if(!silent)cloudMessage('Não foi possível sincronizar: '+e.message,'alert red')}
-}
-
-$('syncNow').onclick=()=>syncNow(false,false);
-$('cloudPull').onclick=()=>syncNow(true,false);
-$('cloudPush').onclick=()=>pushCloud(true).catch(e=>cloudMessage(e.message,'alert red'));
-function queueCloudSave(){if(!cloudConnected()||!cloud.household_id)return;cloud.dirty=true;saveCloud();paintCloud();clearTimeout(cloudSaveTimer);cloudSaveTimer=setTimeout(()=>pushCloud(false).catch(e=>cloudMessage(e.message,'alert red')),1200)}
-setInterval(()=>{if(document.visibilityState==='visible'&&cloudConnected()&&cloud.household_id)syncNow(false,true)},15000);
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&cloudConnected()&&cloud.household_id)syncNow(false,true)});
+generateDueOccurrences();
+if(db.settings.autoAdjustBudgets)runAutoBudgetAdjustment(true);
 paintCloud();
 render();
-if(!cloudConnected()&&generateDueOccurrences())render();
-if(cloudConnected())refreshToken().then(afterLogin).catch(e=>cloudMessage('A sessão expirou. Inicia sessão novamente: '+e.message,'alert red'));
-
-// Mostrar modal de novidades uma única vez após atualização para v6.6.0
-if(!appLocked && localStorage.getItem(CHANGELOG_KEY)!==APP_VERSION){
-  setTimeout(openChangelogModal, 450);
+if(cloudConnected()&&cloud.household_id){
+  if(cloud.dirty)pushCloud(false);
+  else pullCloud(false).catch(()=>{});
 }
 
-if('serviceWorker'in navigator&&location.protocol.startsWith('http'))addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+if(localStorage.getItem(CHANGELOG_KEY)!==APP_VERSION){
+  setTimeout(()=>{if(!appLocked)openChangelogModal();},450);
+}

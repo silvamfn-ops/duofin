@@ -14,7 +14,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; worker-src 'self' blob: https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co https://cdnjs.cloudflare.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self';">
   <link rel="stylesheet" href="./styles.css">
-  <title>DuoFin v6.6.0 — Gestão financeira a dois</title>
+  <title>DuoFin v6.7.0 — Gestão financeira a dois</title>
 </head>
 <body>
   <!-- Ecrã de Bloqueio Local (PIN / Biometria WebAuthn) -->
@@ -43,7 +43,7 @@
       <div class="header-actions">
         <button type="button" class="header-icon-btn" id="privacyToggleBtn" title="Ocultar ou mostrar valores monetários" aria-label="Modo privacidade">👁️</button>
         <button type="button" class="header-icon-btn" id="lockAppHeaderBtn" title="Bloquear aplicação agora" aria-label="Bloquear aplicação" hidden>🔒</button>
-        <button type="button" class="version-badge" id="versionBadgeBtn" title="Ver novidades desta versão">v6.6.0</button>
+        <button type="button" class="version-badge" id="versionBadgeBtn" title="Ver novidades desta versão">v6.7.0</button>
       </div>
     </div>
   </header>
@@ -82,7 +82,7 @@
         </button>
         <button type="button" class="drawer-item" data-drawer-tab="orcamento">
           <span class="drawer-ico">⚖️</span>
-          <span>Orçamento</span>
+          <span>Orçamento &amp; Copiloto</span>
         </button>
         <button type="button" class="drawer-item" data-drawer-tab="dados">
           <span class="drawer-ico">⚙️</span>
@@ -126,12 +126,14 @@
         <div class="stat stat-bal" id="balCard">
           <span>Saldo do ciclo</span>
           <b id="bal"></b>
+          <div id="dailyBurnRateLine" class="burn-rate-sub" hidden></div>
           <div id="projectedBalLine" class="projected-sub" hidden></div>
         </div>
         <div class="stat stat-sav"><span>Poupança líquida</span><b id="savm"></b></div>
       </div>
       <div class="actions">
-        <button class="secondary" type="button" id="printFullReportBtn">🖨️ Imprimir relatório completo (ciclo + objetivos)</button>
+        <button class="secondary" type="button" id="openSimulatorShortcutBtn">🔮 Simulador "E se...?"</button>
+        <button class="secondary" type="button" id="printFullReportBtn">🖨️ Imprimir relatório completo</button>
       </div>
       <div id="alerts"></div>
       <div class="card">
@@ -438,6 +440,61 @@
     </section>
 
     <section id="orcamento" class="view">
+      <!-- SIMULADOR DE IMPACTO ("E SE...?") - FASE 3 -->
+      <div class="card simulator-card" id="impactSimulatorCard">
+        <div class="row" style="flex-wrap:wrap;gap:8px">
+          <div>
+            <h2 style="margin:0">🔮 Simulador de Impacto ("E se...?")</h2>
+            <div class="small">Testa uma compra grande ou em prestações antes de a registar</div>
+          </div>
+          <span class="pill">Copiloto</span>
+        </div>
+
+        <div class="grid" style="margin-top:10px">
+          <div>
+            <label for="simDesc">O que pensas comprar / assumir?</label>
+            <input id="simDesc" placeholder="Ex.: Máquina de lavar, Seguro anual, Férias..." autocomplete="off">
+          </div>
+          <div>
+            <label for="simAmount">Valor total (€)</label>
+            <input id="simAmount" type="number" min="1" step="0.01" placeholder="Ex.: 600">
+          </div>
+        </div>
+
+        <div class="grid-3">
+          <div>
+            <label for="simInstallments">Modalidade</label>
+            <select id="simInstallments">
+              <option value="1">A pronto (1x este ciclo)</option>
+              <option value="2">2 prestações mensais</option>
+              <option value="3">3 prestações mensais</option>
+              <option value="4">4 prestações mensais</option>
+              <option value="6">6 prestações mensais</option>
+              <option value="10">10 prestações mensais</option>
+              <option value="12">12 prestações mensais</option>
+              <option value="24">24 prestações mensais</option>
+            </select>
+          </div>
+          <div>
+            <label for="simCategory">Categoria</label>
+            <select id="simCategory"></select>
+          </div>
+          <div>
+            <label for="simSource">Origem do dinheiro</label>
+            <select id="simSource">
+              <option value="balance">Saldo mensal do casal</option>
+              <option value="saving_pace">Reduzindo reforço de poupança</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="simResultBox" class="sim-result-box" hidden></div>
+        <div class="actions" id="simActions" hidden>
+          <button type="button" class="primary" id="simConvertToTxBtn">✅ Registar este plano nos Movimentos</button>
+          <button type="button" class="ghost" id="simResetBtn">Limpar simulação</button>
+        </div>
+      </div>
+
       <div class="card">
         <div class="row" style="flex-wrap:wrap;gap:8px">
           <h2 style="margin:0">Orçamento Inteligente & Limites</h2>
@@ -529,7 +586,7 @@
     <section id="dados" class="view">
       <div class="card">
         <h2>Importar extrato bancário (PDF ou CSV)</h2>
-        <p class="small">Carrega um extrato bancário em <strong>PDF</strong> (ou CSV) exportado do teu banco (CGD, Millennium bcp, Santander, BPI, Novo Banco, ActivoBank, Moey, Revolut, etc.), ou cola diretamente o texto copiado do PDF. Podes rever e ajustar categorias e poupanças antes de confirmar.</p>
+        <p class="small">Carrega um extrato bancário em <strong>PDF</strong> (ou CSV) exportado do teu banco (CGD, Millennium bcp, Santander, BPI, Novo Banco, ActivoBank, Moey, Revolut, etc.), ou cola diretamente o texto copiado do PDF. A DuoFin deteta automaticamente subscrições repetidas e permite rever tudo antes de confirmar.</p>
         <div class="grid">
           <div>
             <label for="csvDefaultPerson">Responsável por defeito</label>
@@ -556,6 +613,16 @@
           <div class="progress" style="margin:0"><i id="pdfProgressBar" style="width:0%"></i></div>
         </div>
         <div id="csvPreviewContainer" hidden>
+          <!-- Deteção automática de subscrições / padrões repetidos (Fase 3) -->
+          <div id="detectedSubscriptionsBox" class="sub-detect-box" hidden>
+            <div class="row" style="margin-bottom:6px">
+              <strong style="font-size:13.5px">🔁 Subscrições / Padrões recorrentes detetados</strong>
+              <span class="pill" id="detectedSubsCount"></span>
+            </div>
+            <p class="small" style="margin:0 0 8px">Estes movimentos repetem-se no extrato ou correspondem a subscrições mensais. Cria regras automáticas com um toque:</p>
+            <div id="detectedSubscriptionsList"></div>
+          </div>
+
           <div class="alert good" id="csvSummaryAlert" style="margin-top:12px"></div>
           <div class="row" style="margin:8px 0 4px">
             <label class="checkbox-row" style="margin:0"><input type="checkbox" id="csvToggleAll" checked><span>Selecionar todos</span></label>
@@ -742,10 +809,10 @@
       <div class="card">
         <div class="row" style="flex-wrap:wrap;gap:8px">
           <div>
-            <h2 style="margin:0">Sobre a DuoFin v6.6.0</h2>
+            <h2 style="margin:0">Sobre a DuoFin v6.7.0</h2>
             <div class="small">Consulta as melhorias mais recentes desta versão.</div>
           </div>
-          <button type="button" class="secondary" id="openChangelogBtn">✨ Ver novidades da v6.6.0</button>
+          <button type="button" class="secondary" id="openChangelogBtn">✨ Ver novidades da v6.7.0</button>
         </div>
       </div>
 
@@ -764,21 +831,22 @@
     <!-- Folha dedicada exclusivamente à impressão A4 / PDF -->
     <div id="printSheet" aria-hidden="true"></div>
 
-    <!-- Modal de Novidades da Versão (Changelog v6.6.0) -->
+    <!-- Modal de Novidades da Versão (Changelog v6.7.0) -->
     <div id="changelogModal" class="modal-backdrop" hidden>
       <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="changelogModalTitle">
         <div class="row" style="margin-bottom:8px">
           <div class="row" style="gap:8px">
             <span class="pill">Novidades</span>
-            <h2 id="changelogModalTitle" style="margin:0">DuoFin v6.6.0</h2>
+            <h2 id="changelogModalTitle" style="margin:0">DuoFin v6.7.0</h2>
           </div>
           <button type="button" class="icon-btn" id="closeChangelogBtn" aria-label="Fechar">✕</button>
         </div>
-                <p class="small" style="margin:0 0 8px">Fase 2 concluída — experiência mobile nativa e registo instantâneo sem atrito:</p>
+        <p class="small" style="margin:0 0 8px">Fase 3 concluída — Inteligência Financeira &amp; Copiloto para decisões ativas do casal:</p>
         <ul class="changelog-list">
-          <li><strong>Barra de Navegação Inferior Fixa (Mobile):</strong> Em ecrãs pequenos, os 4 separadores principais (<em>Resumo, Movimentos, Gráficos, Objetivos</em>) ficam fixos na base com acesso rápido à gaveta <em>Mais</em>.</li>
-          <li><strong>Calculadora Inline & Atalhos Rápidos:</strong> Soma ou subtrai várias parcelas diretamente no campo de valor (ex.: <code>42,50 + 8,30</code>) e usa botões de despesas frequentes com um toque.</li>
-          <li><strong>Progresso Real na Leitura PDF & Feedback Háptico:</strong> Barra de progresso página a página ao importar extratos PDF e micro-vibração tátil nas ações principais.</li>
+          <li><strong>Orçamento Diário Disponível (Burn Rate):</strong> No cartão de <em>Saldo do ciclo</em> do Resumo, vê imediatamente quanto podem gastar por dia até ao fecho estimado do ciclo, já descontando despesas pendentes e recorrentes agendadas.</li>
+          <li><strong>Alertas de Anomalias em Faturas:</strong> Aviso automático quando faturas ou categorias variáveis (água, luz, gás, supermercado, telecomunicações) desviam mais de <strong>20%</strong> face à média dos últimos 3 ciclos.</li>
+          <li><strong>Deteção de Subscrições na Importação:</strong> Identifica padrões repetidos ao importar extratos PDF/CSV e permite criar regras de despesa recorrente com um toque.</li>
+          <li><strong>Simulador de Impacto ("E se...?"):</strong> Testa compras a pronto ou em prestações antes de as registar, medindo o efeito nos ciclos seguintes, no <em>burn rate</em> diário e nos prazos dos objetivos.</li>
         </ul>
         <div class="actions" style="justify-content:flex-end;margin-top:16px">
           <button type="button" class="primary" id="confirmChangelogBtn">Entendido</button>
@@ -944,7 +1012,7 @@
       </div>
     </div>
 
-    <footer>DuoFin · v6.6.0 · Gestão financeira a dois</footer>
+    <footer>DuoFin · v6.7.0 · Gestão financeira a dois</footer>
   </div>
   <script src="./app.js"></script>
 </body>

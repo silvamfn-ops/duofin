@@ -223,7 +223,7 @@ footer{text-align:center;color:var(--muted);font-size:12px;padding:20px;padding-
 .legend-swatch{width:11px;height:11px;border-radius:3px;flex:0 0 auto}
 .legend-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
 
-/* Tooltip interativo para gráficos Canvas (v6.5.0) */
+/* Tooltip interativo para gráficos Canvas */
 .chart-tooltip{
   position:absolute;z-index:25;pointer-events:none;
   background:rgba(17,37,60,0.96);color:#fff;
@@ -467,7 +467,7 @@ html.density-detailed input,html.density-detailed select{min-height:47px;padding
   .budget-health-grid{grid-template-columns:1fr;gap:6px}
 }
 
-/* Camada de Segurança & Privacidade (Corrigido na v6.5.0) */
+/* Camada de Segurança & Privacidade */
 .header-actions{display:flex;align-items:center;gap:8px}
 .header-icon-btn{
   background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);
@@ -607,9 +607,7 @@ body.privacy-masked [data-sensitive-amount]{
   padding: 4px 8px;
 }
 
-/* ============================================================================
-   FASE 2 (v6.6.0): BOTTOM TAB BAR MOBILE, CALCULADORA INLINE, ATALHOS & PDF
-   ============================================================================ */
+/* FASE 2 (v6.6.0): BOTTOM TAB BAR MOBILE, CALCULADORA INLINE, ATALHOS & PDF */
 .nav-ico{display:none}
 .mobile-more-btn{display:none !important}
 .mobile-drawer-backdrop,.mobile-more-drawer{display:none}
@@ -738,4 +736,80 @@ html.theme-dark .calc-preview-badge{background:#1c3a32;color:#a9dec7}
 
 @media print{
   .mobile-drawer-backdrop,.mobile-more-drawer,.quick-templates-bar,.calc-ops,.pdf-progress-box{display:none !important}
+}
+
+/* ============================================================================
+   FASE 3 (v6.7.0): BURN RATE DIÁRIO, ANOMALIAS, SUBSCRIÇÕES & SIMULADOR "E SE...?"
+   ============================================================================ */
+.burn-rate-sub{
+  margin-top:6px;padding:4px 8px;border-radius:8px;
+  background:rgba(23,54,83,0.08);color:var(--g);
+  font-size:11.5px;font-weight:650;line-height:1.35;
+}
+.burn-rate-sub strong{font-weight:800}
+.burn-rate-sub.is-tight{background:var(--warning-bg);color:var(--warning-ink)}
+.burn-rate-sub.is-danger{background:#fff0ee;color:#923c38}
+html.theme-dark .burn-rate-sub{background:rgba(57,106,148,0.22);color:#b7d6f2}
+html.theme-dark .burn-rate-sub.is-danger{background:#3b2528;color:#ffb4ac}
+
+body.privacy-masked .burn-rate-sub strong,
+body.privacy-masked .sim-kpi b,
+body.privacy-masked .sub-item-amt{
+  filter:blur(6px);
+  user-select:none;
+}
+
+/* Deteção de Subscrições na Importação */
+.sub-detect-box{
+  margin-top:12px;padding:12px 13px;border-radius:13px;
+  background:linear-gradient(to bottom right,var(--surface),var(--p));
+  border:1.5px solid var(--gold);
+}
+.sub-item-row{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:8px 10px;margin-top:6px;border-radius:10px;
+  background:var(--surface);border:1px solid var(--line);
+}
+.sub-item-info{min-width:0;flex:1}
+.sub-item-info b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sub-add-btn{
+  background:var(--g);color:#fff;border:0;border-radius:8px;
+  padding:6px 10px;font-size:11.5px;font-weight:700;white-space:nowrap;flex:0 0 auto;
+}
+.sub-add-btn:hover{background:var(--g-hover)}
+.sub-add-btn.is-added{
+  background:#e8f2ed;color:var(--green);border:1px solid rgba(36,93,73,0.25);cursor:default;
+}
+
+/* Simulador de Impacto ("E se...?") */
+.simulator-card{
+  border-left:4px solid var(--gold);
+  background:linear-gradient(to bottom right,var(--surface),var(--surface-2));
+}
+.sim-result-box{
+  margin-top:12px;padding:13px;border-radius:13px;
+  background:var(--surface);border:1px solid var(--line);
+  animation:fadeView .18s ease-out;
+}
+.sim-kpis{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px;
+}
+.sim-kpi{
+  background:var(--surface-2);border:1px solid var(--line);
+  border-radius:10px;padding:8px 10px;
+}
+.sim-kpi span{display:block;font-size:11px;color:var(--muted)}
+.sim-kpi b{font-size:14.5px;color:var(--ink)}
+.sim-goals-impact{
+  border-top:1px dashed var(--line);padding-top:9px;margin-top:9px;font-size:12.5px;
+}
+.sim-goal-line{
+  display:flex;justify-content:space-between;align-items:center;gap:8px;
+  padding:4px 0;
+}
+@media(max-width:560px){
+  .sim-kpis{grid-template-columns:1fr;gap:6px}
+}
+@media print{
+  .simulator-card,.sub-detect-box{display:none !important}
 }
