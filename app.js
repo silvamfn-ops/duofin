@@ -1,8 +1,8 @@
 const $=id=>document.getElementById(id),KEY='orcamento-plus-v1',now=new Date(),iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'),cur=iso(now).slice(0,7);
-const APP_VERSION='v6.8.0';
+const APP_VERSION='v6.9.0';
 const CHANGELOG_KEY='duofin-seen-version-v1';
 const defs=[['Habitação',850],['Supermercado',450],['Água, luz e gás',180],['Transportes',250],['Telecomunicações',70],['Saúde e farmácia',80],['Crianças e família',150],['Restaurantes e lazer',150],['Vestuário e pessoal',120],['Outros / imprevistos',300]];
-const fresh=()=>({settings:{income:3200,target:6000,start:'2026-11-01',deadline:'2027-08-31',cycleGroupingDays:14,people:['Adulto 1','Adulto 2'],categories:defs.map(([name,budget])=>({name,budget})),categoryRules:[]},transactions:[],recurringExpenses:[],savingsGoals:[],deletedIds:[],handledCycleRollovers:[]});
+const fresh=()=>({settings:{income:3200,target:6000,start:'2026-11-01',deadline:'2027-08-31',cycleGroupingDays:14,people:['Adulto 1','Adulto 2'],categories:defs.map(([name,budget])=>({name,budget})),categoryRules:[]},transactions:[],recurringExpenses:[],savingsGoals:[],creditCards:[],deletedIds:[],handledCycleRollovers:[]});
 let dbNeedsSync=false;
 
 function normalizeDb(x){
@@ -14,6 +14,7 @@ function normalizeDb(x){
  if(!Array.isArray(x.settings.categoryRules)){x.settings.categoryRules=[];changed=true;}
  if(!Array.isArray(x.deletedIds)){x.deletedIds=[];changed=true;}
  if(!Array.isArray(x.handledCycleRollovers)){x.handledCycleRollovers=[];changed=true;}
+ if(!Array.isArray(x.creditCards)){x.creditCards=[];changed=true;}
  if(!Number.isFinite(Number(x.settings.cycleGroupingDays))){x.settings.cycleGroupingDays=14;changed=true;}
  x.settings.cycleGroupingDays=Math.max(0,Math.min(20,Math.round(Number(x.settings.cycleGroupingDays)||0)));
  if(!Array.isArray(x.savingsGoals)){
@@ -274,6 +275,61 @@ const sum=a=>a.reduce((s,t)=>s+(Number(t.amount)||0),0),isPaid=t=>t.status!=='pe
 const capFirst=s=>s?s.charAt(0).toUpperCase()+s.slice(1):'';
 const DAY_MS=86400000,dateMs=s=>Date.parse(s+'T00:00:00Z'),validDate=s=>/^\d{4}-\d{2}-\d{2}$/.test(String(s||''))&&Number.isFinite(dateMs(s)),addDays=(s,n)=>new Date(dateMs(s)+n*DAY_MS).toISOString().slice(0,10),daysBetween=(a,b)=>Math.round((dateMs(b)-dateMs(a))/DAY_MS),monthLast=m=>{const [y,mo]=m.split('-').map(Number);return `${m}-${String(new Date(y,mo,0).getDate()).padStart(2,'0')}`},fmtDate=d=>new Date(d+'T12:00:00').toLocaleDateString('pt-PT',{day:'2-digit',month:'short',year:'numeric'});
 const isSavingTx=t=>t&&(t.type==='saving'||t.type==='saving_withdraw');
+
+// ============================================================================
+// GESTÃO DE CARTÕES DE CRÉDITO (EVITA DUPLA CONTAGEM NO PAGAMENTO DA FATURA)
+// ============================================================================
+const isCcPaymentTx=t=>t&&t.type==='cc_payment';
+const isCcExpenseTx=t=>t&&t.type==='expense'&&!!t.creditCardId;
+
+function getCreditCardById(id){
+ if(!id)return null;
+ return (db.creditCards||[]).find(c=>String(c.id)===String(id))||null;
+}
+
+function computeCreditCardDebt(card, upToDate=null){
+ if(!card)return 0;
+ const cid=String(card.id);
+ const baseDebt=Math.max(0,Number(card.initialDebt)||0);
+ const relevant=db.transactions.filter(t=>isPaid(t)&&String(t.creditCardId||'')===cid&&(!upToDate||t.date<=upToDate));
+ const charges=sum(relevant.filter(t=>t.type==='expense'));
+ const payments=sum(relevant.filter(t=>t.type==='cc_payment'));
+ return Math.max(0,Number((baseDebt+charges-payments).toFixed(2)));
+}
+
+function getAllCreditCardsStats(){
+ return (db.creditCards||[]).map(c=>{
+   const debt=computeCreditCardDebt(c);
+   const limit=Math.max(0,Number(c.limit)||0);
+   const available=limit>0?Math.max(0,limit-debt):null;
+   const pct=limit>0?Math.min(100,(debt/limit)*100):0;
+   return {...c,debt,limit,available,pct};
+ });
+}
+
+function updateCreditCardSelects(){
+ const cards=db.creditCards||[];
+ const pmSel=$('paymentMethod');
+ if(pmSel){
+   const oldPm=pmSel.value;
+   pmSel.innerHTML='<option value="bank">Conta à ordem / Débito / Dinheiro</option>'+cards.map(c=>`<option value="cc:${esc(String(c.id))}">💳 Cartão: ${esc(c.name)} (dívida: ${eur(computeCreditCardDebt(c))})</option>`).join('');
+   if([...pmSel.options].some(o=>o.value===oldPm))pmSel.value=oldPm;
+ }
+ const ccPaySel=$('ccPaymentCard');
+ if(ccPaySel){
+   const oldPay=ccPaySel.value;
+   ccPaySel.innerHTML=(cards.length?'<option value="">Selecionar cartão de crédito…</option>':'<option value="">Nenhum cartão registado (cria em Orçamento)</option>')+cards.map(c=>`<option value="${esc(String(c.id))}">${esc(c.name)} · em dívida: ${eur(computeCreditCardDebt(c))}</option>`).join('');
+   if([...ccPaySel.options].some(o=>o.value===oldPay))ccPaySel.value=oldPay;
+   else if(cards.length===1)ccPaySel.value=String(cards[0].id);
+ }
+ const ccOwnerSel=$('ccOwner');
+ if(ccOwnerSel){
+   const oldOwn=ccOwnerSel.value;
+   ccOwnerSel.innerHTML=['Conta conjunta',...db.settings.people].map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('');
+   if([...ccOwnerSel.options].some(o=>o.value===oldOwn))ccOwnerSel.value=oldOwn;
+ }
+}
+
 const savingSigned=t=>t.type==='saving_withdraw'?-(Number(t.amount)||0):(Number(t.amount)||0);
 
 function recordDeletedId(id){
@@ -286,6 +342,7 @@ function recordDeletedId(id){
 
 function categoryIcon(t){
  if(t.type==='income')return '💶';
+ if(t.type==='cc_payment')return '💳';
  if(t.type==='saving')return '🐷';
  if(t.type==='saving_withdraw')return '↩️';
  const c=String(t.category||'').toLocaleLowerCase('pt-PT');
@@ -399,10 +456,11 @@ function buildCycles(){
 function computeCycleBalance(c, upToDate=iso(now)){
  const tx=cycleTransactions(c).filter(t=>t.date<=upToDate);
  const ex=tx.filter(t=>t.type==='expense'&&isPaid(t));
+ const ccPay=tx.filter(t=>t.type==='cc_payment'&&isPaid(t));
  const inc=tx.filter(t=>t.type==='income'&&isPaid(t));
  const svIn=tx.filter(t=>t.type==='saving'&&isPaid(t));
  const svOut=tx.filter(t=>t.type==='saving_withdraw'&&isPaid(t));
- return sum(inc)+sum(svOut)-sum(ex)-sum(svIn);
+ return sum(inc)+sum(svOut)-sum(ex)-sum(ccPay)-sum(svIn);
 }
 
 // GESTÃO INTERATIVA DE SOBRA DO CICLO ANTERIOR
@@ -525,8 +583,8 @@ function computeCycleProjection(cycle, currentBalance){
  // 1. Despesas pendentes já geradas dentro do ciclo até hoje
  const pendingInCycle=cycleTransactions(cycle).filter(t=>t.type==='expense'&&t.status==='pending'&&t.date<=today);
 
- // 2. Despesas futuras já agendadas (ex.: prestações) dentro do horizonte do ciclo
- const scheduledFutureExp=db.transactions.filter(t=>t.type==='expense'&&t.status!=='skipped'&&t.date>today&&t.date<=horizonEnd);
+ // 2. Despesas e pagamentos de cartão futuros já agendados dentro do horizonte do ciclo
+ const scheduledFutureExp=db.transactions.filter(t=>(t.type==='expense'||t.type==='cc_payment')&&t.status!=='skipped'&&t.date>today&&t.date<=horizonEnd);
 
  // 3. Transferências e resgates de poupança futuros já agendados no horizonte do ciclo
  const scheduledFutureSavOut=db.transactions.filter(t=>t.type==='saving'&&t.status!=='skipped'&&t.date>today&&t.date<=horizonEnd);
@@ -723,7 +781,13 @@ function switchTab(tabId){
 function line(t, omitDate=false){
  let state=t.status==='pending'?' · <strong>Pendente</strong>':t.status==='skipped'?' · <strong>Ignorada</strong>':'';
  if(t.type==='income'&&t.countsForCycle===false)state+=' · <em>Extra (não fecha ciclo)</em>';
- if(t.type==='saving_withdraw'){
+ if(t.type==='expense'&&t.creditCardId){
+   const cc=getCreditCardById(t.creditCardId);
+   state+=cc?` · <em>💳 ${esc(cc.name)}</em>`:' · <em>💳 Cartão de crédito</em>';
+ }else if(t.type==='cc_payment'){
+   const cc=getCreditCardById(t.creditCardId);
+   state+=cc?` · <em>Abate dívida: ${esc(cc.name)}</em>`:' · <em>Abate dívida de cartão</em>';
+ }else if(t.type==='saving_withdraw'){
    const g=(db.savingsGoals||[]).find(x=>x.id===t.goalId);
    state+=g?` · <em>Resgate: ${esc(g.name)}</em>`:' · <em>Resgate de poupança</em>';
  }else if(t.type==='saving'&&t.goalId){
@@ -732,9 +796,9 @@ function line(t, omitDate=false){
  }
  if(t.date>iso(now))state+=' · <em>Agendado</em>';
  let actions=t.status==='pending'?`<button class="secondary" data-confirm-rec="${esc(String(t.id))}">Confirmar</button><button class="danger" data-skip-rec="${esc(String(t.id))}">Ignorar</button>`:'';
- const cls=t.type==='income'?'plus':t.type==='saving_withdraw'?'neutral':'minus';
- const badgeCls=t.type==='income'?'is-inc':isSavingTx(t)?'is-sav':'';
- const prefix=t.type==='income'?'+':t.type==='saving'?'↗':t.type==='saving_withdraw'?'↙':'−';
+ const cls=t.type==='income'?'plus':(t.type==='saving_withdraw'||t.type==='cc_payment')?'neutral':'minus';
+ const badgeCls=t.type==='income'?'is-inc':(isSavingTx(t)||t.type==='cc_payment')?'is-sav':'';
+ const prefix=t.type==='income'?'+':t.type==='saving'?'↗':t.type==='saving_withdraw'?'↙':t.type==='cc_payment'?'⇄':'−';
  const datePrefix=omitDate?'':`${t.date} · `;
  return `<div class="item row tx-clickable" data-open-tx="${esc(String(t.id))}"><div class="tx-left"><span class="tx-badge ${badgeCls}" aria-hidden="true">${categoryIcon(t)}</span><div class="tx-info"><b>${esc(t.description)}</b><div class="small">${datePrefix}${esc(t.category)} · ${esc(t.person)}${state}</div></div></div><div class="row" style="gap:6px;flex-shrink:0"><b class="amount ${cls}">${prefix} ${eur(t.amount)}</b>${actions}<button class="icon-btn" type="button" data-edit-tx="${esc(String(t.id))}" title="Ver ou editar movimento" aria-label="Ver ou editar movimento">✎</button><button class="danger" type="button" data-del="${esc(String(t.id))}" title="Apagar movimento" aria-label="Apagar movimento">×</button></div></div>`;
 }
@@ -786,10 +850,10 @@ function render(){
 
  const today=iso(now);
  const tx=cycleTransactions(cycle).filter(t=>t.date<=today);
- const ex=tx.filter(t=>t.type==='expense'&&isPaid(t)),inc=tx.filter(t=>t.type==='income'&&isPaid(t));
+ const ex=tx.filter(t=>t.type==='expense'&&isPaid(t)),ccPay=tx.filter(t=>t.type==='cc_payment'&&isPaid(t)),inc=tx.filter(t=>t.type==='income'&&isPaid(t));
  const svIn=tx.filter(t=>t.type==='saving'&&isPaid(t)),svOut=tx.filter(t=>t.type==='saving_withdraw'&&isPaid(t));
  const netSaving=sum(svIn)-sum(svOut);
- const cycleBalance=sum(inc)+sum(svOut)-sum(ex)-sum(svIn);
+ const cycleBalance=sum(inc)+sum(svOut)-sum(ex)-sum(ccPay)-sum(svIn);
 
  $('inc').textContent=eur(sum(inc));
  $('exp').textContent=eur(sum(ex));
@@ -1032,6 +1096,8 @@ function render(){
  csvPer.innerHTML=['Conta conjunta',...db.settings.people].map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('');
  if(oldCsvPer&&[...csvPer.options].some(o=>o.value===oldCsvPer))csvPer.value=oldCsvPer;
 
+ updateCreditCardSelects();
+ renderCreditCards();
  renderTransactions();
  renderGoals();
 
@@ -1249,13 +1315,14 @@ function getFilteredMovements(){
    periodLabel+=` · Datas: ${dFrom?fmtDate(dFrom):'início'} até ${dTo?fmtDate(dTo):'hoje'}`;
  }
 
- if(f!=='all')list=list.filter(t=>t.type===f);
+ if(f==='cc_expense')list=list.filter(t=>t.type==='expense'&&!!t.creditCardId);
+ else if(f!=='all')list=list.filter(t=>t.type===f);
  if(cat!=='all')list=list.filter(t=>t.category===cat);
  if(per!=='all')list=list.filter(t=>t.person===per);
  if(search)list=list.filter(t=>String(t.description||'').toLocaleLowerCase('pt-PT').includes(search)||String(t.category||'').toLocaleLowerCase('pt-PT').includes(search));
 
  list.sort((a,b)=>b.date.localeCompare(a.date));
- const typeLabels={all:'Todos os tipos',expense:'Despesas',income:'Rendimentos',saving:'Poupança transferida',saving_withdraw:'Resgates de poupança'};
+ const typeLabels={all:'Todos os tipos',expense:'Despesas',cc_expense:'Compras c/ cartão de crédito',cc_payment:'Pagamentos de cartão de crédito',income:'Rendimentos',saving:'Poupança transferida',saving_withdraw:'Resgates de poupança'};
  let filterParts=[typeLabels[f]||'Todos os tipos'];
  if(dFrom||dTo)filterParts.push(`De ${dFrom||'…'} a ${dTo||'…'}`);
  if(cat!=='all')filterParts.push('Cat.: '+cat);
@@ -1387,8 +1454,8 @@ function openTransactionDetailModal(id, startInEdit=false){
  $('txModalSubtitle').textContent=friendlyDateHeading(t.date);
 
  $('txModalIcon').textContent=categoryIcon(t);
- const cls=t.type==='income'?'plus':t.type==='saving_withdraw'?'neutral':'minus';
- const prefix=t.type==='income'?'+':t.type==='saving'?'↗':t.type==='saving_withdraw'?'↙':'−';
+ const cls=t.type==='income'?'plus':(t.type==='saving_withdraw'||t.type==='cc_payment')?'neutral':'minus';
+ const prefix=t.type==='income'?'+':t.type==='saving'?'↗':t.type==='saving_withdraw'?'↙':t.type==='cc_payment'?'⇄':'−';
  const amtEl=$('txModalAmountDisplay');
  amtEl.textContent=`${prefix} ${eur(t.amount)}`;
  amtEl.className='tx-modal-amount '+cls;
@@ -1403,7 +1470,13 @@ function openTransactionDetailModal(id, startInEdit=false){
  if(t.status==='pending')extraInfo='Pendente de confirmação';
  else if(t.status==='skipped')extraInfo='Ignorada';
  else if(t.date>iso(now))extraInfo='Agendado (futuro)';
- else if(t.type==='income')extraInfo=t.countsForCycle===false?'Rendimento extra (não fecha ciclo)':'Define o início do ciclo financeiro';
+ else if(t.type==='expense'&&t.creditCardId){
+   const cc=getCreditCardById(t.creditCardId);
+   extraInfo=cc?`Pago com cartão: ${cc.name}`:'Pago com cartão de crédito';
+ }else if(t.type==='cc_payment'){
+   const cc=getCreditCardById(t.creditCardId);
+   extraInfo=cc?`Abate dívida do cartão: ${cc.name} (não duplica despesa)`:'Abate dívida do cartão (não duplica despesa)';
+ }else if(t.type==='income')extraInfo=t.countsForCycle===false?'Rendimento extra (não fecha ciclo)':'Define o início do ciclo financeiro';
  else if(isSavingTx(t)&&t.goalId){
    const g=(db.savingsGoals||[]).find(x=>x.id===t.goalId);
    if(g)extraInfo='Objetivo: '+g.name;
@@ -1443,6 +1516,12 @@ function openTransactionDetailModal(id, startInEdit=false){
  $('modalEditPerson').innerHTML=[...db.settings.people,'Conta conjunta'].map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('');
  if([...$('modalEditPerson').options].some(o=>o.value===t.person))$('modalEditPerson').value=t.person;
  $('modalEditCountsCycle').checked=t.countsForCycle!==false;
+ const cards=db.creditCards||[];
+ $('modalEditPaymentMethod').innerHTML='<option value="bank">Conta à ordem / Débito / Dinheiro</option>'+cards.map(c=>`<option value="cc:${esc(String(c.id))}">💳 Cartão: ${esc(c.name)}</option>`).join('');
+ $('modalEditPaymentMethod').value=(t.type==='expense'&&t.creditCardId)?`cc:${t.creditCardId}`:'bank';
+ $('modalEditCcPaymentCard').innerHTML='<option value="">Selecionar cartão…</option>'+cards.map(c=>`<option value="${esc(String(c.id))}">${esc(c.name)}</option>`).join('');
+ $('modalEditCcPaymentCard').value=(t.type==='cc_payment'&&t.creditCardId)?String(t.creditCardId):'';
+
  const goals=(db.savingsGoals||[]).filter(g=>g.status==='active'||g.id===t.goalId);
  $('modalEditGoal').innerHTML='<option value="">Sem objetivo</option>'+goals.map(g=>`<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('');
  $('modalEditGoal').value=t.goalId||'';
@@ -1457,6 +1536,8 @@ function openTransactionDetailModal(id, startInEdit=false){
 function syncModalEditVisibility(){
  const tp=$('modalEditType').value;
  $('modalEditCatWrap').hidden=tp!=='expense';
+ $('modalEditPaymentMethodWrap').hidden=tp!=='expense';
+ $('modalEditCcPaymentWrap').hidden=tp!=='cc_payment';
  $('modalEditIncomeCycleWrap').hidden=tp!=='income';
  $('modalEditGoalWrap').hidden=tp!=='saving'&&tp!=='saving_withdraw';
 }
@@ -1485,7 +1566,11 @@ $('txModalDuplicateBtn').onclick=()=>{
  updateTxFormVisibility();
  $('desc').value=String(t.description||'').replace(/\s*\(\d+\/\d+\)\s*$/,'');
  $('amount').value=Number(t.amount)||'';
- if(t.type==='expense'&&[...$('category').options].some(o=>o.value===t.category))$('category').value=t.category;
+ if(t.type==='expense'){
+   if([...$('category').options].some(o=>o.value===t.category))$('category').value=t.category;
+   if(t.creditCardId&&$('paymentMethod')&&[...$('paymentMethod').options].some(o=>o.value==='cc:'+t.creditCardId))$('paymentMethod').value='cc:'+t.creditCardId;
+ }
+ if(t.type==='cc_payment'&&t.creditCardId&&$('ccPaymentCard'))$('ccPaymentCard').value=String(t.creditCardId);
  if(t.type==='income')$('incomeCountsForCycle').checked=t.countsForCycle!==false;
  if((t.type==='saving'||t.type==='saving_withdraw')&&t.goalId&&[...$('savingGoal').options].some(o=>o.value===t.goalId))$('savingGoal').value=t.goalId;
  if([...$('person').options].some(o=>o.value===t.person))$('person').value=t.person;
@@ -1524,7 +1609,15 @@ $('txModalEditForm').onsubmit=e=>{
  const a=+$('modalEditAmount').value;
  if(!Number.isFinite(a)||a<=0)return;
  const tp=$('modalEditType').value;
- const catLabel=tp==='expense'?$('modalEditCat').value:tp==='saving'?'Poupança':tp==='saving_withdraw'?'Resgate de poupança':'Rendimento';
+ let ccId=null;
+ if(tp==='expense'){
+   const pm=$('modalEditPaymentMethod')?.value||'bank';
+   if(pm.startsWith('cc:'))ccId=pm.slice(3);
+ }else if(tp==='cc_payment'){
+   ccId=$('modalEditCcPaymentCard')?.value||'';
+   if(!ccId){alert('Seleciona o cartão de crédito liquidado.');return;}
+ }
+ const catLabel=tp==='expense'?$('modalEditCat').value:tp==='cc_payment'?'Pagamento de cartão':tp==='saving'?'Poupança':tp==='saving_withdraw'?'Resgate de poupança':'Rendimento';
  const nowTs=Date.now();
  existing.date=$('modalEditDate').value;
  existing.type=tp;
@@ -1533,6 +1626,8 @@ $('txModalEditForm').onsubmit=e=>{
  existing.category=catLabel;
  existing.person=$('modalEditPerson').value;
  existing.updatedAt=nowTs;
+ if(ccId)existing.creditCardId=ccId;
+ else delete existing.creditCardId;
  if(tp==='income')existing.countsForCycle=$('modalEditCountsCycle').checked;
  else delete existing.countsForCycle;
  if(tp==='saving'||tp==='saving_withdraw'){
@@ -2259,6 +2354,8 @@ function resetTxForm(){
  $('incomeCountsForCycle').checked=true;
  $('isInstallment').checked=false;
  $('installmentsOptions').hidden=true;
+ if($('paymentMethod'))$('paymentMethod').value='bank';
+ if($('expenseCcHint'))$('expenseCcHint').hidden=true;
  $('amountLabel').textContent='Valor (€)';
  userTouchedCategory=false;
  if($('categoryAutoHint'))$('categoryAutoHint').textContent='';
@@ -2365,11 +2462,149 @@ $('quickAddFab').onclick=()=>{
  setTimeout(()=>$('desc').focus(),220);
 };
 
+
+function renderCreditCards(){
+ const stats=getAllCreditCardsStats();
+ const totalDebt=stats.reduce((s,c)=>s+c.debt,0);
+ const summaryCard=$('creditCardsSummaryCard');
+ if(summaryCard){
+   summaryCard.hidden=stats.length===0;
+   if($('ccTotalDebtBadge'))$('ccTotalDebtBadge').textContent=`${eur(totalDebt)} em dívida`;
+   if($('creditCardsSummary')){
+     $('creditCardsSummary').innerHTML=stats.map(c=>{
+       const pct=c.limit>0?c.pct:0;
+       const barCls=c.limit>0?(c.debt>c.limit?'over':pct>=80?'warn':''):'';
+       const limitInfo=c.limit>0?` · Plafond: ${eur(c.limit)} (Disp.: ${eur(c.available)})`:'';
+       return `<div class="item">
+         <div class="row"><b>💳 ${esc(c.name)}</b><b class="${c.debt>0?'minus':'plus'}">${eur(c.debt)}</b></div>
+         <div class="small">${esc(c.owner||'Conta conjunta')}${limitInfo}</div>
+         ${c.limit>0?`<div class="progress" style="height:8px;margin:6px 0 2px"><i class="${barCls}" style="width:${pct}%"></i></div>`:''}
+       </div>`;
+     }).join('');
+   }
+ }
+ if($('ccManagerTotalBadge'))$('ccManagerTotalBadge').textContent=`Dívida total: ${eur(totalDebt)}`;
+ const listEl=$('creditCardList');
+ if(!listEl)return;
+ if(!stats.length){
+   listEl.innerHTML='<div class="empty">Ainda não tens cartões de crédito configurados. Adiciona um abaixo para controlar o saldo em dívida e pagamentos parciais/totais.</div>';
+   return;
+ }
+ listEl.innerHTML=stats.map(c=>{
+   const limitTxt=c.limit>0?` · Plafond: <strong>${eur(c.limit)}</strong> (Disponível: <strong>${eur(c.available)}</strong>)`:' · Sem limite definido';
+   return `<div class="item">
+     <div class="row">
+       <div>
+         <b>💳 ${esc(c.name)}</b>
+         <div class="small">Titular: ${esc(c.owner||'Conta conjunta')}${limitTxt}</div>
+         <div class="small">Dívida inicial: ${eur(c.initialDebt||0)}</div>
+       </div>
+       <div style="text-align:right">
+         <span class="small" style="display:block">Em dívida</span>
+         <b class="${c.debt>0?'minus':'plus'}" style="font-size:16px">${eur(c.debt)}</b>
+       </div>
+     </div>
+     <div class="actions" style="margin-top:8px">
+       <button type="button" class="secondary" data-cc-pay="${esc(String(c.id))}" style="padding:6px 10px;font-size:12px">💸 Registar pagamento</button>
+       <button type="button" class="ghost" data-cc-edit="${esc(String(c.id))}" style="padding:6px 10px;font-size:12px">✎ Editar</button>
+       <button type="button" class="danger" data-cc-delete="${esc(String(c.id))}" style="padding:6px 10px;font-size:12px">Eliminar</button>
+     </div>
+   </div>`;
+ }).join('');
+}
+
+let editingCcId=null;
+function resetCreditCardForm(){
+ editingCcId=null;
+ if($('creditCardForm'))$('creditCardForm').reset();
+ if($('ccEditId'))$('ccEditId').value='';
+ if($('ccInitialDebt'))$('ccInitialDebt').value='0';
+ if($('ccFormTitle'))$('ccFormTitle').textContent='Adicionar cartão de crédito';
+ if($('ccSaveBtn'))$('ccSaveBtn').textContent='Guardar cartão';
+ if($('ccCancelBtn'))$('ccCancelBtn').hidden=true;
+}
+
+if($('creditCardForm'))$('creditCardForm').onsubmit=e=>{
+ e.preventDefault();
+ const name=($('ccName')?.value||'').trim();
+ const limit=Math.max(0,parseFloat($('ccLimit')?.value||'0')||0);
+ const initialDebt=Math.max(0,parseFloat($('ccInitialDebt')?.value||'0')||0);
+ const owner=$('ccOwner')?.value||'Conta conjunta';
+ if(!name){alert('Indica o nome do cartão de crédito.');return;}
+ const dup=(db.creditCards||[]).some(c=>String(c.id)!==String(editingCcId)&&c.name.trim().toLocaleLowerCase('pt-PT')===name.toLocaleLowerCase('pt-PT'));
+ if(dup){alert('Já existe um cartão de crédito com esse nome.');return;}
+ const nowTs=Date.now();
+ if(editingCcId){
+   const card=getCreditCardById(editingCcId);
+   if(card)Object.assign(card,{name,limit,initialDebt,owner,updatedAt:nowTs});
+ }else{
+   if(!Array.isArray(db.creditCards))db.creditCards=[];
+   db.creditCards.push({
+     id:'cc-'+nowTs.toString(36)+'-'+Math.random().toString(36).slice(2,6),
+     name,limit,initialDebt,owner,updatedAt:nowTs
+   });
+ }
+ resetCreditCardForm();
+ persist();
+ showToast('Cartão de crédito guardado.',{type:'success'});
+};
+
+if($('ccCancelBtn'))$('ccCancelBtn').onclick=resetCreditCardForm;
+
+if($('creditCardList'))$('creditCardList').addEventListener('click',e=>{
+ const payBtn=e.target.closest('[data-cc-pay]');
+ if(payBtn){
+   const card=getCreditCardById(payBtn.dataset.ccPay);
+   if(!card)return;
+   const debt=computeCreditCardDebt(card);
+   switchTab('movimentos');
+   resetTxForm();
+   $('type').value='cc_payment';
+   updateTxFormVisibility();
+   $('ccPaymentCard').value=String(card.id);
+   $('desc').value=`Pagamento ${card.name}`;
+   if(debt>0)$('amount').value=debt.toFixed(2);
+   $('txFormCard').scrollIntoView({behavior:'smooth',block:'start'});
+   setTimeout(()=>$('amount').focus(),180);
+   return;
+ }
+ const editBtn=e.target.closest('[data-cc-edit]');
+ if(editBtn){
+   const card=getCreditCardById(editBtn.dataset.ccEdit);
+   if(!card)return;
+   editingCcId=card.id;
+   $('ccEditId').value=String(card.id);
+   $('ccName').value=card.name;
+   $('ccLimit').value=card.limit||'';
+   $('ccInitialDebt').value=Number(card.initialDebt)||0;
+   if([...$('ccOwner').options].some(o=>o.value===card.owner))$('ccOwner').value=card.owner;
+   $('ccFormTitle').textContent='Editar cartão de crédito';
+   $('ccSaveBtn').textContent='Guardar alterações';
+   $('ccCancelBtn').hidden=false;
+   $('ccFormTitle').scrollIntoView({behavior:'smooth',block:'start'});
+   return;
+ }
+ const delBtn=e.target.closest('[data-cc-delete]');
+ if(delBtn){
+   const card=getCreditCardById(delBtn.dataset.ccDelete);
+   if(!card)return;
+   if(confirm(`Eliminar o cartão «${card.name}»? Os movimentos existentes serão mantidos no histórico.`)){
+     recordDeletedId(card.id);
+     db.creditCards=(db.creditCards||[]).filter(c=>String(c.id)!==String(card.id));
+     if(String(editingCcId)===String(card.id))resetCreditCardForm();
+     persist();
+     showToast('Cartão eliminado.');
+   }
+ }
+});
+
 // GERAÇÃO DE RELATÓRIOS PARA IMPRESSÃO / PDF
 function txTypeLabel(t){
  if(t.type==='income')return t.countsForCycle===false?'Rendimento (extra)':'Rendimento';
+ if(t.type==='cc_payment')return 'Pagamento de cartão de crédito';
  if(t.type==='saving')return 'Poupança (+)';
  if(t.type==='saving_withdraw')return 'Resgate (−)';
+ if(t.type==='expense'&&t.creditCardId)return 'Despesa (Cartão de crédito)';
  return 'Despesa';
 }
 
@@ -2517,7 +2752,14 @@ function updateTxFormVisibility(){
  const isEditing=!!$('txEditId').value;
  $('categoryField').hidden=t!=='expense';
  $('installmentsField').hidden=t!=='expense'||isEditing;
+ $('expensePaymentMethodField').hidden=t!=='expense';
+ $('ccPaymentField').hidden=t!=='cc_payment';
  $('incomeCycleField').hidden=t!=='income';
+ updateCreditCardSelects();
+ if(t==='expense'){
+   const pm=$('paymentMethod')?.value||'bank';
+   if($('expenseCcHint'))$('expenseCcHint').hidden=!pm.startsWith('cc:');
+ }
  const isSav=t==='saving'||t==='saving_withdraw';
  $('savingGoalField').hidden=!isSav;
  if(isSav){
@@ -2526,6 +2768,14 @@ function updateTxFormVisibility(){
    updateSavingGoalOptions();
  }
 }
+if($('paymentMethod'))$('paymentMethod').onchange=()=>{
+ const pm=$('paymentMethod').value||'bank';
+ if($('expenseCcHint'))$('expenseCcHint').hidden=!pm.startsWith('cc:');
+};
+if($('ccPaymentCard'))$('ccPaymentCard').onchange=()=>{
+ const cc=getCreditCardById($('ccPaymentCard').value);
+ if(cc&&!$('desc').value.trim())$('desc').value=`Pagamento ${cc.name}`;
+};
 
 // IMPORTADOR DE EXTRATOS BANCÁRIOS (PDF & CSV) COM APRENDIZAGEM E DETEÇÃO DE SUBSCRIÇÕES (FASE 3)
 let parsedCsvRows=[];
@@ -2810,13 +3060,23 @@ function normalizeCsvAmount(raw){
 function guessMovementTypeAndCategory(desc, rawAmount){
  const d=desc.toLocaleLowerCase('pt-PT');
  const avail=new Set(db.settings.categories.map(c=>c.name));
+ const cards=db.creditCards||[];
 
  for(const rule of (db.settings.categoryRules||[])){
    if(d.includes(rule.keyword.toLocaleLowerCase('pt-PT'))){
+     if(rule.type==='cc_payment')return {type:'cc_payment',category:'Pagamento de cartão',creditCardId:rule.creditCardId||(cards[0]?String(cards[0].id):'')};
      if(rule.type==='saving')return {type:'saving',category:'Poupança'};
      if(rule.type==='saving_withdraw')return {type:'saving_withdraw',category:'Resgate de poupança'};
      if(rule.type==='income')return {type:'income',category:'Rendimento'};
-     if(avail.has(rule.category))return {type:'expense',category:rule.category};
+     if(avail.has(rule.category))return {type:'expense',category:rule.category,creditCardId:rule.creditCardId||''};
+   }
+ }
+
+ if(rawAmount<0){
+   const ccPayKeywords=['pag. cartao credito','pagamento cartao credito','pagamento cartão crédito','pag cartao','extrato cartao','extrato cartão','liq. cartao','liquidacao cartao','liquidação cartão','cartao universo','cartão universo','wizink','cofidis','cetelem','unibanco'];
+   if(ccPayKeywords.some(k=>d.includes(k))){
+     const matchedCard=cards.find(c=>d.includes(c.name.toLocaleLowerCase('pt-PT')))||cards[0]||null;
+     return {type:'cc_payment',category:'Pagamento de cartão',creditCardId:matchedCard?String(matchedCard.id):''};
    }
  }
 
@@ -3168,9 +3428,10 @@ function renderCsvPreview(){
  $('csvToggleAll').checked=selCount>0&&selCount===parsedCsvRows.length;
 
  $('csvPreviewList').innerHTML=parsedCsvRows.map((r,idx)=>{
-   const typeBadge=r.type==='income'?'Rendimento':r.type==='saving'?'Poupança':r.type==='saving_withdraw'?'Resgate':r.category;
-   const sign=r.type==='income'?'+':r.type==='saving'?'↗':r.type==='saving_withdraw'?'↙':'−';
-   const amtCls=r.type==='income'?'plus':(r.type==='saving'||r.type==='saving_withdraw')?'neutral':'minus';
+   const ccObj=r.creditCardId?getCreditCardById(r.creditCardId):null;
+   const typeBadge=r.type==='income'?'Rendimento':r.type==='cc_payment'?`Pag. Cartão${ccObj?' ('+ccObj.name+')':''}`:r.type==='saving'?'Poupança':r.type==='saving_withdraw'?'Resgate':(ccObj?`${r.category} · 💳 ${ccObj.name}`:r.category);
+   const sign=r.type==='income'?'+':r.type==='saving'?'↗':r.type==='saving_withdraw'?'↙':r.type==='cc_payment'?'⇄':'−';
+   const amtCls=r.type==='income'?'plus':(r.type==='saving'||r.type==='saving_withdraw'||r.type==='cc_payment')?'neutral':'minus';
    return `<div class="imp-item ${r.selected?'':'is-unselected'}" data-imp-open="${idx}">
      <input type="checkbox" data-csv-check="${idx}" ${r.selected?'checked':''} aria-label="Selecionar movimento">
      <div class="imp-body">
@@ -3221,6 +3482,10 @@ function openImportDetailModal(idx){
  $('impEditCat').innerHTML=db.settings.categories.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
  if([...$('impEditCat').options].some(o=>o.value===r.category))$('impEditCat').value=r.category;
  $('impEditCatWrap').hidden=r.type!=='expense';
+ const showImpCc=(r.type==='expense'||r.type==='cc_payment')&&(db.creditCards||[]).length>0;
+ $('impEditCcWrap').hidden=!showImpCc;
+ $('impEditCcCard').innerHTML=(r.type==='cc_payment'?'<option value="">Selecionar cartão…</option>':'<option value="">Nenhum (conta à ordem)</option>')+(db.creditCards||[]).map(c=>`<option value="${esc(String(c.id))}">💳 ${esc(c.name)}</option>`).join('');
+ $('impEditCcCard').value=r.creditCardId||'';
  const isSavImp=r.type==='saving'||r.type==='saving_withdraw';
  $('impEditGoalWrap').hidden=!isSavImp;
  const activeGoals=(db.savingsGoals||[]).filter(g=>g.status==='active');
@@ -3257,11 +3522,18 @@ function saveCurrentImportModal(){
  }
  if(r.type==='expense'){
    r.category=$('impEditCat').value;
+   r.creditCardId=$('impEditCcCard')?.value||'';
+   delete r.goalId;
+ }else if(r.type==='cc_payment'){
+   r.category='Pagamento de cartão';
+   r.creditCardId=$('impEditCcCard')?.value||'';
    delete r.goalId;
  }else if(r.type==='saving'||r.type==='saving_withdraw'){
    r.goalId=$('impEditGoal').value||'';
+   delete r.creditCardId;
  }else{
    delete r.goalId;
+   delete r.creditCardId;
  }
  r.isDup=isDuplicateMovement(r);
  renderCsvPreview();
@@ -3270,6 +3542,7 @@ function saveCurrentImportModal(){
 $('impEditType').onchange=()=>{
  const tp=$('impEditType').value;
  $('impEditCatWrap').hidden=tp!=='expense';
+ $('impEditCcWrap').hidden=(tp!=='expense'&&tp!=='cc_payment')||!(db.creditCards||[]).length;
  $('impEditGoalWrap').hidden=tp!=='saving'&&tp!=='saving_withdraw';
  updateLearnRuleCheckbox();
 };
@@ -3331,10 +3604,11 @@ $('csvConfirmImportBtn').onclick=()=>{
      type:r.type,
      description:r.description,
      amount:Number(r.amount.toFixed(2)),
-     category:r.type==='expense'?r.category:r.type==='saving'?'Poupança':r.type==='saving_withdraw'?'Resgate de poupança':'Rendimento',
+     category:r.type==='expense'?r.category:r.type==='cc_payment'?'Pagamento de cartão':r.type==='saving'?'Poupança':r.type==='saving_withdraw'?'Resgate de poupança':'Rendimento',
      person,
      updatedAt:nowTs
    };
+   if((r.type==='expense'||r.type==='cc_payment')&&r.creditCardId)entry.creditCardId=r.creditCardId;
    if(r.type==='income')entry.countsForCycle=true;
    if((r.type==='saving'||r.type==='saving_withdraw')&&r.goalId)entry.goalId=r.goalId;
    db.transactions.push(entry);
@@ -3714,7 +3988,19 @@ $('txForm').onsubmit=e=>{
  let a=evaluateAmountExpression($('amount').value);if(!Number.isFinite(a)||a<=0){alert('Introduz um valor ou expressão válida superior a zero.');$('amount').focus();return;}
  let t=$('type').value;
  const editId=$('txEditId').value;
- const catLabel=t==='expense'?$('category').value:t==='saving'?'Poupança':t==='saving_withdraw'?'Resgate de poupança':'Rendimento';
+ let creditCardId=null;
+ if(t==='expense'){
+   const pm=$('paymentMethod')?.value||'bank';
+   if(pm.startsWith('cc:'))creditCardId=pm.slice(3);
+ }else if(t==='cc_payment'){
+   creditCardId=$('ccPaymentCard')?.value||'';
+   if(!creditCardId){
+     alert('Seleciona o cartão de crédito que estás a pagar (podes criar cartões no separador Orçamento).');
+     $('ccPaymentCard').focus();
+     return;
+   }
+ }
+ const catLabel=t==='expense'?$('category').value:t==='cc_payment'?'Pagamento de cartão':t==='saving'?'Poupança':t==='saving_withdraw'?'Resgate de poupança':'Rendimento';
  const desc=$('desc').value.trim();
  const baseDate=$('date').value;
  const person=$('person').value;
@@ -3730,6 +4016,8 @@ $('txForm').onsubmit=e=>{
      existing.category=catLabel;
      existing.person=person;
      existing.updatedAt=nowTs;
+     if(creditCardId)existing.creditCardId=creditCardId;
+     else delete existing.creditCardId;
      if(t==='income')existing.countsForCycle=$('incomeCountsForCycle').checked;
      else delete existing.countsForCycle;
      if(t==='saving'||t==='saving_withdraw'){
@@ -3754,7 +4042,7 @@ $('txForm').onsubmit=e=>{
    const groupId='inst-'+nowTs.toString(36);
    for(let i=0;i<count;i++){
      const cents=baseCents+(i<remainder?1:0);
-     db.transactions.push({
+     const instTx={
        id:groupId+'-'+(i+1),
        date:addMonthsClamp(baseDate,i),
        type:'expense',
@@ -3764,7 +4052,9 @@ $('txForm').onsubmit=e=>{
        person,
        installmentGroupId:groupId,
        updatedAt:nowTs
-     });
+     };
+     if(creditCardId)instTx.creditCardId=creditCardId;
+     db.transactions.push(instTx);
    }
    resetTxForm();
    persist();
@@ -3773,6 +4063,7 @@ $('txForm').onsubmit=e=>{
  }
 
  let entry={id:nowTs+'-'+Math.random().toString(36).slice(2,6),date:baseDate,type:t,description:desc,amount:Number(a.toFixed(2)),category:catLabel,person,updatedAt:nowTs};
+ if(creditCardId)entry.creditCardId=creditCardId;
  if(t==='income')entry.countsForCycle=$('incomeCountsForCycle').checked;
  if((t==='saving'||t==='saving_withdraw')&&$('savingGoal').value)entry.goalId=$('savingGoal').value;
  db.transactions.push(entry);
@@ -4679,6 +4970,7 @@ function mergeDatabases(localDb, remoteDb){
   const mergedTransactions=mergeArrayById(loc.transactions,rem.transactions,deletedSet);
   const mergedRecurrences=mergeArrayById(loc.recurringExpenses,rem.recurringExpenses,deletedSet);
   const mergedGoals=mergeArrayById(loc.savingsGoals,rem.savingsGoals,deletedSet);
+  const mergedCards=mergeArrayById(loc.creditCards,rem.creditCards,deletedSet);
 
   const catMap=new Map();
   (rem.settings.categories||[]).forEach(c=>{if(c&&c.name)catMap.set(c.name,{...c});});
@@ -4704,6 +4996,7 @@ function mergeDatabases(localDb, remoteDb){
     transactions:mergedTransactions,
     recurringExpenses:mergedRecurrences,
     savingsGoals:mergedGoals,
+    creditCards:mergedCards,
     deletedIds:Array.from(delMap.values()),
     handledCycleRollovers:Array.from(rolloverMap.values())
   }).db;

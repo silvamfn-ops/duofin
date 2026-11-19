@@ -14,7 +14,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; worker-src 'self' blob: https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co https://cdnjs.cloudflare.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self';">
   <link rel="stylesheet" href="./styles.css">
-  <title>DuoFin v6.8.0 — Gestão financeira a dois</title>
+  <title>DuoFin v6.9.0 — Gestão financeira a dois</title>
 </head>
 <body>
   <!-- Ecrã de Bloqueio Local (PIN / Biometria WebAuthn) -->
@@ -43,7 +43,7 @@
       <div class="header-actions">
         <button type="button" class="header-icon-btn" id="privacyToggleBtn" title="Ocultar ou mostrar valores monetários" aria-label="Modo privacidade">👁️</button>
         <button type="button" class="header-icon-btn" id="lockAppHeaderBtn" title="Bloquear aplicação agora" aria-label="Bloquear aplicação" hidden>🔒</button>
-        <button type="button" class="version-badge" id="versionBadgeBtn" title="Ver novidades desta versão">v6.8.0</button>
+        <button type="button" class="version-badge" id="versionBadgeBtn" title="Ver novidades desta versão">v6.9.0</button>
       </div>
     </div>
   </header>
@@ -165,6 +165,15 @@
         <button class="secondary" type="button" id="printFullReportBtn">🖨️ Imprimir relatório completo</button>
       </div>
       <div id="alerts"></div>
+      <div class="card summary-collapsible-card" id="creditCardsSummaryCard" data-accordion-card hidden>
+        <div class="row accordion-header">
+          <h2 style="margin:0">💳 Cartões de crédito</h2>
+          <div class="row" style="gap:6px"><span class="pill" id="ccTotalDebtBadge">0,00 € em dívida</span><span class="accordion-chevron" aria-hidden="true">▾</span></div>
+        </div>
+        <div class="accordion-body" style="margin-top:8px">
+          <div id="creditCardsSummary"></div>
+        </div>
+      </div>
       <div class="card summary-collapsible-card" data-accordion-card>
         <div class="row accordion-header">
           <h2 style="margin:0">Objetivos de poupança</h2>
@@ -236,6 +245,7 @@
               <label for="type">Tipo</label>
               <select id="type">
                 <option value="expense">Despesa</option>
+                <option value="cc_payment">Pagamento de cartão de crédito</option>
                 <option value="income">Rendimento</option>
                 <option value="saving">Poupança transferida</option>
                 <option value="saving_withdraw">Poupança utilizada / resgate</option>
@@ -295,6 +305,16 @@
             </label>
             <p class="small">Desmarca se for um rendimento extra pontual (ex.: reembolso de IRS, venda ou prémio) que não deve fechar o ciclo atual.</p>
           </div>
+          <div id="expensePaymentMethodField">
+            <label for="paymentMethod">Meio de pagamento</label>
+            <select id="paymentMethod"><option value="bank">Conta à ordem / Débito / Dinheiro</option></select>
+            <p class="small" id="expenseCcHint" hidden style="margin-top:4px">Esta compra entra nas despesas da categoria agora e aumenta a dívida do cartão. Quando pagares o cartão mais tarde, não voltará a contar como despesa.</p>
+          </div>
+          <div id="ccPaymentField" hidden>
+            <label for="ccPaymentCard">Cartão de crédito a liquidar</label>
+            <select id="ccPaymentCard"><option value="">Selecionar cartão…</option></select>
+            <p class="small" id="ccPaymentHelp" style="margin-top:4px">O valor abate à dívida do cartão selecionado e reduz o saldo disponível do ciclo, <strong>sem contar como nova despesa mensal</strong>.</p>
+          </div>
           <div id="savingGoalField" hidden>
             <label for="savingGoal" id="savingGoalLabel">Associar a objetivo (opcional)</label>
             <select id="savingGoal"><option value="">Sem objetivo</option></select>
@@ -335,7 +355,9 @@
               <label for="filter" style="margin-top:0">Tipo de movimento</label>
               <select id="filter">
                 <option value="all">Todos os tipos</option>
-                <option value="expense">Despesas</option>
+                <option value="expense">Despesas (incl. compras c/ cartão)</option>
+                <option value="cc_expense">Compras pagas com cartão de crédito</option>
+                <option value="cc_payment">Pagamentos de cartão de crédito</option>
                 <option value="income">Rendimentos</option>
                 <option value="saving">Poupança transferida</option>
                 <option value="saving_withdraw">Poupança utilizada / resgate</option>
@@ -585,6 +607,46 @@
             <div><label for="newCategoryBudget">Limite por ciclo (€)</label><input id="newCategoryBudget" type="number" min="0" step=".01" value="0" required></div>
           </div>
           <div class="actions"><button class="secondary" type="submit">Adicionar categoria</button></div>
+        </form>
+      </div>
+      <div class="card" id="creditCardsManagerCard">
+        <div class="row" style="flex-wrap:wrap;gap:8px">
+          <div>
+            <h2 style="margin:0">💳 Cartões de crédito</h2>
+            <div class="small">Gere os cartões usados para compras. O pagamento do cartão abate a dívida sem duplicar despesas.</div>
+          </div>
+          <span class="pill" id="ccManagerTotalBadge">Dívida total: 0,00 €</span>
+        </div>
+        <div id="creditCardList" style="margin-top:10px"></div>
+        <div class="divider" style="height:1px;background:var(--line);margin:14px 0"></div>
+        <form id="creditCardForm">
+          <input type="hidden" id="ccEditId">
+          <h3 id="ccFormTitle" style="font-size:15px;margin:0 0 6px">Adicionar cartão de crédito</h3>
+          <div class="grid">
+            <div>
+              <label for="ccName">Nome do cartão</label>
+              <input id="ccName" maxlength="50" placeholder="Ex.: Cartão Universo, Visa Gold..." required>
+            </div>
+            <div>
+              <label for="ccLimit">Plafond / Limite (€, opcional)</label>
+              <input id="ccLimit" type="number" min="0" step="0.01" placeholder="Ex.: 1500">
+            </div>
+          </div>
+          <div class="grid">
+            <div>
+              <label for="ccInitialDebt">Dívida inicial já existente (€)</label>
+              <input id="ccInitialDebt" type="number" min="0" step="0.01" value="0">
+            </div>
+            <div>
+              <label for="ccOwner">Titular</label>
+              <select id="ccOwner"><option>Conta conjunta</option></select>
+            </div>
+          </div>
+          <p class="small">A dívida atual é calculada automaticamente: <em>Dívida inicial + Compras no cartão − Pagamentos do cartão</em>.</p>
+          <div class="actions">
+            <button type="submit" class="secondary" id="ccSaveBtn">Guardar cartão</button>
+            <button type="button" class="ghost" id="ccCancelBtn" hidden>Cancelar edição</button>
+          </div>
         </form>
       </div>
       <div class="card">
@@ -859,10 +921,10 @@
       <div class="card">
         <div class="row" style="flex-wrap:wrap;gap:8px">
           <div>
-            <h2 style="margin:0">Sobre a DuoFin v6.8.0</h2>
+            <h2 style="margin:0">Sobre a DuoFin v6.9.0</h2>
             <div class="small">Consulta as melhorias mais recentes desta versão.</div>
           </div>
-          <button type="button" class="secondary" id="openChangelogBtn">✨ Ver novidades da v6.8.0</button>
+          <button type="button" class="secondary" id="openChangelogBtn">✨ Ver novidades da v6.9.0</button>
         </div>
       </div>
 
@@ -887,16 +949,16 @@
         <div class="row" style="margin-bottom:8px">
           <div class="row" style="gap:8px">
             <span class="pill">Novidades</span>
-            <h2 id="changelogModalTitle" style="margin:0">DuoFin v6.8.0</h2>
+            <h2 id="changelogModalTitle" style="margin:0">DuoFin v6.9.0</h2>
           </div>
           <button type="button" class="icon-btn" id="closeChangelogBtn" aria-label="Fechar">✕</button>
         </div>
-        <p class="small" style="margin:0 0 8px">Divulgação Progressiva no Resumo (Leitura Rápida Mobile vs. Análise Completa):</p>
+        <p class="small" style="margin:0 0 8px">Gestão de Cartões de Crédito (Evita Dupla Contagem no Pagamento da Fatura):</p>
         <ul class="changelog-list">
-          <li><strong>Seletor Básico | Detalhado no Resumo:</strong> Alterna instantaneamente entre uma vista <em>glanceable</em> (ideal para telemóvel, sem scroll excessivo) e a análise financeira completa. A escolha fica guardada em <code>localStorage</code> e adapta-se automaticamente ao tamanho do ecrã (Básico no mobile, Detalhado no desktop).</li>
-          <li><strong>KPIs Essenciais &amp; Barra Única:</strong> No nível Básico apresenta apenas os 3 indicadores-chave (<em>Saldo do ciclo</em> com <em>burn rate</em>, <em>Despesas pagas</em> com barra única de execução e <em>Poupança líquida</em>).</li>
-          <li><strong>Lista Resumida de Linha Única:</strong> No modo Básico mostra apenas os últimos 3 movimentos com título e valor, ocultando metadados e botões secundários (mantendo o toque para abrir o detalhe).</li>
-          <li><strong>Cartões Expansíveis (Accordion):</strong> Mesmo no modo Básico, toca em qualquer cartão de resumo ou secção recolhida para o expandir localmente sem mudar o modo global da página.</li>
+          <li><strong>Gestão de Cartões de Crédito:</strong> Cria os teus cartões de crédito (ex.: Visa, Mastercard, Universo) na secção <em>Orçamento</em> ou diretamente ao registar movimentos, acompanhando o saldo em dívida, limite (plafond) e utilização.</li>
+          <li><strong>Compras pagas com Cartão de Crédito:</strong> Ao registar uma despesa paga com cartão de crédito, a despesa conta imediatamente para a categoria e orçamento do ciclo (como compra real) e aumenta o valor em dívida do respetivo cartão.</li>
+          <li><strong>Pagamento da Fatura do Cartão (Parcial ou Total):</strong> Novo tipo de movimento <em>«Pagamento de cartão de crédito»</em>. Quando pagas o cartão após receber o ordenado, o valor abate à dívida do cartão e sai do saldo disponível da conta à ordem, <strong>sem ser somado novamente às despesas mensais nem aos limites das categorias</strong> (evitando duplicação).</li>
+          <li><strong>Suporte na Importação de Extratos (PDF/CSV):</strong> Pagamentos de extrato de cartão são detetados automaticamente como <em>Pagamento de cartão de crédito</em>, com aprendizagem de regras.</li>
         </ul>
         <div class="actions" style="justify-content:flex-end;margin-top:16px">
           <button type="button" class="primary" id="confirmChangelogBtn">Entendido</button>
@@ -961,6 +1023,7 @@
               <label for="modalEditType">Tipo</label>
               <select id="modalEditType">
                 <option value="expense">Despesa</option>
+                <option value="cc_payment">Pagamento de cartão de crédito</option>
                 <option value="income">Rendimento</option>
                 <option value="saving">Poupança transferida</option>
                 <option value="saving_withdraw">Poupança utilizada / resgate</option>
@@ -981,6 +1044,14 @@
               <input id="modalEditCountsCycle" type="checkbox">
               <span>Define o ciclo financeiro (ex.: vencimento)</span>
             </label>
+          </div>
+          <div id="modalEditPaymentMethodWrap">
+            <label for="modalEditPaymentMethod">Meio de pagamento</label>
+            <select id="modalEditPaymentMethod"><option value="bank">Conta à ordem / Débito / Dinheiro</option></select>
+          </div>
+          <div id="modalEditCcPaymentWrap" hidden>
+            <label for="modalEditCcPaymentCard">Cartão de crédito liquidado</label>
+            <select id="modalEditCcPaymentCard"><option value="">Selecionar cartão…</option></select>
           </div>
           <div id="modalEditGoalWrap" hidden>
             <label for="modalEditGoal">Objetivo associado</label>
@@ -1032,6 +1103,7 @@
             <label for="impEditType">Tipo</label>
             <select id="impEditType">
               <option value="expense">Despesa</option>
+              <option value="cc_payment">Pagamento de cartão de crédito</option>
               <option value="income">Rendimento</option>
               <option value="saving">Poupança</option>
               <option value="saving_withdraw">Resgate de poupança</option>
@@ -1041,6 +1113,10 @@
             <label for="impEditCat">Categoria</label>
             <select id="impEditCat"></select>
           </div>
+        </div>
+        <div id="impEditCcWrap" hidden>
+          <label for="impEditCcCard">Cartão de crédito (compra ou pagamento)</label>
+          <select id="impEditCcCard"><option value="">Nenhum (conta à ordem)</option></select>
         </div>
         <div id="impEditGoalWrap" hidden>
           <label for="impEditGoal">Associar a objetivo (opcional)</label>
@@ -1062,7 +1138,7 @@
       </div>
     </div>
 
-    <footer>DuoFin · v6.8.0 · Gestão financeira a dois</footer>
+    <footer>DuoFin · v6.9.0 · Gestão financeira a dois</footer>
   </div>
   <script src="./app.js"></script>
 </body>

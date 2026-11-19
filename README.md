@@ -1,3 +1,18 @@
+# DuoFin v6.9.0 — Gestão de Cartões de Crédito (Sem Dupla Contagem)
+
+## Novidades incluídas nesta versão (v6.9.0)
+1. **Cartões de Crédito & Controlo de Saldo em Dívida:**
+   - Permite criar e gerir cartões de crédito (nome, plafond/limite opcional, dívida inicial e titular) no separador *Orçamento*, com resumo visual da dívida e utilização no *Resumo*.
+2. **Compras pagas com Cartão de Crédito:**
+   - Ao registar uma despesa e escolher um cartão de crédito como meio de pagamento, a despesa conta imediatamente para o orçamento da respetiva categoria e aumenta o valor em dívida do cartão.
+3. **Pagamento do Cartão de Crédito (Parcial ou Total) sem Dupla Contagem:**
+   - Novo tipo de movimento **«Pagamento de cartão de crédito»**.
+   - Quando pagas o cartão após receber os ordenados (parcialmente ou na totalidade), o montante **abate à dívida do cartão** e reduz o saldo disponível da conta no ciclo, **não voltando a ser somado às despesas mensais nem aos limites das categorias**.
+4. **Suporte na Importação de Extratos (PDF/CSV) e Sincronização:**
+   - Deteção automática de pagamentos de extrato de cartão de crédito e fusão automática dos cartões na sincronização entre dispositivos.
+
+---
+
 # DuoFin v6.8.0 — Divulgação Progressiva no Resumo (Básico | Detalhado)
 
 ## Novidades incluídas nesta versão (v6.8.0)
