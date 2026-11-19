@@ -813,3 +813,83 @@ body.privacy-masked .sub-item-amt{
 @media print{
   .simulator-card,.sub-detect-box{display:none !important}
 }
+
+
+/* ============================================================================
+   v6.8.0: DIVULGAÇÃO PROGRESSIVA NO RESUMO (BÁSICO | DETALHADO & ACCORDION)
+   ============================================================================ */
+.detail-segmented{
+  display:inline-flex;align-items:center;
+  background:var(--surface-2);border:1px solid var(--line);
+  border-radius:999px;padding:2px;gap:2px;
+}
+.detail-segmented .seg-btn{
+  border:0;background:transparent;color:var(--muted);
+  font-size:12px;font-weight:650;padding:5px 11px;border-radius:999px;
+  cursor:pointer;transition:background-color .15s,color .15s,box-shadow .15s;
+  min-height:28px;line-height:1;
+}
+.detail-segmented .seg-btn:hover{color:var(--ink)}
+.detail-segmented .seg-btn.active{
+  background:var(--g);color:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.14);
+}
+html.theme-dark .detail-segmented .seg-btn.active{
+  background:#2d567c;color:#fff;
+}
+
+.accordion-chevron{
+  font-size:12px;color:var(--muted);transition:transform .18s ease;
+  display:none;line-height:1;padding-left:4px;
+}
+
+/* Modo Básico ativo no #resumo */
+#resumo[data-summary-level="basic"] .summary-detailed-only{
+  display:none !important;
+}
+#resumo[data-summary-level="basic"] .summary-stats{
+  grid-template-columns:1fr;
+  gap:8px;
+}
+@media(min-width:540px){
+  #resumo[data-summary-level="basic"] .summary-stats{
+    grid-template-columns:repeat(3,1fr);
+  }
+}
+#resumo[data-summary-level="basic"] [data-accordion-card]{
+  cursor:pointer;
+}
+#resumo[data-summary-level="basic"] .accordion-chevron{
+  display:inline-block;
+}
+#resumo[data-summary-level="basic"] [data-accordion-card]:not(.is-expanded) .card-extra-detail,
+#resumo[data-summary-level="basic"] .summary-collapsible-card:not(.is-expanded) .accordion-body{
+  display:none;
+}
+#resumo[data-summary-level="basic"] .summary-collapsible-card:not(.is-expanded){
+  padding-top:12px;padding-bottom:12px;
+}
+#resumo[data-summary-level="basic"] [data-accordion-card].is-expanded .accordion-chevron{
+  transform:rotate(180deg);
+}
+#resumo[data-summary-level="basic"] .basic-cycle-progress{
+  display:block !important;
+}
+#resumo[data-summary-level="detailed"] .basic-cycle-progress{
+  display:none !important;
+}
+
+/* Linha única compacta para movimentos recentes no nível Básico */
+.tx-basic-row{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:9px 6px;margin:0 -6px;border-top:1px solid var(--line);
+  border-radius:8px;cursor:pointer;transition:background-color .14s;
+}
+.tx-basic-row:first-child{border-top:0}
+.tx-basic-row:hover,.tx-basic-row:active{background:var(--surface-2)}
+.tx-basic-title{
+  font-size:13.5px;font-weight:600;color:var(--ink);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1;
+}
+.tx-basic-amt{
+  font-size:13.5px;font-weight:750;white-space:nowrap;flex:0 0 auto;
+}

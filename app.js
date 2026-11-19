@@ -1,5 +1,5 @@
 const $=id=>document.getElementById(id),KEY='orcamento-plus-v1',now=new Date(),iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'),cur=iso(now).slice(0,7);
-const APP_VERSION='v6.7.0';
+const APP_VERSION='v6.8.0';
 const CHANGELOG_KEY='duofin-seen-version-v1';
 const defs=[['Habitação',850],['Supermercado',450],['Água, luz e gás',180],['Transportes',250],['Telecomunicações',70],['Saúde e farmácia',80],['Crianças e família',150],['Restaurantes e lazer',150],['Vestuário e pessoal',120],['Outros / imprevistos',300]];
 const fresh=()=>({settings:{income:3200,target:6000,start:'2026-11-01',deadline:'2027-08-31',cycleGroupingDays:14,people:['Adulto 1','Adulto 2'],categories:defs.map(([name,budget])=>({name,budget})),categoryRules:[]},transactions:[],recurringExpenses:[],savingsGoals:[],deletedIds:[],handledCycleRollovers:[]});
@@ -920,8 +920,54 @@ function render(){
 
  $('persons').innerHTML=[...db.settings.people,'Conta conjunta'].map(p=>`<div class="item row">${esc(p)}<b>${eur(sum(ex.filter(t=>t.person===p)))}</b></div>`).join('');
 
- const recent=[...tx].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5);
- $('recent').innerHTML=recent.length?recent.map(t=>line(t,false)).join(''):'<div class="empty">Ainda sem movimentos neste ciclo.</div>';
+ // Barra de progresso única do ciclo (usada no nível Básico)
+ const totalPlannedBudget=db.settings.categories.reduce((acc,c)=>acc+(Number(c.budget)||0),0);
+ const refTotal=totalPlannedBudget>0?totalPlannedBudget:(sum(inc)>0?sum(inc):0);
+ const expTotal=sum(ex);
+ const progWrap=$('basicCycleProgressWrap');
+ const progBar=$('basicCycleProgressBar');
+ const progLbl=$('basicCycleProgressLabel');
+ if(progWrap&&progBar&&progLbl){
+   if(refTotal>0){
+     progWrap.hidden=false;
+     const pct=Math.min(100,Math.round(expTotal/refTotal*100));
+     progBar.style.width=pct+'%';
+     progBar.style.background=expTotal>refTotal?'var(--red)':pct>=85?'var(--amber)':'var(--g)';
+     progLbl.textContent=`${pct}% de ${eur(refTotal)} (${totalPlannedBudget>0?'orçamento':'receitas'})`;
+   }else{
+     progWrap.hidden=true;
+   }
+ }
+
+ // Próximo marco/objetivo no cartão de poupança (visível ao expandir no Básico)
+ const nextGoalEl=$('basicNextGoalHint');
+ if(nextGoalEl){
+   const firstActive=(db.savingsGoals||[]).find(g=>g.status==='active');
+   if(firstActive){
+     const gTot=goalTotal(firstActive);
+     const gPct=firstActive.target>0?Math.min(100,Math.round(gTot/Number(firstActive.target)*100)):0;
+     nextGoalEl.textContent=`🎯 ${firstActive.name}: ${gPct}% (${eur(gTot)} / ${eur(firstActive.target)})`;
+   }else{
+     nextGoalEl.textContent='';
+   }
+ }
+
+ const isBasicSummary=summaryDetailLevel==='basic';
+ const recentLimit=isBasicSummary?3:5;
+ const recentTitleEl=$('recentCardTitle');
+ if(recentTitleEl)recentTitleEl.textContent=isBasicSummary?'Últimos movimentos':'Movimentos recentes deste ciclo';
+ const recent=[...tx].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,recentLimit);
+ if(!recent.length){
+   $('recent').innerHTML='<div class="empty">Ainda sem movimentos neste ciclo.</div>';
+ }else if(isBasicSummary){
+   $('recent').innerHTML=recent.map(t=>{
+     const cls=t.type==='income'?'plus':t.type==='saving_withdraw'?'neutral':'minus';
+     const prefix=t.type==='income'?'+':t.type==='saving'?'↗':t.type==='saving_withdraw'?'↙':'−';
+     return `<div class="tx-basic-row" data-open-tx="${esc(String(t.id))}"><span class="tx-basic-title">${esc(t.description)}</span><span class="tx-basic-amt ${cls}">${prefix} ${eur(t.amount)}</span></div>`;
+   }).join('');
+ }else{
+   $('recent').innerHTML=recent.map(t=>line(t,false)).join('');
+ }
 
  const prevCatVal=$('category').value;
  $('category').innerHTML=db.settings.categories.map(c=>`<option>${esc(c.name)}</option>`).join('');
@@ -4127,7 +4173,7 @@ function shift(n){let d=new Date(($('calendarMonth').value||cur)+'-02T12:00:00')
 $('prev').onclick=()=>shift(-1);$('next').onclick=()=>shift(1);
 
 // ============================================================================
-// MODAL DE NOVIDADES DA VERSÃO (CHANGELOG v6.7.0)
+// MODAL DE NOVIDADES DA VERSÃO (CHANGELOG v6.8.0)
 // ============================================================================
 function openChangelogModal(){
  const m=$('changelogModal');
@@ -4449,11 +4495,55 @@ $('import').onchange=async e=>{
 $('reset').onclick=()=>{if(confirm('Apagar todos os dados deste dispositivo?')){db=fresh();persist()}};
 $('person').innerHTML=db.settings.people.map(p=>`<option>${esc(p)}</option>`).join('')+'<option>Conta conjunta</option>';
 
-// Preferências visuais locais
+// Preferências visuais locais & Nível de Detalhe do Resumo (Progressive Disclosure)
 const UI_PREF_KEY='duofin-ui-preferences-v1';
+const SUMMARY_LEVEL_KEY='duofin-summary-level-v1';
 const uiDefaults={theme:'auto',density:'balanced'};
 function readUiPrefs(){try{return {...uiDefaults,...JSON.parse(localStorage.getItem(UI_PREF_KEY)||'{}')}}catch(e){return {...uiDefaults}}}
 let uiPrefs=readUiPrefs();
+
+function getDefaultSummaryLevel(){
+  const saved=localStorage.getItem(SUMMARY_LEVEL_KEY);
+  if(saved==='basic'||saved==='detailed')return saved;
+  return (window.matchMedia&&window.matchMedia('(max-width: 767px)').matches)?'basic':'detailed';
+}
+let summaryDetailLevel=getDefaultSummaryLevel();
+
+function applySummaryDetailLevel(rerender=false){
+  const resumoEl=$('resumo');
+  if(resumoEl)resumoEl.setAttribute('data-summary-level',summaryDetailLevel);
+  document.querySelectorAll('[data-summary-level-btn]').forEach(btn=>{
+    const isMatch=btn.getAttribute('data-summary-level-btn')===summaryDetailLevel;
+    btn.classList.toggle('active',isMatch);
+    btn.setAttribute('aria-pressed',isMatch?'true':'false');
+  });
+  if(rerender){
+    render();
+    if(summaryDetailLevel==='detailed')requestAnimationFrame(drawChart);
+  }
+}
+
+function setSummaryDetailLevel(level){
+  if(level!=='basic'&&level!=='detailed')return;
+  summaryDetailLevel=level;
+  localStorage.setItem(SUMMARY_LEVEL_KEY,level);
+  // Reseta expansões locais ao alternar o nível global
+  document.querySelectorAll('#resumo [data-accordion-card].is-expanded').forEach(el=>el.classList.remove('is-expanded'));
+  applySummaryDetailLevel(true);
+}
+
+document.querySelectorAll('[data-summary-level-btn]').forEach(btn=>{
+  btn.addEventListener('click',()=>setSummaryDetailLevel(btn.getAttribute('data-summary-level-btn')));
+});
+
+// Cartões expansíveis localmente (Accordion) no nível Básico
+document.addEventListener('click',e=>{
+  const accCard=e.target.closest('#resumo[data-summary-level="basic"] [data-accordion-card]');
+  if(!accCard)return;
+  if(e.target.closest('button,a,input,select,[data-open-tx]'))return;
+  accCard.classList.toggle('is-expanded');
+});
+
 function applyUiPrefs(){
   const root=document.documentElement;
   root.classList.remove('theme-dark','density-compact','density-detailed');
@@ -4464,6 +4554,7 @@ function applyUiPrefs(){
   if(metaTheme)metaTheme.setAttribute('content',isDark?'#0f1924':'#142b45');
   if(uiPrefs.density==='compact')root.classList.add('density-compact');
   if(uiPrefs.density==='detailed')root.classList.add('density-detailed');
+  applySummaryDetailLevel(false);
   requestAnimationFrame(()=>{drawChart();drawAnalyticsChart();});
 }
 function saveUiPrefs(){uiPrefs.theme=$('themeMode').value;uiPrefs.density=$('densityMode').value;localStorage.setItem(UI_PREF_KEY,JSON.stringify(uiPrefs));applyUiPrefs();}

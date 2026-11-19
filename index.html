@@ -14,7 +14,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; worker-src 'self' blob: https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co https://cdnjs.cloudflare.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self';">
   <link rel="stylesheet" href="./styles.css">
-  <title>DuoFin v6.7.0 — Gestão financeira a dois</title>
+  <title>DuoFin v6.8.0 — Gestão financeira a dois</title>
 </head>
 <body>
   <!-- Ecrã de Bloqueio Local (PIN / Biometria WebAuthn) -->
@@ -43,7 +43,7 @@
       <div class="header-actions">
         <button type="button" class="header-icon-btn" id="privacyToggleBtn" title="Ocultar ou mostrar valores monetários" aria-label="Modo privacidade">👁️</button>
         <button type="button" class="header-icon-btn" id="lockAppHeaderBtn" title="Bloquear aplicação agora" aria-label="Bloquear aplicação" hidden>🔒</button>
-        <button type="button" class="version-badge" id="versionBadgeBtn" title="Ver novidades desta versão">v6.7.0</button>
+        <button type="button" class="version-badge" id="versionBadgeBtn" title="Ver novidades desta versão">v6.8.0</button>
       </div>
     </div>
   </header>
@@ -91,16 +91,22 @@
       </div>
     </aside>
 
-    <section id="resumo" class="view active">
+    <section id="resumo" class="view active" data-summary-level="detailed">
       <div class="row cycle-header" style="flex-wrap:wrap;gap:8px">
-        <div>
+        <div style="min-width:0;flex:1 1 auto">
           <b id="monthTitle">Ciclo financeiro</b>
-          <div id="cycleRange" class="small"></div>
+          <div id="cycleRange" class="small summary-detailed-only"></div>
         </div>
-        <div class="row" style="gap:6px;flex:1;justify-content:flex-end;min-width:240px">
-          <button type="button" class="icon-btn" id="prevCycleBtn" title="Ciclo anterior" aria-label="Ciclo anterior">‹</button>
-          <select id="cycleSelect" aria-label="Selecionar ciclo financeiro" style="max-width:250px"></select>
-          <button type="button" class="icon-btn" id="nextCycleBtn" title="Ciclo seguinte" aria-label="Ciclo seguinte">›</button>
+        <div class="row cycle-controls-wrap" style="gap:8px;flex-wrap:wrap;justify-content:flex-end">
+          <div class="detail-segmented" role="group" aria-label="Nível de detalhe do resumo">
+            <button type="button" class="seg-btn" data-summary-level-btn="basic" aria-pressed="false">Básico</button>
+            <button type="button" class="seg-btn active" data-summary-level-btn="detailed" aria-pressed="true">Detalhado</button>
+          </div>
+          <div class="row" style="gap:5px">
+            <button type="button" class="icon-btn" id="prevCycleBtn" title="Ciclo anterior" aria-label="Ciclo anterior">‹</button>
+            <select id="cycleSelect" aria-label="Selecionar ciclo financeiro" style="max-width:220px"></select>
+            <button type="button" class="icon-btn" id="nextCycleBtn" title="Ciclo seguinte" aria-label="Ciclo seguinte">›</button>
+          </div>
         </div>
       </div>
 
@@ -120,31 +126,75 @@
         </div>
       </div>
 
-      <div class="stats" style="margin-top:12px">
-        <div class="stat stat-inc"><span>Total de rendimentos</span><b id="inc" class="plus"></b></div>
-        <div class="stat stat-exp"><span>Despesas pagas</span><b id="exp" class="minus"></b></div>
-        <div class="stat stat-bal" id="balCard">
-          <span>Saldo do ciclo</span>
+      <div class="stats summary-stats" style="margin-top:12px">
+        <div class="stat stat-bal" id="balCard" data-accordion-card>
+          <div class="row" style="align-items:flex-start">
+            <span>Saldo do ciclo</span>
+            <span class="accordion-chevron" aria-hidden="true">▾</span>
+          </div>
           <b id="bal"></b>
           <div id="dailyBurnRateLine" class="burn-rate-sub" hidden></div>
-          <div id="projectedBalLine" class="projected-sub" hidden></div>
+          <div id="projectedBalLine" class="projected-sub card-extra-detail" hidden></div>
         </div>
-        <div class="stat stat-sav"><span>Poupança líquida</span><b id="savm"></b></div>
+        <div class="stat stat-exp" id="expCard" data-accordion-card>
+          <div class="row" style="align-items:flex-start">
+            <span>Despesas pagas</span>
+            <span class="accordion-chevron" aria-hidden="true">▾</span>
+          </div>
+          <b id="exp" class="minus"></b>
+          <div id="basicCycleProgressWrap" class="basic-cycle-progress" hidden>
+            <div class="progress" style="height:7px;margin:7px 0 3px"><i id="basicCycleProgressBar" style="width:0%"></i></div>
+            <div class="small" id="basicCycleProgressLabel" style="font-size:11px"></div>
+          </div>
+        </div>
+        <div class="stat stat-sav" id="savCard" data-accordion-card>
+          <div class="row" style="align-items:flex-start">
+            <span>Poupança líquida</span>
+            <span class="accordion-chevron" aria-hidden="true">▾</span>
+          </div>
+          <b id="savm"></b>
+          <div id="basicNextGoalHint" class="small card-extra-detail" style="margin-top:4px;font-size:11.5px"></div>
+        </div>
+        <div class="stat stat-inc summary-detailed-only" id="incCard">
+          <span>Total de rendimentos</span>
+          <b id="inc" class="plus"></b>
+        </div>
       </div>
-      <div class="actions">
+      <div class="actions summary-detailed-only">
         <button class="secondary" type="button" id="openSimulatorShortcutBtn">🔮 Simulador "E se...?"</button>
         <button class="secondary" type="button" id="printFullReportBtn">🖨️ Imprimir relatório completo</button>
       </div>
       <div id="alerts"></div>
-      <div class="card">
-        <div class="row"><h2>Objetivos de poupança</h2><span class="pill" id="goalCount"></span></div>
-        <div id="goalsSummary"></div>
+      <div class="card summary-collapsible-card" data-accordion-card>
+        <div class="row accordion-header">
+          <h2 style="margin:0">Objetivos de poupança</h2>
+          <div class="row" style="gap:6px"><span class="pill" id="goalCount"></span><span class="accordion-chevron" aria-hidden="true">▾</span></div>
+        </div>
+        <div class="accordion-body" style="margin-top:8px">
+          <div id="goalsSummary"></div>
+        </div>
       </div>
-      <div class="two">
-        <div class="card"><h2>Despesas por categoria</h2><div id="cats"></div></div>
-        <div class="card"><h2>Despesas por adulto</h2><div id="persons"></div></div>
+      <div class="two summary-collapsible-group">
+        <div class="card summary-collapsible-card" data-accordion-card>
+          <div class="row accordion-header">
+            <h2 style="margin:0">Despesas por categoria</h2>
+            <span class="accordion-chevron" aria-hidden="true">▾</span>
+          </div>
+          <div class="accordion-body" style="margin-top:8px">
+            <div id="cats"></div>
+          </div>
+        </div>
+        <div class="card summary-collapsible-card summary-detailed-only" data-accordion-card>
+          <div class="row accordion-header">
+            <h2 style="margin:0">Despesas por adulto</h2>
+            <span class="accordion-chevron" aria-hidden="true">▾</span>
+          </div>
+          <div class="accordion-body" style="margin-top:8px">
+            <div id="persons"></div>
+          </div>
+        </div>
       </div>
-      <div class="card">
+      <div class="card summary-detailed-only">
         <div class="row" style="margin-bottom:6px">
           <h2 style="margin:0">Evolução da poupança acumulada por ciclo</h2>
           <span class="small">Toca nos pontos para ver o valor</span>
@@ -155,11 +205,11 @@
         </div>
         <p class="small">Saldo acumulado das transferências de poupança menos resgates registados em cada ciclo.</p>
       </div>
-      <div class="card"><h2>Previsão e ritmo dos objetivos</h2><div id="forecastText"></div></div>
-      <div class="card">
+      <div class="card summary-detailed-only"><h2>Previsão e ritmo dos objetivos</h2><div id="forecastText"></div></div>
+      <div class="card" id="recentCard">
         <div class="row" style="margin-bottom:6px">
-          <h2 style="margin:0">Movimentos recentes deste ciclo</h2>
-          <span class="small">Toca num movimento para ver/editar</span>
+          <h2 style="margin:0" id="recentCardTitle">Movimentos recentes deste ciclo</h2>
+          <span class="small summary-detailed-only">Toca num movimento para ver/editar</span>
         </div>
         <div id="recent"></div>
       </div>
@@ -809,10 +859,10 @@
       <div class="card">
         <div class="row" style="flex-wrap:wrap;gap:8px">
           <div>
-            <h2 style="margin:0">Sobre a DuoFin v6.7.0</h2>
+            <h2 style="margin:0">Sobre a DuoFin v6.8.0</h2>
             <div class="small">Consulta as melhorias mais recentes desta versão.</div>
           </div>
-          <button type="button" class="secondary" id="openChangelogBtn">✨ Ver novidades da v6.7.0</button>
+          <button type="button" class="secondary" id="openChangelogBtn">✨ Ver novidades da v6.8.0</button>
         </div>
       </div>
 
@@ -831,22 +881,22 @@
     <!-- Folha dedicada exclusivamente à impressão A4 / PDF -->
     <div id="printSheet" aria-hidden="true"></div>
 
-    <!-- Modal de Novidades da Versão (Changelog v6.7.0) -->
+    <!-- Modal de Novidades da Versão (Changelog v6.8.0) -->
     <div id="changelogModal" class="modal-backdrop" hidden>
       <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="changelogModalTitle">
         <div class="row" style="margin-bottom:8px">
           <div class="row" style="gap:8px">
             <span class="pill">Novidades</span>
-            <h2 id="changelogModalTitle" style="margin:0">DuoFin v6.7.0</h2>
+            <h2 id="changelogModalTitle" style="margin:0">DuoFin v6.8.0</h2>
           </div>
           <button type="button" class="icon-btn" id="closeChangelogBtn" aria-label="Fechar">✕</button>
         </div>
-        <p class="small" style="margin:0 0 8px">Fase 3 concluída — Inteligência Financeira &amp; Copiloto para decisões ativas do casal:</p>
+        <p class="small" style="margin:0 0 8px">Divulgação Progressiva no Resumo (Leitura Rápida Mobile vs. Análise Completa):</p>
         <ul class="changelog-list">
-          <li><strong>Orçamento Diário Disponível (Burn Rate):</strong> No cartão de <em>Saldo do ciclo</em> do Resumo, vê imediatamente quanto podem gastar por dia até ao fecho estimado do ciclo, já descontando despesas pendentes e recorrentes agendadas.</li>
-          <li><strong>Alertas de Anomalias em Faturas:</strong> Aviso automático quando faturas ou categorias variáveis (água, luz, gás, supermercado, telecomunicações) desviam mais de <strong>20%</strong> face à média dos últimos 3 ciclos.</li>
-          <li><strong>Deteção de Subscrições na Importação:</strong> Identifica padrões repetidos ao importar extratos PDF/CSV e permite criar regras de despesa recorrente com um toque.</li>
-          <li><strong>Simulador de Impacto ("E se...?"):</strong> Testa compras a pronto ou em prestações antes de as registar, medindo o efeito nos ciclos seguintes, no <em>burn rate</em> diário e nos prazos dos objetivos.</li>
+          <li><strong>Seletor Básico | Detalhado no Resumo:</strong> Alterna instantaneamente entre uma vista <em>glanceable</em> (ideal para telemóvel, sem scroll excessivo) e a análise financeira completa. A escolha fica guardada em <code>localStorage</code> e adapta-se automaticamente ao tamanho do ecrã (Básico no mobile, Detalhado no desktop).</li>
+          <li><strong>KPIs Essenciais &amp; Barra Única:</strong> No nível Básico apresenta apenas os 3 indicadores-chave (<em>Saldo do ciclo</em> com <em>burn rate</em>, <em>Despesas pagas</em> com barra única de execução e <em>Poupança líquida</em>).</li>
+          <li><strong>Lista Resumida de Linha Única:</strong> No modo Básico mostra apenas os últimos 3 movimentos com título e valor, ocultando metadados e botões secundários (mantendo o toque para abrir o detalhe).</li>
+          <li><strong>Cartões Expansíveis (Accordion):</strong> Mesmo no modo Básico, toca em qualquer cartão de resumo ou secção recolhida para o expandir localmente sem mudar o modo global da página.</li>
         </ul>
         <div class="actions" style="justify-content:flex-end;margin-top:16px">
           <button type="button" class="primary" id="confirmChangelogBtn">Entendido</button>
@@ -1012,7 +1062,7 @@
       </div>
     </div>
 
-    <footer>DuoFin · v6.7.0 · Gestão financeira a dois</footer>
+    <footer>DuoFin · v6.8.0 · Gestão financeira a dois</footer>
   </div>
   <script src="./app.js"></script>
 </body>

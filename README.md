@@ -1,3 +1,18 @@
+# DuoFin v6.8.0 — Divulgação Progressiva no Resumo (Básico | Detalhado)
+
+## Novidades incluídas nesta versão (v6.8.0)
+1. **Seletor Básico | Detalhado no Resumo (Progressive Disclosure):**
+   - Cabeçalho limpo no separador *Resumo* com *segmented control* compacto (`Básico | Detalhado`).
+   - **Persistência e deteção automática:** Guarda a preferência em `localStorage` (`duofin-summary-level-v1`) e assume automaticamente **Básico** em telemóveis (`< 768px`) e **Detalhado** em ecrãs maiores quando não existe preferência manual guardada.
+2. **Nível Básico (Leitura Rápida / Glanceable):**
+   - Exibe apenas os **3 KPIs essenciais** (*Saldo do ciclo* com *burn rate*, *Despesas pagas* com barra de progresso única e *Poupança líquida*).
+   - Oculta gráficos complexos, comparações secundárias e botões de ação pesados.
+   - Mostra apenas os **últimos 3 movimentos** em linha única (`descrição` + `valor`), mantendo o toque para abrir o modal de detalhe.
+3. **Cartões Expansíveis (Accordion Local):**
+   - No modo Básico, tocar num cartão de resumo ou numa secção recolhida expande-a localmente sem alterar o modo global da página.
+
+---
+
 # DuoFin v6.7.0 — Fase 3: Inteligência Financeira & Copiloto
 
 ## Novidades incluídas nesta versão (v6.7.0)
