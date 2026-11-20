@@ -14,7 +14,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; worker-src 'self' blob: https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co https://cdnjs.cloudflare.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self';">
   <link rel="stylesheet" href="./styles.css">
-  <title>DuoFin v6.9.0 — Gestão financeira a dois</title>
+  <title>DuoFin v6.10.0 — Gestão financeira a dois</title>
 </head>
 <body>
   <!-- Ecrã de Bloqueio Local (PIN / Biometria WebAuthn) -->
@@ -43,7 +43,7 @@
       <div class="header-actions">
         <button type="button" class="header-icon-btn" id="privacyToggleBtn" title="Ocultar ou mostrar valores monetários" aria-label="Modo privacidade">👁️</button>
         <button type="button" class="header-icon-btn" id="lockAppHeaderBtn" title="Bloquear aplicação agora" aria-label="Bloquear aplicação" hidden>🔒</button>
-        <button type="button" class="version-badge" id="versionBadgeBtn" title="Ver novidades desta versão">v6.9.0</button>
+        <button type="button" class="version-badge" id="versionBadgeBtn" title="Ver novidades desta versão">v6.10.0</button>
       </div>
     </div>
   </header>
@@ -825,7 +825,21 @@
         <input id="sbUrl" type="url" placeholder="https://xxxxxxxx.supabase.co" autocomplete="url">
         <label for="sbKey">Chave pública (anon ou publishable)</label>
         <input id="sbKey" type="password" placeholder="Chave pública do projeto" autocomplete="off">
-        <div class="actions"><button class="secondary" id="saveCloudConfig">Guardar configuração</button></div>
+        <div class="actions">
+          <button class="secondary" id="saveCloudConfig">Guardar configuração</button>
+          <button class="ghost" type="button" id="testCloudDbBtn">🩺 Verificar ligação e tabelas</button>
+        </div>
+        <div id="sqlSetupHelperBox" class="inline-editor" hidden>
+          <h3 style="margin:0 0 4px">🛠️ Configuração inicial da base de dados Supabase</h3>
+          <p class="small" style="margin:0 0 8px">Copia o script SQL oficial da DuoFin, abre o <strong>SQL Editor</strong> no painel do teu projeto Supabase, cola o código e clica em <strong>Run</strong>.</p>
+          <div class="actions" style="margin-top:6px">
+            <button type="button" class="primary" id="copySetupSqlBtn">📋 Copiar SQL de configuração</button>
+            <button type="button" class="ghost" id="toggleSqlPreviewBtn">Ver / Ocultar código SQL</button>
+          </div>
+          <div id="sqlRawFallbackBox" hidden style="margin-top:8px">
+            <textarea id="sqlRawTextarea" rows="7" readonly style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px"></textarea>
+          </div>
+        </div>
         <div id="authPanel">
           <div class="grid">
             <div><label for="cloudEmail">Email</label><input id="cloudEmail" type="email" autocomplete="username"></div>
@@ -921,10 +935,10 @@
       <div class="card">
         <div class="row" style="flex-wrap:wrap;gap:8px">
           <div>
-            <h2 style="margin:0">Sobre a DuoFin v6.9.0</h2>
+            <h2 style="margin:0">Sobre a DuoFin v6.10.0</h2>
             <div class="small">Consulta as melhorias mais recentes desta versão.</div>
           </div>
-          <button type="button" class="secondary" id="openChangelogBtn">✨ Ver novidades da v6.9.0</button>
+          <button type="button" class="secondary" id="openChangelogBtn">✨ Ver novidades da v6.10.0</button>
         </div>
       </div>
 
@@ -943,22 +957,21 @@
     <!-- Folha dedicada exclusivamente à impressão A4 / PDF -->
     <div id="printSheet" aria-hidden="true"></div>
 
-    <!-- Modal de Novidades da Versão (Changelog v6.8.0) -->
+    <!-- Modal de Novidades da Versão (Changelog v6.10.0) -->
     <div id="changelogModal" class="modal-backdrop" hidden>
       <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="changelogModalTitle">
         <div class="row" style="margin-bottom:8px">
           <div class="row" style="gap:8px">
             <span class="pill">Novidades</span>
-            <h2 id="changelogModalTitle" style="margin:0">DuoFin v6.9.0</h2>
+            <h2 id="changelogModalTitle" style="margin:0">DuoFin v6.10.0</h2>
           </div>
           <button type="button" class="icon-btn" id="closeChangelogBtn" aria-label="Fechar">✕</button>
         </div>
-        <p class="small" style="margin:0 0 8px">Gestão de Cartões de Crédito (Evita Dupla Contagem no Pagamento da Fatura):</p>
+        <p class="small" style="margin:0 0 8px">Correção da Sincronização Supabase, Diagnóstico de Base de Dados &amp; Estabilidade:</p>
         <ul class="changelog-list">
-          <li><strong>Gestão de Cartões de Crédito:</strong> Cria os teus cartões de crédito (ex.: Visa, Mastercard, Universo) na secção <em>Orçamento</em> ou diretamente ao registar movimentos, acompanhando o saldo em dívida, limite (plafond) e utilização.</li>
-          <li><strong>Compras pagas com Cartão de Crédito:</strong> Ao registar uma despesa paga com cartão de crédito, a despesa conta imediatamente para a categoria e orçamento do ciclo (como compra real) e aumenta o valor em dívida do respetivo cartão.</li>
-          <li><strong>Pagamento da Fatura do Cartão (Parcial ou Total):</strong> Novo tipo de movimento <em>«Pagamento de cartão de crédito»</em>. Quando pagas o cartão após receber o ordenado, o valor abate à dívida do cartão e sai do saldo disponível da conta à ordem, <strong>sem ser somado novamente às despesas mensais nem aos limites das categorias</strong> (evitando duplicação).</li>
-          <li><strong>Suporte na Importação de Extratos (PDF/CSV):</strong> Pagamentos de extrato de cartão são detetados automaticamente como <em>Pagamento de cartão de crédito</em>, com aprendizagem de regras.</li>
+          <li><strong>Correção do erro <code>public.household_state</code> &amp; Diagnóstico Integrado:</strong> Adicionado o botão <em>«Verificar ligação e tabelas»</em> em <em>Dados → Sincronização</em> e o assistente com cópia direta do <strong>Script SQL oficial</strong> (com políticas RLS, funções RPC e <code>NOTIFY pgrst, 'reload schema'</code>) para criar ou reparar a base de dados Supabase num clique.</li>
+          <li><strong>Auto-reparação do Estado Partilhado &amp; Proteção contra Falhas de Rede:</strong> Se um orçamento partilhado existir sem registo inicial em <code>household_state</code>, a DuoFin cria-o automaticamente; pedidos com <em>timeout</em> de 12s e sincronização imediata ao recuperar ligação à internet (<code>online</code>).</li>
+          <li><strong>Gestão de Cartões de Crédito (Sem Dupla Contagem):</strong> Mantido o controlo completo de compras a crédito e liquidação parcial/total da fatura sem duplicar despesas mensais.</li>
         </ul>
         <div class="actions" style="justify-content:flex-end;margin-top:16px">
           <button type="button" class="primary" id="confirmChangelogBtn">Entendido</button>
@@ -1138,7 +1151,7 @@
       </div>
     </div>
 
-    <footer>DuoFin · v6.9.0 · Gestão financeira a dois</footer>
+    <footer>DuoFin · v6.10.0 · Gestão financeira a dois</footer>
   </div>
   <script src="./app.js"></script>
 </body>

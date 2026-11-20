@@ -1,5 +1,5 @@
 const $=id=>document.getElementById(id),KEY='orcamento-plus-v1',now=new Date(),iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'),cur=iso(now).slice(0,7);
-const APP_VERSION='v6.9.0';
+const APP_VERSION='v6.10.0';
 const CHANGELOG_KEY='duofin-seen-version-v1';
 const defs=[['Habitação',850],['Supermercado',450],['Água, luz e gás',180],['Transportes',250],['Telecomunicações',70],['Saúde e farmácia',80],['Crianças e família',150],['Restaurantes e lazer',150],['Vestuário e pessoal',120],['Outros / imprevistos',300]];
 const fresh=()=>({settings:{income:3200,target:6000,start:'2026-11-01',deadline:'2027-08-31',cycleGroupingDays:14,people:['Adulto 1','Adulto 2'],categories:defs.map(([name,budget])=>({name,budget})),categoryRules:[]},transactions:[],recurringExpenses:[],savingsGoals:[],creditCards:[],deletedIds:[],handledCycleRollovers:[]});
@@ -4867,6 +4867,173 @@ addEventListener('appinstalled',()=>{$('installHint').textContent='DuoFin adicio
 // Sincronização Supabase com Auto-Merge Inteligente (updatedAt + Tombstones + Rollovers)
 const CLOUD_KEY='orcamento-plus-cloud-v1';
 const E2EE_SECRET_KEY='duofin-e2ee-secret-v1';
+const SUPABASE_SETUP_SQL=`-- ============================================================================
+-- DUOFIN v6.10.0 · SCRIPT SQL DE CONFIGURAÇÃO DO SUPABASE
+-- Executa este script no SQL Editor do teu projeto Supabase (app.supabase.com)
+-- ============================================================================
+
+create extension if not exists pgcrypto;
+
+create table if not exists public.households (
+  id uuid primary key default gen_random_uuid(),
+  name text not null default 'Orçamento do casal',
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.household_members (
+  household_id uuid not null references public.households(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  role text not null default 'member',
+  joined_at timestamptz not null default now(),
+  primary key (household_id, user_id)
+);
+
+create table if not exists public.household_state (
+  household_id uuid primary key references public.households(id) on delete cascade,
+  payload jsonb not null default '{}'::jsonb,
+  revision integer not null default 1,
+  updated_by uuid references auth.users(id) on delete set null,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.household_invites (
+  code text primary key,
+  household_id uuid not null references public.households(id) on delete cascade,
+  created_by uuid references auth.users(id) on delete set null,
+  expires_at timestamptz not null,
+  used_by uuid references auth.users(id) on delete set null,
+  used_at timestamptz
+);
+
+alter table public.households enable row level security;
+alter table public.household_members enable row level security;
+alter table public.household_state enable row level security;
+alter table public.household_invites enable row level security;
+
+create or replace function public.is_household_member(p_household uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from public.household_members
+    where household_id = p_household and user_id = auth.uid()
+  );
+$$;
+
+drop policy if exists "members_select_households" on public.households;
+create policy "members_select_households" on public.households
+  for select using (public.is_household_member(id));
+
+drop policy if exists "members_select_members" on public.household_members;
+create policy "members_select_members" on public.household_members
+  for select using (public.is_household_member(household_id));
+
+drop policy if exists "members_select_state" on public.household_state;
+create policy "members_select_state" on public.household_state
+  for select using (public.is_household_member(household_id));
+
+drop policy if exists "members_update_state" on public.household_state;
+create policy "members_update_state" on public.household_state
+  for update using (public.is_household_member(household_id))
+  with check (public.is_household_member(household_id));
+
+drop policy if exists "members_insert_state" on public.household_state;
+create policy "members_insert_state" on public.household_state
+  for insert with check (public.is_household_member(household_id));
+
+create or replace function public.create_household(p_name text, p_payload jsonb default '{}'::jsonb)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_hid uuid;
+begin
+  if v_uid is null then
+    raise exception 'Utilizador não autenticado.';
+  end if;
+  insert into public.households (name, created_by)
+  values (coalesce(nullif(trim(p_name), ''), 'Orçamento do casal'), v_uid)
+  returning id into v_hid;
+
+  insert into public.household_members (household_id, user_id, role)
+  values (v_hid, v_uid, 'owner');
+
+  insert into public.household_state (household_id, payload, revision, updated_by, updated_at)
+  values (v_hid, coalesce(p_payload, '{}'::jsonb), 1, v_uid, now());
+
+  return v_hid;
+end;
+$$;
+
+create or replace function public.create_household_invite(p_household uuid)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_code text;
+begin
+  if v_uid is null or not public.is_household_member(p_household) then
+    raise exception 'Sem permissão para gerar convite.';
+  end if;
+  v_code := upper(substr(encode(gen_random_bytes(5), 'hex'), 1, 8));
+  insert into public.household_invites (code, household_id, created_by, expires_at)
+  values (v_code, p_household, v_uid, now() + interval '7 days');
+  return v_code;
+end;
+$$;
+
+create or replace function public.accept_household_invite(p_code text)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_inv public.household_invites%rowtype;
+begin
+  if v_uid is null then
+    raise exception 'Utilizador não autenticado.';
+  end if;
+  select * into v_inv
+  from public.household_invites
+  where code = upper(trim(p_code))
+    and used_at is null
+    and expires_at > now();
+
+  if not found then
+    raise exception 'Código de convite inválido ou expirado.';
+  end if;
+
+  insert into public.household_members (household_id, user_id, role)
+  values (v_inv.household_id, v_uid, 'member')
+  on conflict (household_id, user_id) do nothing;
+
+  update public.household_invites
+  set used_by = v_uid, used_at = now()
+  where code = v_inv.code;
+
+  return v_inv.household_id;
+end;
+$$;
+
+grant execute on function public.is_household_member(uuid) to authenticated;
+grant execute on function public.create_household(text, jsonb) to authenticated;
+grant execute on function public.create_household_invite(uuid) to authenticated;
+grant execute on function public.accept_household_invite(text) to authenticated;
+
+notify pgrst, 'reload schema';`;
+
 let cloud={url:'',key:'',access_token:'',refresh_token:'',expires_at:0,user:null,household_id:null,revision:null,dirty:false};
 function getE2eeSecret(){return localStorage.getItem(E2EE_SECRET_KEY)||'';}
 function paintE2eeStatus(){
@@ -4912,15 +5079,43 @@ async function decodeCloudPayload(rawPayload){
 try{cloud={...cloud,...JSON.parse(localStorage.getItem(CLOUD_KEY)||'{}')}}catch(e){}
 if(dbNeedsSync){cloud.dirty=true;localStorage.setItem(CLOUD_KEY,JSON.stringify(cloud));}
 let cloudSaveTimer=null,cloudBusy=false;
+function normalizeSupabaseUrl(raw){
+  let u=String(raw||'').trim().replace(/\/+$/,'');
+  if(u&&!/^https?:\/\//i.test(u))u='https://'+u;
+  return u;
+}
 function saveCloud(){localStorage.setItem(CLOUD_KEY,JSON.stringify(cloud));paintCloud()}
-function cloudConfigured(){return /^https:\/\/.+\.supabase\.co$/i.test(cloud.url.trim())&&cloud.key.trim().length>20}
+function cloudConfigured(){return /^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(normalizeSupabaseUrl(cloud.url))&&cloud.key.trim().length>20}
 function cloudConnected(){return cloudConfigured()&&!!cloud.access_token}
-function setCloudStatus(msg,kind=''){const el=$('cloudStatus');el.textContent=msg;el.className='alert'+(kind?' '+kind:'')}
+
+function formatSupabaseError(rawMsg){
+  const m=String(rawMsg||'');
+  if(/household_state|household_members|households|household_invites/i.test(m)&&/schema cache|does not exist|relation/i.test(m)){
+    return 'A base de dados Supabase ainda não tem as tabelas da DuoFin criadas (ou a schema cache precisa de ser atualizada). Usa o botão «Copiar SQL de configuração» abaixo, cola no SQL Editor do Supabase e clica em Run.';
+  }
+  if(/create_household|accept_household_invite|create_household_invite/i.test(m)&&/function|schema cache/i.test(m)){
+    return 'Faltam as funções RPC no Supabase. Executa o script SQL de configuração no SQL Editor do projeto Supabase.';
+  }
+  if(/Invalid login credentials/i.test(m))return 'Email ou palavra-passe incorretos.';
+  if(/Email not confirmed/i.test(m))return 'O email ainda não foi confirmado. Verifica a caixa de correio ou desativa a confirmação de email no Supabase Auth.';
+  if(/Failed to fetch|NetworkError|AbortError|timeout/i.test(m))return 'Sem resposta do servidor Supabase. Verifica a ligação à internet e o URL do projeto.';
+  return m;
+}
+
+function setCloudStatus(msg,kind=''){
+  const el=$('cloudStatus');
+  if(!el)return;
+  el.textContent=msg;
+  el.className='alert'+(kind?' '+kind:'');
+  const isSchemaErr=/tabelas da DuoFin|funções RPC|schema cache/i.test(msg);
+  if($('sqlSetupHelperBox'))$('sqlSetupHelperBox').hidden=!isSchemaErr;
+}
+
 function paintCloud(){
   $('sbUrl').value=cloud.url;$('sbKey').value=cloud.key;
   $('cloudLogout').hidden=!cloudConnected();
   $('householdPanel').hidden=!cloudConnected();
-  if(!cloudConfigured()){setCloudStatus('Ainda não configurada. Preenche o URL e a chave pública do projeto Supabase.');return}
+  if(!cloudConfigured()){setCloudStatus('Ainda não configurada. Preenche o URL (https://xxxx.supabase.co) e a chave pública anon do projeto Supabase.');return}
   if(!cloudConnected()){setCloudStatus('Configurada. Inicia sessão ou cria uma conta para sincronizar.');return}
   $('householdInfo').textContent=cloud.household_id?'Orçamento partilhado associado (rev. '+(cloud.revision??0)+').':'Sessão iniciada como '+(cloud.user?.email||'utilizador')+'. Cria ou associa um orçamento partilhado.';
   if(cloud.dirty)setCloudStatus('Alterações locais por enviar para o servidor.','');
@@ -5002,17 +5197,32 @@ function mergeDatabases(localDb, remoteDb){
   }).db;
 }
 
-async function sbFetch(path,{method='GET',body,auth=true,headers={}}={}){
-  if(!cloudConfigured())throw new Error('Configura primeiro o projeto Supabase.');
+async function sbFetch(path,{method='GET',body,auth=true,headers={},timeoutMs=12000}={}){
+  if(!cloudConfigured())throw new Error('Configura primeiro o URL e a chave pública do projeto Supabase.');
   if(auth&&cloud.expires_at&&Date.now()>cloud.expires_at-30000&&cloud.refresh_token)await refreshSession();
   const h={'apikey':cloud.key.trim(),'Content-Type':'application/json',...headers};
   if(auth&&cloud.access_token)h['Authorization']='Bearer '+cloud.access_token;
-  const r=await fetch(cloud.url.trim().replace(/\/$/,'')+path,{method,headers:h,body:body!==undefined?JSON.stringify(body):undefined});
+  const ctrl=typeof AbortController!=='undefined'?new AbortController():null;
+  const timer=ctrl?setTimeout(()=>ctrl.abort(),timeoutMs):null;
+  let r;
+  try{
+    r=await fetch(normalizeSupabaseUrl(cloud.url)+path,{
+      method,
+      headers:h,
+      body:body!==undefined?JSON.stringify(body):undefined,
+      signal:ctrl?ctrl.signal:undefined
+    });
+  }catch(netErr){
+    if(timer)clearTimeout(timer);
+    throw new Error(netErr?.name==='AbortError'?'Tempo limite excedido ao contactar o Supabase.':'Erro de rede ao contactar o Supabase.');
+  }
+  if(timer)clearTimeout(timer);
   const text=await r.text();
   let data=null;try{data=text?JSON.parse(text):null}catch(e){data=text}
   if(!r.ok){
-    if(r.status===401&&auth&&cloud.refresh_token){await refreshSession();return sbFetch(path,{method,body,auth,headers})}
-    throw new Error(data?.msg||data?.error_description||data?.message||('Erro '+r.status));
+    if(r.status===401&&auth&&cloud.refresh_token){await refreshSession();return sbFetch(path,{method,body,auth,headers,timeoutMs})}
+    const raw=data?.msg||data?.error_description||data?.message||data?.hint||('Erro HTTP '+r.status);
+    throw new Error(formatSupabaseError(raw));
   }
   return data;
 }
@@ -5028,7 +5238,14 @@ async function loadMembership(){
 async function pullCloud(manual=true){
   if(!cloudConnected()||!cloud.household_id)return;
   const rows=await sbFetch('/rest/v1/household_state?household_id=eq.'+encodeURIComponent(cloud.household_id)+'&select=payload,revision,updated_at');
-  const row=rows?.[0];if(!row)return;
+  const row=rows?.[0];
+  if(!row){
+    const encodedInitial=await encodeCloudPayload(db);
+    await sbFetch('/rest/v1/household_state',{method:'POST',headers:{'Prefer':'return=representation'},body:{household_id:cloud.household_id,payload:encodedInitial,revision:1,updated_by:cloud.user?.id||null,updated_at:new Date().toISOString()}});
+    cloud.revision=1;cloud.dirty=false;saveCloud();
+    if(manual)setCloudStatus('Estado inicial criado e sincronizado com sucesso.','good');
+    return;
+  }
   const decodedPayload=await decodeCloudPayload(row.payload);
   if(decodedPayload&&decodedPayload.settings&&Array.isArray(decodedPayload.transactions)){
     if(cloud.dirty){
@@ -5049,6 +5266,9 @@ async function pullCloud(manual=true){
       generateDueOccurrences();
       render();
     }
+  }else if(row.payload&&Object.keys(row.payload).length===0){
+    cloud.revision=row.revision??1;
+    await pushCloud(false);
   }
   if(manual)setCloudStatus('Versão partilhada carregada.','good');
 }
@@ -5058,7 +5278,7 @@ async function pushCloud(manual=true){
   try{
     const rows=await sbFetch('/rest/v1/household_state?household_id=eq.'+encodeURIComponent(cloud.household_id)+'&select=payload,revision');
     const remote=rows?.[0];
-    if(remote&&cloud.revision!==null&&remote.revision!==cloud.revision&&remote.payload){
+    if(remote&&cloud.revision!==null&&remote.revision!==cloud.revision&&remote.payload&&Object.keys(remote.payload).length>0){
       const decodedRemote=await decodeCloudPayload(remote.payload);
       if(decodedRemote&&decodedRemote.settings){
         db=mergeDatabases(db,decodedRemote);
@@ -5067,33 +5287,73 @@ async function pushCloud(manual=true){
         render();
       }
     }
-    const nextRev=(cloud.revision??0)+1;
+    const nextRev=(remote?.revision??cloud.revision??0)+1;
     const encodedPayload=await encodeCloudPayload(db);
-    await sbFetch('/rest/v1/household_state?household_id=eq.'+encodeURIComponent(cloud.household_id),{method:'PATCH',headers:{'Prefer':'return=representation'},body:{payload:encodedPayload,revision:nextRev,updated_by:cloud.user?.id||null,updated_at:new Date().toISOString()}});
+    if(remote){
+      await sbFetch('/rest/v1/household_state?household_id=eq.'+encodeURIComponent(cloud.household_id),{method:'PATCH',headers:{'Prefer':'return=representation'},body:{payload:encodedPayload,revision:nextRev,updated_by:cloud.user?.id||null,updated_at:new Date().toISOString()}});
+    }else{
+      await sbFetch('/rest/v1/household_state',{method:'POST',headers:{'Prefer':'return=representation'},body:{household_id:cloud.household_id,payload:encodedPayload,revision:nextRev,updated_by:cloud.user?.id||null,updated_at:new Date().toISOString()}});
+    }
     cloud.revision=nextRev;cloud.dirty=false;saveCloud();
     if(manual)setCloudStatus('Dados enviados e sincronizados.','good');
-  }catch(e){cloud.dirty=true;saveCloud();setCloudStatus('Sincronização pendente: '+e.message,'red')}
+  }catch(e){cloud.dirty=true;saveCloud();setCloudStatus('Sincronização pendente: '+formatSupabaseError(e.message),'red')}
   finally{cloudBusy=false}
 }
 function queueCloudSave(){
   if(!cloudConnected()||!cloud.household_id)return;
   cloud.dirty=true;saveCloud();clearTimeout(cloudSaveTimer);cloudSaveTimer=setTimeout(()=>pushCloud(false),1200);
 }
-$('saveCloudConfig').onclick=()=>{cloud.url=$('sbUrl').value.trim();cloud.key=$('sbKey').value.trim();saveCloud()};
+$('saveCloudConfig').onclick=()=>{
+  cloud.url=normalizeSupabaseUrl($('sbUrl').value);
+  cloud.key=$('sbKey').value.trim();
+  saveCloud();
+  if(cloudConfigured())showToast('Configuração Supabase guardada.',{type:'success'});
+  else showToast('Verifica o formato do URL (https://xxxx.supabase.co) e a chave pública.',{type:'error'});
+};
+if($('testCloudDbBtn'))$('testCloudDbBtn').onclick=async()=>{
+  try{
+    cloud.url=normalizeSupabaseUrl($('sbUrl').value);
+    cloud.key=$('sbKey').value.trim();
+    saveCloud();
+    if(!cloudConfigured())throw new Error('Preenche primeiro um URL válido (*.supabase.co) e a chave pública anon.');
+    setCloudStatus('A verificar ligação e tabelas no Supabase...','');
+    await sbFetch('/rest/v1/household_state?select=household_id&limit=1',{auth:!!cloud.access_token});
+    setCloudStatus('Ligação confirmada! As tabelas da DuoFin existem e respondem corretamente.','good');
+    showToast('Base de dados Supabase verificada com sucesso.',{type:'success'});
+  }catch(e){
+    setCloudStatus(formatSupabaseError(e.message),'red');
+  }
+};
+if($('copySetupSqlBtn'))$('copySetupSqlBtn').onclick=async()=>{
+  try{
+    await navigator.clipboard.writeText(SUPABASE_SETUP_SQL);
+    showToast('Script SQL copiado! Cola no SQL Editor do Supabase e clica em Run.',{type:'success',duration:5000});
+  }catch(_){
+    const box=$('sqlRawFallbackBox');
+    if(box){box.hidden=false;$('sqlRawTextarea').value=SUPABASE_SETUP_SQL;$('sqlRawTextarea').select();}
+  }
+};
+if($('toggleSqlPreviewBtn'))$('toggleSqlPreviewBtn').onclick=()=>{
+  const box=$('sqlRawFallbackBox');
+  if(!box)return;
+  box.hidden=!box.hidden;
+  if(!box.hidden)$('sqlRawTextarea').value=SUPABASE_SETUP_SQL;
+};
 $('cloudLogin').onclick=async()=>{
   try{
-    cloud.url=$('sbUrl').value.trim();cloud.key=$('sbKey').value.trim();
+    cloud.url=normalizeSupabaseUrl($('sbUrl').value);cloud.key=$('sbKey').value.trim();
     const data=await sbFetch('/auth/v1/token?grant_type=password',{method:'POST',auth:false,body:{email:$('cloudEmail').value.trim(),password:$('cloudPassword').value}});
     cloud.access_token=data.access_token;cloud.refresh_token=data.refresh_token;cloud.expires_at=Date.now()+(data.expires_in||3600)*1000;cloud.user=data.user;saveCloud();await loadMembership();
-  }catch(e){setCloudStatus('Não foi possível entrar: '+e.message,'red')}
+    showToast('Sessão iniciada com sucesso.',{type:'success'});
+  }catch(e){setCloudStatus('Não foi possível entrar: '+formatSupabaseError(e.message),'red')}
 };
 $('cloudSignup').onclick=async()=>{
   try{
-    cloud.url=$('sbUrl').value.trim();cloud.key=$('sbKey').value.trim();
+    cloud.url=normalizeSupabaseUrl($('sbUrl').value);cloud.key=$('sbKey').value.trim();
     const data=await sbFetch('/auth/v1/signup',{method:'POST',auth:false,body:{email:$('cloudEmail').value.trim(),password:$('cloudPassword').value}});
     if(data.access_token){cloud.access_token=data.access_token;cloud.refresh_token=data.refresh_token;cloud.expires_at=Date.now()+(data.expires_in||3600)*1000;cloud.user=data.user;saveCloud();await loadMembership();}
     else setCloudStatus('Conta criada. Confirma o email se o Supabase pedir verificação e depois entra.','good');
-  }catch(e){setCloudStatus('Não foi possível criar conta: '+e.message,'red')}
+  }catch(e){setCloudStatus('Não foi possível criar conta: '+formatSupabaseError(e.message),'red')}
 };
 $('cloudLogout').onclick=()=>{cloud={...cloud,access_token:'',refresh_token:'',expires_at:0,user:null,household_id:null,revision:null,dirty:false};saveCloud()};
 $('createHousehold').onclick=async()=>{
@@ -5101,25 +5361,28 @@ $('createHousehold').onclick=async()=>{
     const encodedInitial=await encodeCloudPayload(db);
     const id=await sbFetch('/rest/v1/rpc/create_household',{method:'POST',body:{p_name:$('householdName').value.trim()||'Orçamento do casal',p_payload:encodedInitial}});
     cloud.household_id=id;cloud.revision=1;cloud.dirty=false;saveCloud();await pullCloud(true);
-  }catch(e){setCloudStatus('Erro ao criar orçamento partilhado: '+e.message,'red')}
+    showToast('Orçamento partilhado criado!',{type:'success'});
+  }catch(e){setCloudStatus('Erro ao criar orçamento partilhado: '+formatSupabaseError(e.message),'red')}
 };
 $('createInvite').onclick=async()=>{
   try{
     const code=await sbFetch('/rest/v1/rpc/create_household_invite',{method:'POST',body:{p_household:cloud.household_id}});
     $('inviteResult').hidden=false;$('inviteResult').textContent='Código de convite (válido por 7 dias): '+code;
-  }catch(e){setCloudStatus('Erro ao gerar convite: '+e.message,'red')}
+  }catch(e){setCloudStatus('Erro ao gerar convite: '+formatSupabaseError(e.message),'red')}
 };
 $('joinHousehold').onclick=async()=>{
   try{
     const id=await sbFetch('/rest/v1/rpc/accept_household_invite',{method:'POST',body:{p_code:$('inviteCode').value.trim()}});
     cloud.household_id=id;cloud.dirty=false;saveCloud();await pullCloud(true);
-  }catch(e){setCloudStatus('Erro ao usar convite: '+e.message,'red')}
+    showToast('Associado ao orçamento partilhado!',{type:'success'});
+  }catch(e){setCloudStatus('Erro ao usar convite: '+formatSupabaseError(e.message),'red')}
 };
-$('syncNow').onclick=async()=>{try{if(cloud.dirty)await pushCloud(true);else await pullCloud(true)}catch(e){setCloudStatus(e.message,'red')}};
-$('cloudPull').onclick=async()=>{try{cloud.dirty=false;await pullCloud(true)}catch(e){setCloudStatus(e.message,'red')}};
-$('cloudPush').onclick=async()=>{try{await pushCloud(true)}catch(e){setCloudStatus(e.message,'red')}};
+$('syncNow').onclick=async()=>{try{if(cloud.dirty)await pushCloud(true);else await pullCloud(true)}catch(e){setCloudStatus(formatSupabaseError(e.message),'red')}};
+$('cloudPull').onclick=async()=>{try{cloud.dirty=false;await pullCloud(true)}catch(e){setCloudStatus(formatSupabaseError(e.message),'red')}};
+$('cloudPush').onclick=async()=>{try{await pushCloud(true)}catch(e){setCloudStatus(formatSupabaseError(e.message),'red')}};
 setInterval(()=>{if(document.visibilityState==='visible'&&cloudConnected()&&cloud.household_id&&!cloudBusy){if(cloud.dirty)pushCloud(false);else pullCloud(false).catch(()=>{})}},15000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&cloudConnected()&&cloud.household_id){if(cloud.dirty)pushCloud(false);else pullCloud(false).catch(()=>{})}});
+window.addEventListener('online',()=>{if(cloudConnected()&&cloud.household_id){if(cloud.dirty)pushCloud(false);else pullCloud(false).catch(()=>{})}});
 if('serviceWorker' in navigator && location.protocol.startsWith('http')){
   window.addEventListener('load',()=>{navigator.serviceWorker.register('./sw.js').catch(()=>{})});
 }

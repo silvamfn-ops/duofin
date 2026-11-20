@@ -1,49 +1,18 @@
-# DuoFin v6.9.0 — Gestão de Cartões de Crédito (Sem Dupla Contagem)
+# DuoFin v6.10.0 — Gestão financeira a dois
 
-## Novidades incluídas nesta versão (v6.9.0)
-1. **Cartões de Crédito & Controlo de Saldo em Dívida:**
-   - Permite criar e gerir cartões de crédito (nome, plafond/limite opcional, dívida inicial e titular) no separador *Orçamento*, com resumo visual da dívida e utilização no *Resumo*.
-2. **Compras pagas com Cartão de Crédito:**
-   - Ao registar uma despesa e escolher um cartão de crédito como meio de pagamento, a despesa conta imediatamente para o orçamento da respetiva categoria e aumenta o valor em dívida do cartão.
-3. **Pagamento do Cartão de Crédito (Parcial ou Total) sem Dupla Contagem:**
-   - Novo tipo de movimento **«Pagamento de cartão de crédito»**.
-   - Quando pagas o cartão após receber os ordenados (parcialmente ou na totalidade), o montante **abate à dívida do cartão** e reduz o saldo disponível da conta no ciclo, **não voltando a ser somado às despesas mensais nem aos limites das categorias**.
-4. **Suporte na Importação de Extratos (PDF/CSV) e Sincronização:**
-   - Deteção automática de pagamentos de extrato de cartão de crédito e fusão automática dos cartões na sincronização entre dispositivos.
+Aplicação web progressiva (PWA) para gestão financeira partilhada a dois, pronta a alojar no **GitHub Pages** (ou qualquer servidor HTTPS estático) com suporte offline e sincronização opcional encriptada via **Supabase**.
 
----
+## Novidades da versão v6.10.0
+1. **Correção e Diagnóstico da Base de Dados Supabase (`public.household_state`):**
+   - Inclui o ficheiro `supabase-setup.sql` na raiz do repositório e um botão **«Copiar SQL de configuração»** diretamente no separador *Dados → Sincronização*.
+   - Novo botão **«Verificar ligação e tabelas»** que diagnostica imediatamente se o URL, a chave pública e as tabelas/funções RPC do Supabase estão ativos.
+   - Auto-reparação caso o orçamento partilhado exista sem registo inicial na tabela `household_state`.
+2. **Resiliência de Rede e Sincronização Automática:**
+   - Controlo de *timeout* (12 segundos) nas chamadas à API REST do Supabase e sincronização imediata quando o dispositivo volta a ficar `online`.
+3. **Gestão de Cartões de Crédito (Sem Dupla Contagem):**
+   - Compras pagas com cartão de crédito entram imediatamente no orçamento da categoria; o pagamento posterior da fatura abate a dívida sem duplicar despesas.
 
-# DuoFin v6.8.0 — Divulgação Progressiva no Resumo (Básico | Detalhado)
-
-## Novidades incluídas nesta versão (v6.8.0)
-1. **Seletor Básico | Detalhado no Resumo (Progressive Disclosure):**
-   - Cabeçalho limpo no separador *Resumo* com *segmented control* compacto (`Básico | Detalhado`).
-   - **Persistência e deteção automática:** Guarda a preferência em `localStorage` (`duofin-summary-level-v1`) e assume automaticamente **Básico** em telemóveis (`< 768px`) e **Detalhado** em ecrãs maiores quando não existe preferência manual guardada.
-2. **Nível Básico (Leitura Rápida / Glanceable):**
-   - Exibe apenas os **3 KPIs essenciais** (*Saldo do ciclo* com *burn rate*, *Despesas pagas* com barra de progresso única e *Poupança líquida*).
-   - Oculta gráficos complexos, comparações secundárias e botões de ação pesados.
-   - Mostra apenas os **últimos 3 movimentos** em linha única (`descrição` + `valor`), mantendo o toque para abrir o modal de detalhe.
-3. **Cartões Expansíveis (Accordion Local):**
-   - No modo Básico, tocar num cartão de resumo ou numa secção recolhida expande-a localmente sem alterar o modo global da página.
-
----
-
-# DuoFin v6.7.0 — Fase 3: Inteligência Financeira & Copiloto
-
-## Novidades incluídas nesta versão (v6.7.0)
-1. **Orçamento Diário Disponível (Burn Rate):**
-   - No cartão de **Saldo do ciclo** do *Resumo*, calcula automaticamente quanto o casal pode gastar por dia até ao fecho estimado do ciclo atual, já descontando despesas pendentes, prestações agendadas e regras recorrentes previstas.
-2. **Alertas de Anomalias em Faturas & Despesas Variáveis:**
-   - Monitoriza despesas recorrentes ou categorias variáveis (ex.: *Água, luz e gás*, *Supermercado*, *Telecomunicações*, *Combustível*) e alerta automaticamente no *Resumo* quando o valor atual ou última fatura desvia **mais de 20%** face à média dos últimos 3 ciclos.
-3. **Deteção Automática de Subscrições na Importação (PDF/CSV):**
-   - Ao carregar extratos bancários, identifica padrões repetidos (valores iguais/semelhantes em datas recorrentes ou serviços de subscrição) e permite criar regras de **Despesa Recorrente** com um clique antes ou depois da importação.
-4. **Simulador de Impacto ("E se...?"):**
-   - Novo painel interativo no separador *Orçamento* (com atalho rápido a partir do *Resumo*) para testar uma compra a pronto ou em prestações antes de a registar, mostrando o impacto no saldo previsto do ciclo atual, nos ciclos seguintes, no *burn rate* diário e nos prazos dos objetivos de poupança ativos.
-
-## Ficheiros incluídos no ZIP
-- `index.html`
-- `styles.css`
-- `app.js`
-- `sw.js`
-- `manifest.webmanifest`
-- `README.md`
+## Como instalar no GitHub Pages
+1. Faz upload de todos os ficheiros deste ZIP para a raiz do teu repositório GitHub (`index.html`, `app.js`, `styles.css`, `sw.js`, `manifest.webmanifest`, `supabase-setup.sql` e `README.md` — mantém também a pasta `icons/` se já a tiveres no repositório).
+2. No GitHub, vai a **Settings → Pages** e confirma que o branch `main` (pasta `/root`) está ativo.
+3. No **Supabase** (`app.supabase.com`), abre o **SQL Editor** do teu projeto, cola o conteúdo de `supabase-setup.sql` e clica em **Run** para criar todas as tabelas, políticas de segurança (RLS) e funções RPC.
