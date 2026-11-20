@@ -1,9 +1,19 @@
 const $=id=>document.getElementById(id),KEY='orcamento-plus-v1',now=new Date(),iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'),cur=iso(now).slice(0,7);
-const APP_VERSION='v6.10.0';
+const APP_VERSION='v6.10.1';
 const CHANGELOG_KEY='duofin-seen-version-v1';
 const defs=[['Habitação',850],['Supermercado',450],['Água, luz e gás',180],['Transportes',250],['Telecomunicações',70],['Saúde e farmácia',80],['Crianças e família',150],['Restaurantes e lazer',150],['Vestuário e pessoal',120],['Outros / imprevistos',300]];
 const fresh=()=>({settings:{income:3200,target:6000,start:'2026-11-01',deadline:'2027-08-31',cycleGroupingDays:14,people:['Adulto 1','Adulto 2'],categories:defs.map(([name,budget])=>({name,budget})),categoryRules:[]},transactions:[],recurringExpenses:[],savingsGoals:[],creditCards:[],deletedIds:[],handledCycleRollovers:[]});
 let dbNeedsSync=false;
+
+function safeSetLocalStorage(key, value){
+ try{
+   localStorage.setItem(key, value);
+   return true;
+ }catch(e){
+   console.warn('Falha ao gravar no localStorage:', e);
+   return false;
+ }
+}
 
 function normalizeDb(x){
  if(!x||!x.settings||!Array.isArray(x.transactions))return {db:fresh(),changed:false};
@@ -34,7 +44,7 @@ function normalizeDb(x){
  return {db:x,changed};
 }
 
-function load(){try{const raw=JSON.parse(localStorage.getItem(KEY));if(raw?.settings&&Array.isArray(raw.transactions)){const n=normalizeDb(raw);dbNeedsSync=n.changed;if(n.changed)localStorage.setItem(KEY,JSON.stringify(n.db));return n.db;}}catch(e){}return fresh();}
+function load(){try{const raw=JSON.parse(localStorage.getItem(KEY));if(raw?.settings&&Array.isArray(raw.transactions)){const n=normalizeDb(raw);dbNeedsSync=n.changed;if(n.changed)safeSetLocalStorage(KEY,JSON.stringify(n.db));return n.db;}}catch(e){}return fresh();}
 
 // SISTEMA DE NOTIFICAÇÕES FLUTUANTES (TOASTS) COM OPÇÃO DESFAZER
 let lastUndoSnapshot=null;
@@ -71,7 +81,7 @@ function dismissAlertForCycle(cycleKey, alertId) {
   if (!stored[cycleKey].includes(alertId)) stored[cycleKey].push(alertId);
   const keys = Object.keys(stored);
   if (keys.length > 8) delete stored[keys[0]];
-  localStorage.setItem(DISMISSED_CYCLE_ALERTS_KEY, JSON.stringify(stored));
+  safeSetLocalStorage(DISMISSED_CYCLE_ALERTS_KEY, JSON.stringify(stored));
   pendingAlertChoiceId = null;
   render();
 }
@@ -83,7 +93,7 @@ function restoreDismissedAlerts(cycleKey) {
   const stored = readCycleDismissedAlerts();
   if (stored[cycleKey]) {
     delete stored[cycleKey];
-    localStorage.setItem(DISMISSED_CYCLE_ALERTS_KEY, JSON.stringify(stored));
+    safeSetLocalStorage(DISMISSED_CYCLE_ALERTS_KEY, JSON.stringify(stored));
   }
   pendingAlertChoiceId = null;
   render();
@@ -140,7 +150,7 @@ function deleteTransactionWithUndo(id){
  }else{
    recordDeletedId(target.id);
    db.transactions.splice(idx,1);
-   if($('txEditId').value===String(id))resetTxForm();
+   if($('txEditId')&&$('txEditId').value===String(id))resetTxForm();
    persist();
    haptic([20,40,20]);showToast('Movimento apagado.',{
      duration:5500,
@@ -170,7 +180,7 @@ function haptic(pattern=12){
 
 function evaluateAmountExpression(raw){
  const cleaned=String(raw??'')
-   .replace(/[€$£\s\u00A0]/g,'')
+   .replace(/[€$£\s\u00A0\u200B-\u200D\uFEFF]/g,'')
    .replace(/,/g,'.')
    .replace(/[−–—]/g,'-')
    .replace(/[×xX]/g,'*')
@@ -270,6 +280,7 @@ function commitAmountCalculation(playHaptic=true){
 }
 
 let db=load(),selected=iso(now),selectedCycleKey=null,activeCycle=null,activeCycles=[];
+let lastLocalMutationTs=0;
 const eur=n=>new Intl.NumberFormat('pt-PT',{style:'currency',currency:'EUR'}).format(+n||0),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const sum=a=>a.reduce((s,t)=>s+(Number(t.amount)||0),0),isPaid=t=>t.status!=='pending'&&t.status!=='skipped',mName=m=>new Date(m+'-02T12:00:00').toLocaleDateString('pt-PT',{month:'long',year:'numeric'});
 const capFirst=s=>s?s.charAt(0).toUpperCase()+s.slice(1):'';
@@ -692,7 +703,6 @@ function detectInvoiceAnomalies(selectedCycle){
  db.settings.categories.forEach(cat=>{
    const low=cat.name.toLocaleLowerCase('pt-PT');
    if(!variableKeywords.some(k=>low.includes(k)))return;
-   // Evitar duplicar se a categoria apenas tiver a recorrência já reportada
    const curVal=sum(curTxs.filter(x=>x.category===cat.name));
    if(curVal<=15)return;
    const histVals=[];
@@ -741,7 +751,21 @@ function getSelectedCycle(){
  selectedCycleKey=c.key;activeCycle=c;activeCycles=cycles;
  return {cycles,cycle:c};
 }
-function persist(skipCloud=false){localStorage.setItem(KEY,JSON.stringify(db));render();if(!skipCloud)queueCloudSave()}
+function persist(skipCloud=false){
+ lastLocalMutationTs=Date.now();
+ const savedOk=safeSetLocalStorage(KEY,JSON.stringify(db));
+ if(!savedOk){
+   // Limpar tombstones antigos para tentar libertar espaço
+   if(Array.isArray(db.deletedIds)&&db.deletedIds.length>20){
+     db.deletedIds=db.deletedIds.slice(-20);
+     safeSetLocalStorage(KEY,JSON.stringify(db));
+   }else{
+     showToast('Aviso: armazenamento local do navegador cheio. Exporta uma cópia em Dados.',{type:'error',duration:6000});
+   }
+ }
+ render();
+ if(!skipCloud)queueCloudSave();
+}
 
 const MORE_DRAWER_TABS=new Set(['recorrentes','calendario','orcamento','dados']);
 
@@ -1273,7 +1297,7 @@ function renderLearnedRules(){
  }
  container.innerHTML=rules.map((r,idx)=>`<div class="item row"><div><b>${esc(r.keyword)}</b><div class="small">${r.type==='saving'?'Classificação: <strong>Poupança transferida</strong>':r.type==='saving_withdraw'?'Classificação: <strong>Resgate de poupança</strong>':r.type==='income'?'Classificação: <strong>Rendimento</strong>':'Categoria associada: <strong>'+esc(r.category)+'</strong>'}</div></div><button type="button" class="danger" data-del-rule="${idx}" title="Eliminar regra">×</button></div>`).join('');
 }
-$('learnedRulesList').addEventListener('click',e=>{
+if($('learnedRulesList'))$('learnedRulesList').addEventListener('click',e=>{
  const btn=e.target.closest('[data-del-rule]');
  if(!btn)return;
  const idx=Number(btn.dataset.delRule);
@@ -1517,10 +1541,14 @@ function openTransactionDetailModal(id, startInEdit=false){
  if([...$('modalEditPerson').options].some(o=>o.value===t.person))$('modalEditPerson').value=t.person;
  $('modalEditCountsCycle').checked=t.countsForCycle!==false;
  const cards=db.creditCards||[];
- $('modalEditPaymentMethod').innerHTML='<option value="bank">Conta à ordem / Débito / Dinheiro</option>'+cards.map(c=>`<option value="cc:${esc(String(c.id))}">💳 Cartão: ${esc(c.name)}</option>`).join('');
- $('modalEditPaymentMethod').value=(t.type==='expense'&&t.creditCardId)?`cc:${t.creditCardId}`:'bank';
- $('modalEditCcPaymentCard').innerHTML='<option value="">Selecionar cartão…</option>'+cards.map(c=>`<option value="${esc(String(c.id))}">${esc(c.name)}</option>`).join('');
- $('modalEditCcPaymentCard').value=(t.type==='cc_payment'&&t.creditCardId)?String(t.creditCardId):'';
+ if($('modalEditPaymentMethod')){
+   $('modalEditPaymentMethod').innerHTML='<option value="bank">Conta à ordem / Débito / Dinheiro</option>'+cards.map(c=>`<option value="cc:${esc(String(c.id))}">💳 Cartão: ${esc(c.name)}</option>`).join('');
+   $('modalEditPaymentMethod').value=(t.type==='expense'&&t.creditCardId)?`cc:${t.creditCardId}`:'bank';
+ }
+ if($('modalEditCcPaymentCard')){
+   $('modalEditCcPaymentCard').innerHTML='<option value="">Selecionar cartão…</option>'+cards.map(c=>`<option value="${esc(String(c.id))}">${esc(c.name)}</option>`).join('');
+   $('modalEditCcPaymentCard').value=(t.type==='cc_payment'&&t.creditCardId)?String(t.creditCardId):'';
+ }
 
  const goals=(db.savingsGoals||[]).filter(g=>g.status==='active'||g.id===t.goalId);
  $('modalEditGoal').innerHTML='<option value="">Sem objetivo</option>'+goals.map(g=>`<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('');
@@ -1536,8 +1564,8 @@ function openTransactionDetailModal(id, startInEdit=false){
 function syncModalEditVisibility(){
  const tp=$('modalEditType').value;
  $('modalEditCatWrap').hidden=tp!=='expense';
- $('modalEditPaymentMethodWrap').hidden=tp!=='expense';
- $('modalEditCcPaymentWrap').hidden=tp!=='cc_payment';
+ if($('modalEditPaymentMethodWrap'))$('modalEditPaymentMethodWrap').hidden=tp!=='expense';
+ if($('modalEditCcPaymentWrap'))$('modalEditCcPaymentWrap').hidden=tp!=='cc_payment';
  $('modalEditIncomeCycleWrap').hidden=tp!=='income';
  $('modalEditGoalWrap').hidden=tp!=='saving'&&tp!=='saving_withdraw';
 }
@@ -2344,19 +2372,19 @@ function renderGoals(){
 
 let userTouchedCategory=false;
 function resetTxForm(){
- $('txForm').reset();
- $('txEditId').value='';
- $('txFormTitle').textContent='Adicionar movimento';
- $('txEditBadge').hidden=true;
- $('txSaveBtn').textContent='Guardar movimento';
- $('txCancelEditBtn').hidden=true;
- $('date').value=iso(now);
- $('incomeCountsForCycle').checked=true;
- $('isInstallment').checked=false;
- $('installmentsOptions').hidden=true;
+ if($('txForm'))$('txForm').reset();
+ if($('txEditId'))$('txEditId').value='';
+ if($('txFormTitle'))$('txFormTitle').textContent='Adicionar movimento';
+ if($('txEditBadge'))$('txEditBadge').hidden=true;
+ if($('txSaveBtn'))$('txSaveBtn').textContent='Guardar movimento';
+ if($('txCancelEditBtn'))$('txCancelEditBtn').hidden=true;
+ if($('date'))$('date').value=iso(now);
+ if($('incomeCountsForCycle'))$('incomeCountsForCycle').checked=true;
+ if($('isInstallment'))$('isInstallment').checked=false;
+ if($('installmentsOptions'))$('installmentsOptions').hidden=true;
  if($('paymentMethod'))$('paymentMethod').value='bank';
  if($('expenseCcHint'))$('expenseCcHint').hidden=true;
- $('amountLabel').textContent='Valor (€)';
+ if($('amountLabel'))$('amountLabel').textContent='Valor (€)';
  userTouchedCategory=false;
  if($('categoryAutoHint'))$('categoryAutoHint').textContent='';
  if($('calcPreviewBadge'))$('calcPreviewBadge').hidden=true;
@@ -2365,11 +2393,11 @@ function resetTxForm(){
 }
 
 // Sugestão automática de categoria ao escrever descrição no formulário manual
-$('category').addEventListener('change',()=>{
+if($('category'))$('category').addEventListener('change',()=>{
  userTouchedCategory=true;
  if($('categoryAutoHint'))$('categoryAutoHint').textContent='';
 });
-$('desc').addEventListener('input',()=>{
+if($('desc'))$('desc').addEventListener('input',()=>{
  if(userTouchedCategory||$('type').value!=='expense')return;
  const txt=$('desc').value.trim();
  if(txt.length<3){
@@ -2385,37 +2413,41 @@ $('desc').addEventListener('input',()=>{
 });
 
 function updateInstallmentPreview(){
- const isInst=$('isInstallment').checked;
- $('installmentsOptions').hidden=!isInst;
- const mode=$('installmentAmountMode').value;
- $('amountLabel').textContent=isInst&&mode==='total'?'Valor total a dividir (€)':'Valor (€)';
- const parsedVal=evaluateAmountExpression($('amount').value);
+ const isInst=$('isInstallment')?.checked;
+ if($('installmentsOptions'))$('installmentsOptions').hidden=!isInst;
+ const mode=$('installmentAmountMode')?.value||'total';
+ if($('amountLabel'))$('amountLabel').textContent=isInst&&mode==='total'?'Valor total a dividir (€)':'Valor (€)';
+ const parsedVal=evaluateAmountExpression($('amount')?.value||'');
  const val=Number.isFinite(parsedVal)?parsedVal:0;
- const count=Math.max(2,Math.min(60,Math.round(Number($('installmentCount').value)||3)));
- if(isInst&&val>0){
-   const perMonth=mode==='total'?(val/count):val;
-   const total=mode==='total'?val:(val*count);
-   $('installmentSummary').textContent=`Serão criadas ${count} prestações mensais de aprox. ${eur(perMonth)} cada (total: ${eur(total)}).`;
- }else{
-   $('installmentSummary').textContent='A 1.ª prestação fica registada na data escolhida e as seguintes nos meses subsequentes (com arredondamento exato aos cêntimos).';
+ const count=Math.max(2,Math.min(60,Math.round(Number($('installmentCount')?.value)||3)));
+ if($('installmentSummary')){
+   if(isInst&&val>0){
+     const perMonth=mode==='total'?(val/count):val;
+     const total=mode==='total'?val:(val*count);
+     $('installmentSummary').textContent=`Serão criadas ${count} prestações mensais de aprox. ${eur(perMonth)} cada (total: ${eur(total)}).`;
+   }else{
+     $('installmentSummary').textContent='A 1.ª prestação fica registada na data escolhida e as seguintes nos meses subsequentes (com arredondamento exato aos cêntimos).';
+   }
  }
 }
 
-$('isInstallment').onchange=updateInstallmentPreview;
-$('installmentCount').oninput=updateInstallmentPreview;
-$('installmentAmountMode').onchange=updateInstallmentPreview;
-$('amount').oninput=()=>{
- updateAmountCalcPreview();
- if($('isInstallment').checked)updateInstallmentPreview();
-};
-$('amount').addEventListener('blur',()=>{
- const v=evaluateAmountExpression($('amount').value);
- if(Number.isFinite(v)&&v>0&&/[+\-*/×÷]/.test($('amount').value.trim().replace(/^[+-]/,''))){
-   $('amount').value=v.toFixed(2);
+if($('isInstallment'))$('isInstallment').onchange=updateInstallmentPreview;
+if($('installmentCount'))$('installmentCount').oninput=updateInstallmentPreview;
+if($('installmentAmountMode'))$('installmentAmountMode').onchange=updateInstallmentPreview;
+if($('amount')){
+ $('amount').oninput=()=>{
    updateAmountCalcPreview();
-   if($('isInstallment').checked)updateInstallmentPreview();
- }
-});
+   if($('isInstallment')?.checked)updateInstallmentPreview();
+ };
+ $('amount').addEventListener('blur',()=>{
+   const v=evaluateAmountExpression($('amount').value);
+   if(Number.isFinite(v)&&v>0&&/[+\-*/×÷]/.test($('amount').value.trim().replace(/^[+-]/,''))){
+     $('amount').value=v.toFixed(2);
+     updateAmountCalcPreview();
+     if($('isInstallment')?.checked)updateInstallmentPreview();
+   }
+ });
+}
 document.querySelectorAll('[data-calc-op]').forEach(btn=>{
  btn.onclick=()=>{
    const inp=$('amount');
@@ -2430,7 +2462,7 @@ document.querySelectorAll('[data-calc-op]').forEach(btn=>{
 });
 if($('calcEvalBtn'))$('calcEvalBtn').onclick=()=>{
  const v=commitAmountCalculation(true);
- if(Number.isFinite(v)&&v>0&&$('isInstallment').checked)updateInstallmentPreview();
+ if(Number.isFinite(v)&&v>0&&$('isInstallment')?.checked)updateInstallmentPreview();
 };
 if($('quickTemplatesList'))$('quickTemplatesList').addEventListener('click',e=>{
  const btn=e.target.closest('[data-tpl-idx]');
@@ -2454,12 +2486,12 @@ if($('quickTemplatesList'))$('quickTemplatesList').addEventListener('click',e=>{
  $('amount').focus();
  if(tpl.lastAmount>0)$('amount').select();
 });
-$('txCancelEditBtn').onclick=resetTxForm;
-$('quickAddFab').onclick=()=>{
+if($('txCancelEditBtn'))$('txCancelEditBtn').onclick=resetTxForm;
+if($('quickAddFab'))$('quickAddFab').onclick=()=>{
  switchTab('movimentos');
  resetTxForm();
  $('txFormCard').scrollIntoView({behavior:'smooth',block:'start'});
- setTimeout(()=>$('desc').focus(),220);
+ setTimeout(()=>$('desc')?.focus(),220);
 };
 
 
@@ -2561,7 +2593,7 @@ if($('creditCardList'))$('creditCardList').addEventListener('click',e=>{
    resetTxForm();
    $('type').value='cc_payment';
    updateTxFormVisibility();
-   $('ccPaymentCard').value=String(card.id);
+   if($('ccPaymentCard'))$('ccPaymentCard').value=String(card.id);
    $('desc').value=`Pagamento ${card.name}`;
    if(debt>0)$('amount').value=debt.toFixed(2);
    $('txFormCard').scrollIntoView({behavior:'smooth',block:'start'});
@@ -2577,7 +2609,7 @@ if($('creditCardList'))$('creditCardList').addEventListener('click',e=>{
    $('ccName').value=card.name;
    $('ccLimit').value=card.limit||'';
    $('ccInitialDebt').value=Number(card.initialDebt)||0;
-   if([...$('ccOwner').options].some(o=>o.value===card.owner))$('ccOwner').value=card.owner;
+   if($('ccOwner')&&[...$('ccOwner').options].some(o=>o.value===card.owner))$('ccOwner').value=card.owner;
    $('ccFormTitle').textContent='Editar cartão de crédito';
    $('ccSaveBtn').textContent='Guardar alterações';
    $('ccCancelBtn').hidden=false;
@@ -2748,23 +2780,23 @@ function updateSavingGoalOptions(){
 }
 
 function updateTxFormVisibility(){
- const t=$('type').value;
- const isEditing=!!$('txEditId').value;
- $('categoryField').hidden=t!=='expense';
- $('installmentsField').hidden=t!=='expense'||isEditing;
- $('expensePaymentMethodField').hidden=t!=='expense';
- $('ccPaymentField').hidden=t!=='cc_payment';
- $('incomeCycleField').hidden=t!=='income';
+ const t=$('type')?.value||'expense';
+ const isEditing=!!$('txEditId')?.value;
+ if($('categoryField'))$('categoryField').hidden=t!=='expense';
+ if($('installmentsField'))$('installmentsField').hidden=t!=='expense'||isEditing;
+ if($('expensePaymentMethodField'))$('expensePaymentMethodField').hidden=t!=='expense';
+ if($('ccPaymentField'))$('ccPaymentField').hidden=t!=='cc_payment';
+ if($('incomeCycleField'))$('incomeCycleField').hidden=t!=='income';
  updateCreditCardSelects();
  if(t==='expense'){
    const pm=$('paymentMethod')?.value||'bank';
    if($('expenseCcHint'))$('expenseCcHint').hidden=!pm.startsWith('cc:');
  }
  const isSav=t==='saving'||t==='saving_withdraw';
- $('savingGoalField').hidden=!isSav;
+ if($('savingGoalField'))$('savingGoalField').hidden=!isSav;
  if(isSav){
-   $('savingGoalLabel').textContent=t==='saving_withdraw'?'Objetivo de onde sai o valor':'Associar a objetivo (opcional)';
-   $('savingGoalHelp').textContent=t==='saving_withdraw'?'O valor resgatado é abatido ao progresso do objetivo selecionado e fica disponível no saldo do ciclo.':'Só os movimentos de poupança associados contam para o progresso do objetivo.';
+   if($('savingGoalLabel'))$('savingGoalLabel').textContent=t==='saving_withdraw'?'Objetivo de onde sai o valor':'Associar a objetivo (opcional)';
+   if($('savingGoalHelp'))$('savingGoalHelp').textContent=t==='saving_withdraw'?'O valor resgatado é abatido ao progresso do objetivo selecionado e fica disponível no saldo do ciclo.':'Só os movimentos de poupança associados contam para o progresso do objetivo.';
    updateSavingGoalOptions();
  }
 }
@@ -2774,7 +2806,7 @@ if($('paymentMethod'))$('paymentMethod').onchange=()=>{
 };
 if($('ccPaymentCard'))$('ccPaymentCard').onchange=()=>{
  const cc=getCreditCardById($('ccPaymentCard').value);
- if(cc&&!$('desc').value.trim())$('desc').value=`Pagamento ${cc.name}`;
+ if(cc&&$('desc')&&!$('desc').value.trim())$('desc').value=`Pagamento ${cc.name}`;
 };
 
 // IMPORTADOR DE EXTRATOS BANCÁRIOS (PDF & CSV) COM APRENDIZAGEM E DETEÇÃO DE SUBSCRIÇÕES (FASE 3)
@@ -2823,8 +2855,6 @@ function detectSubscriptionCandidates(rows){
  groups.forEach((items,key)=>{
    const lowDesc=items[0].description.toLocaleLowerCase('pt-PT');
    const matchesBrand=subKeywords.some(k=>lowDesc.includes(k));
-   // Padrão 1: Aparece 2+ vezes no extrato com valores idênticos ou muito próximos
-   // Padrão 2: Aparece 1+ vez e corresponde a marca/serviço conhecido de subscrição ou débito direto mensal
    const isDirectDebit=/\b(dd|debito direto|débito direto|subscricao|subscrição|mensalidade)\b/i.test(items[0].description);
    if(items.length>=2||matchesBrand||isDirectDebit){
      const sorted=[...items].sort((a,b)=>b.date.localeCompare(a.date));
@@ -3483,9 +3513,11 @@ function openImportDetailModal(idx){
  if([...$('impEditCat').options].some(o=>o.value===r.category))$('impEditCat').value=r.category;
  $('impEditCatWrap').hidden=r.type!=='expense';
  const showImpCc=(r.type==='expense'||r.type==='cc_payment')&&(db.creditCards||[]).length>0;
- $('impEditCcWrap').hidden=!showImpCc;
- $('impEditCcCard').innerHTML=(r.type==='cc_payment'?'<option value="">Selecionar cartão…</option>':'<option value="">Nenhum (conta à ordem)</option>')+(db.creditCards||[]).map(c=>`<option value="${esc(String(c.id))}">💳 ${esc(c.name)}</option>`).join('');
- $('impEditCcCard').value=r.creditCardId||'';
+ if($('impEditCcWrap'))$('impEditCcWrap').hidden=!showImpCc;
+ if($('impEditCcCard')){
+   $('impEditCcCard').innerHTML=(r.type==='cc_payment'?'<option value="">Selecionar cartão…</option>':'<option value="">Nenhum (conta à ordem)</option>')+(db.creditCards||[]).map(c=>`<option value="${esc(String(c.id))}">💳 ${esc(c.name)}</option>`).join('');
+   $('impEditCcCard').value=r.creditCardId||'';
+ }
  const isSavImp=r.type==='saving'||r.type==='saving_withdraw';
  $('impEditGoalWrap').hidden=!isSavImp;
  const activeGoals=(db.savingsGoals||[]).filter(g=>g.status==='active');
@@ -3542,7 +3574,7 @@ function saveCurrentImportModal(){
 $('impEditType').onchange=()=>{
  const tp=$('impEditType').value;
  $('impEditCatWrap').hidden=tp!=='expense';
- $('impEditCcWrap').hidden=(tp!=='expense'&&tp!=='cc_payment')||!(db.creditCards||[]).length;
+ if($('impEditCcWrap'))$('impEditCcWrap').hidden=(tp!=='expense'&&tp!=='cc_payment')||!(db.creditCards||[]).length;
  $('impEditGoalWrap').hidden=tp!=='saving'&&tp!=='saving_withdraw';
  updateLearnRuleCheckbox();
 };
@@ -3654,7 +3686,7 @@ function drawChart(){
  const inkCol=styles.getPropertyValue('--ink').trim()||'#192838';
 
  const padLeft=48,padRight=24,padTop=22,padBottom=28;
- const plotW=w-padLeft-padRight,plotH=h-padTop-padB;
+ const plotW=w-padLeft-padRight,plotH=h-padTop-padBottom;
  const max=Math.max(100,...series.map(x=>x.value))*1.15;
 
  ctx.strokeStyle=lineCol;
@@ -3985,91 +4017,110 @@ $('printDadosGoalsBtn').onclick=()=>printReport('goals');
 
 $('txForm').onsubmit=e=>{
  e.preventDefault();
- let a=evaluateAmountExpression($('amount').value);if(!Number.isFinite(a)||a<=0){alert('Introduz um valor ou expressão válida superior a zero.');$('amount').focus();return;}
- let t=$('type').value;
- const editId=$('txEditId').value;
- let creditCardId=null;
- if(t==='expense'){
-   const pm=$('paymentMethod')?.value||'bank';
-   if(pm.startsWith('cc:'))creditCardId=pm.slice(3);
- }else if(t==='cc_payment'){
-   creditCardId=$('ccPaymentCard')?.value||'';
-   if(!creditCardId){
-     alert('Seleciona o cartão de crédito que estás a pagar (podes criar cartões no separador Orçamento).');
-     $('ccPaymentCard').focus();
+ try{
+   let a=evaluateAmountExpression($('amount')?.value||'');
+   if(!Number.isFinite(a)||a<=0){
+     alert('Introduz um valor ou expressão válida superior a zero.');
+     if($('amount'))$('amount').focus();
      return;
    }
- }
- const catLabel=t==='expense'?$('category').value:t==='cc_payment'?'Pagamento de cartão':t==='saving'?'Poupança':t==='saving_withdraw'?'Resgate de poupança':'Rendimento';
- const desc=$('desc').value.trim();
- const baseDate=$('date').value;
- const person=$('person').value;
- const nowTs=Date.now();
-
- if(editId){
-   const existing=db.transactions.find(x=>String(x.id)===String(editId));
-   if(existing){
-     existing.date=baseDate;
-     existing.type=t;
-     existing.description=desc;
-     existing.amount=Number(a.toFixed(2));
-     existing.category=catLabel;
-     existing.person=person;
-     existing.updatedAt=nowTs;
-     if(creditCardId)existing.creditCardId=creditCardId;
-     else delete existing.creditCardId;
-     if(t==='income')existing.countsForCycle=$('incomeCountsForCycle').checked;
-     else delete existing.countsForCycle;
-     if(t==='saving'||t==='saving_withdraw'){
-       if($('savingGoal').value)existing.goalId=$('savingGoal').value;
-       else delete existing.goalId;
-     }else{
-       delete existing.goalId;
+   let t=$('type')?.value||'expense';
+   const editId=$('txEditId')?.value||'';
+   let creditCardId=null;
+   if(t==='expense'){
+     const pm=$('paymentMethod')?.value||'bank';
+     if(pm.startsWith('cc:'))creditCardId=pm.slice(3);
+   }else if(t==='cc_payment'){
+     creditCardId=$('ccPaymentCard')?.value||'';
+     if(!creditCardId){
+       alert('Seleciona o cartão de crédito que estás a pagar (podes criar cartões no separador Orçamento).');
+       if($('ccPaymentCard'))$('ccPaymentCard').focus();
+       return;
      }
    }
-   resetTxForm();
-   persist();
-   haptic([14,30,18]);
-   return;
- }
-
- if(t==='expense'&&$('isInstallment').checked){
-   const count=Math.max(2,Math.min(60,Math.round(Number($('installmentCount').value)||3)));
-   const mode=$('installmentAmountMode').value;
-   const totalCents=mode==='total'?Math.round(a*100):Math.round(a*100*count);
-   const baseCents=Math.floor(totalCents/count);
-   const remainder=totalCents-(baseCents*count);
-   const groupId='inst-'+nowTs.toString(36);
-   for(let i=0;i<count;i++){
-     const cents=baseCents+(i<remainder?1:0);
-     const instTx={
-       id:groupId+'-'+(i+1),
-       date:addMonthsClamp(baseDate,i),
-       type:'expense',
-       description:`${desc} (${i+1}/${count})`,
-       amount:cents/100,
-       category:catLabel,
-       person,
-       installmentGroupId:groupId,
-       updatedAt:nowTs
-     };
-     if(creditCardId)instTx.creditCardId=creditCardId;
-     db.transactions.push(instTx);
+   const fallbackCat=db.settings.categories[0]?.name||'Outros / imprevistos';
+   const catLabel=t==='expense'?($('category')?.value||fallbackCat):t==='cc_payment'?'Pagamento de cartão':t==='saving'?'Poupança':t==='saving_withdraw'?'Resgate de poupança':'Rendimento';
+   const desc=($('desc')?.value||'').trim();
+   if(!desc){
+     alert('Introduz uma descrição para o movimento.');
+     if($('desc'))$('desc').focus();
+     return;
    }
+   const baseDate=validDate($('date')?.value)?$('date').value:iso(now);
+   const person=$('person')?.value||(db.settings.people[0]||'Conta conjunta');
+   const nowTs=Date.now();
+
+   if(editId){
+     const existing=db.transactions.find(x=>String(x.id)===String(editId));
+     if(existing){
+       existing.date=baseDate;
+       existing.type=t;
+       existing.description=desc;
+       existing.amount=Number(a.toFixed(2));
+       existing.category=catLabel;
+       existing.person=person;
+       existing.updatedAt=nowTs;
+       if(creditCardId)existing.creditCardId=creditCardId;
+       else delete existing.creditCardId;
+       if(t==='income')existing.countsForCycle=!!$('incomeCountsForCycle')?.checked;
+       else delete existing.countsForCycle;
+       if(t==='saving'||t==='saving_withdraw'){
+         if($('savingGoal')?.value)existing.goalId=$('savingGoal').value;
+         else delete existing.goalId;
+       }else{
+         delete existing.goalId;
+       }
+     }
+     resetTxForm();
+     persist();
+     showToast('Movimento atualizado.',{type:'success'});
+     haptic([14,30,18]);
+     return;
+   }
+
+   if(t==='expense'&&$('isInstallment')?.checked){
+     const count=Math.max(2,Math.min(60,Math.round(Number($('installmentCount')?.value)||3)));
+     const mode=$('installmentAmountMode')?.value||'total';
+     const totalCents=mode==='total'?Math.round(a*100):Math.round(a*100*count);
+     const baseCents=Math.floor(totalCents/count);
+     const remainder=totalCents-(baseCents*count);
+     const groupId='inst-'+nowTs.toString(36);
+     for(let i=0;i<count;i++){
+       const cents=baseCents+(i<remainder?1:0);
+       const instTx={
+         id:groupId+'-'+(i+1),
+         date:addMonthsClamp(baseDate,i),
+         type:'expense',
+         description:`${desc} (${i+1}/${count})`,
+         amount:cents/100,
+         category:catLabel,
+         person,
+         installmentGroupId:groupId,
+         updatedAt:nowTs
+       };
+       if(creditCardId)instTx.creditCardId=creditCardId;
+       db.transactions.push(instTx);
+     }
+     resetTxForm();
+     persist();
+     showToast(`${count} prestações registadas com sucesso.`,{type:'success'});
+     haptic([14,30,18]);
+     return;
+   }
+
+   let entry={id:nowTs+'-'+Math.random().toString(36).slice(2,6),date:baseDate,type:t,description:desc,amount:Number(a.toFixed(2)),category:catLabel,person,updatedAt:nowTs};
+   if(creditCardId)entry.creditCardId=creditCardId;
+   if(t==='income')entry.countsForCycle=$('incomeCountsForCycle')?$('incomeCountsForCycle').checked:true;
+   if((t==='saving'||t==='saving_withdraw')&&$('savingGoal')?.value)entry.goalId=$('savingGoal').value;
+   db.transactions.push(entry);
    resetTxForm();
    persist();
+   showToast('Movimento guardado.',{type:'success'});
    haptic([14,30,18]);
-   return;
+ }catch(err){
+   console.error('Erro ao guardar movimento:', err);
+   alert('Ocorreu um erro ao guardar o movimento: '+(err?.message||'erro inesperado'));
  }
-
- let entry={id:nowTs+'-'+Math.random().toString(36).slice(2,6),date:baseDate,type:t,description:desc,amount:Number(a.toFixed(2)),category:catLabel,person,updatedAt:nowTs};
- if(creditCardId)entry.creditCardId=creditCardId;
- if(t==='income')entry.countsForCycle=$('incomeCountsForCycle').checked;
- if((t==='saving'||t==='saving_withdraw')&&$('savingGoal').value)entry.goalId=$('savingGoal').value;
- db.transactions.push(entry);
- resetTxForm();
- persist();
- haptic([14,30,18]);
 };
 
 document.addEventListener('click',e=>{
@@ -4100,7 +4151,7 @@ function generateDueOccurrences(){
    db.transactions.push({id:occId,date,type:'expense',description:r.description,amount:Number(r.amount),category:r.category,person:r.person,status:'pending',recurrenceId:r.id,occurrenceKey:key,updatedAt:Date.now()});changed=true;
   }
  });
- if(changed){localStorage.setItem(KEY,JSON.stringify(db));queueCloudSave()}
+ if(changed){lastLocalMutationTs=Date.now();safeSetLocalStorage(KEY,JSON.stringify(db));queueCloudSave()}
  return changed;
 }
 function renderRecurrences(){
@@ -4436,966 +4487,629 @@ $('goalCancel').onclick=resetGoalForm;
 $('goalList').addEventListener('click',e=>{
  const edit=e.target.closest('[data-goal-edit]'),toggle=e.target.closest('[data-goal-toggle]'),complete=e.target.closest('[data-goal-complete]'),assign=e.target.closest('[data-goal-assign]'),remove=e.target.closest('[data-goal-remove-tx]');
  if(edit){const g=db.savingsGoals.find(x=>x.id===edit.dataset.goalEdit);if(g)editGoal(g);return;}
- if(toggle){const g=db.savingsGoals.find(x=>x.id===toggle.dataset.goalToggle);if(g){g.status=g.status==='paused'?'active':'paused';g.updatedAt=Date.now();persist();}return;}
+ if(toggle){const g=db.savingsGoals.find(x=>x.id===toggle.dataset.goalToggle);if(g&&g.status!=='completed'){g.status=g.status==='paused'?'active':'paused';g.updatedAt=Date.now();persist();}return;}
  if(complete){const g=db.savingsGoals.find(x=>x.id===complete.dataset.goalComplete);if(g){g.status=g.status==='completed'?'active':'completed';g.updatedAt=Date.now();persist();}return;}
  if(assign){
-   const g=db.savingsGoals.find(x=>x.id===assign.dataset.goalAssign);
-   const select=$('goalList').querySelector(`[data-goal-assign-select="${g?.id||''}"]`);
-   const tx=db.transactions.find(t=>String(t.id)===String(select?.value));
-   if(!g||!tx||!isSavingTx(tx))return;
-   const old=db.savingsGoals.find(x=>x.id===tx.goalId)||db.savingsGoals.find(x=>(x.legacyTransactionIds||[]).map(String).includes(String(tx.id))&&!tx.goalId);
-   if(old&&old.id!==g.id&&!confirm('Este movimento será retirado do objetivo «'+old.name+'» e atribuído a «'+g.name+'». Continuar?'))return;
-   if(old&&old.id!==g.id&&!tx.goalId)old.legacyTransactionIds=(old.legacyTransactionIds||[]).filter(id=>String(id)!==String(tx.id));
-   tx.goalId=g.id;tx.updatedAt=Date.now();persist();return;
+  const g=db.savingsGoals.find(x=>x.id===assign.dataset.goalAssign),sel=document.querySelector(`[data-goal-assign-select="${CSS.escape(assign.dataset.goalAssign)}"]`),txId=sel?.value;
+  if(!g||!txId){alert('Seleciona primeiro um movimento de poupança.');return;}
+  const t=db.transactions.find(x=>String(x.id)===String(txId));
+  if(!t||!isSavingTx(t)){alert('Movimento inválido.');return;}
+  db.savingsGoals.forEach(x=>{x.legacyTransactionIds=(x.legacyTransactionIds||[]).filter(id=>String(id)!==String(txId));});
+  t.goalId=g.id;t.updatedAt=Date.now();persist();return;
  }
  if(remove){
-   const g=db.savingsGoals.find(x=>x.id===remove.dataset.goalRemoveFrom),tx=db.transactions.find(t=>String(t.id)===remove.dataset.goalRemoveTx);
-   if(!g||!tx)return;
-   if(!confirm('Retirar este movimento do objetivo? O movimento será preservado no histórico.'))return;
-   if(tx.goalId===g.id)delete tx.goalId;
-   tx.updatedAt=Date.now();
-   g.legacyTransactionIds=(g.legacyTransactionIds||[]).filter(id=>String(id)!==String(tx.id));
-   persist();
+  const txId=String(remove.dataset.goalRemoveTx),goalId=remove.dataset.goalRemoveFrom,t=db.transactions.find(x=>String(x.id)===txId),g=db.savingsGoals.find(x=>x.id===goalId);
+  if(t&&t.goalId===goalId){delete t.goalId;t.updatedAt=Date.now();}
+  if(g){g.legacyTransactionIds=(g.legacyTransactionIds||[]).filter(id=>String(id)!==txId);g.updatedAt=Date.now();}
+  persist();
  }
 });
+$('saveCycleGrouping').onclick=()=>{const v=Math.max(0,Math.min(20,Math.round(Number($('cycleGroupingDays').value)||0)));db.settings.cycleGroupingDays=v;$('cycleGroupingDays').value=v;selectedCycleKey=null;persist();showToast('Janela de agrupamento de ciclos guardada.',{type:'success'});};
 
-$('saveCycleGrouping').onclick=()=>{const n=Number($('cycleGroupingDays').value);if(!Number.isInteger(n)||n<0||n>20){alert('Indica um número inteiro entre 0 e 20 dias.');return;}db.settings.cycleGroupingDays=n;selectedCycleKey=null;persist();showToast('Definição dos ciclos guardada.',{type:'success'});};
-function shift(n){let d=new Date(($('calendarMonth').value||cur)+'-02T12:00:00');d.setMonth(d.getMonth()+n);$('calendarMonth').value=iso(d).slice(0,7);selected=iso(d).slice(0,7)+'-01';drawCalendar()}
-$('prev').onclick=()=>shift(-1);$('next').onclick=()=>shift(1);
+// Exportar / Importar Backup Completo e JSON Simples
+$('exportBtn').onclick=async()=>{const blob=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='orcamento-familiar-'+iso(now)+'.json';a.click();};
+$('exportSimpleJsonBtn').onclick=async()=>{
+ const simpleData={
+   exportedAt:new Date().toISOString(),
+   app:'DuoFin '+APP_VERSION,
+   settings:{
+     income:db.settings.income,
+     people:db.settings.people,
+     cycleGroupingDays:db.settings.cycleGroupingDays,
+     categories:db.settings.categories
+   },
+   savingsGoals:db.savingsGoals,
+   recurringExpenses:db.recurringExpenses,
+   transactions:db.transactions
+ };
+ const blob=new Blob([JSON.stringify(simpleData,null,2)],{type:'application/json'});
+ const a=document.createElement('a');
+ a.href=URL.createObjectURL(blob);
+ a.download='duofin-dados-simples-'+iso(now)+'.json';
+ a.click();
+};
+$('importFile').onchange=async e=>{
+  let f=e.target.files[0];if(!f)return;
+  try{
+    let x=JSON.parse(await f.text());
+    if(!x.settings||!Array.isArray(x.transactions))throw 0;
+    const n=normalizeDb(x);
+    db=n.db;
+    generateDueOccurrences();
+    persist();
+    alert('Backup importado com sucesso.');
+  }catch{
+    alert('Ficheiro inválido.');
+  }
+  e.target.value='';
+};
+$('resetBtn').onclick=()=>{if(confirm('Apagar TODOS os dados da aplicação?')){db=fresh();persist()}};
+
+// Sincronização Cloud (Supabase REST API - sem SDK externo)
+const CLOUD_CFG_KEY='orcamento-cloud-config-v1';
+const CLOUD_LAST_SYNC_KEY='orcamento-cloud-last-sync-v1';
+const cloud={timer:null,saving:false,pulling:false,dirty:false,lastSyncedAt:localStorage.getItem(CLOUD_LAST_SYNC_KEY)||''};
+
+function sanitizeSupabaseUrl(raw){
+ return String(raw||'').trim().replace(/\/+$/,'').replace(/\/rest\/v1$/i,'');
+}
+function loadCloudCfg(){
+ try{
+   const x=JSON.parse(localStorage.getItem(CLOUD_CFG_KEY)||'null');
+   if(x&&x.url&&x.anonKey&&x.spaceId)return {url:sanitizeSupabaseUrl(x.url),anonKey:String(x.anonKey).trim(),spaceId:String(x.spaceId).trim()};
+ }catch(e){}
+ return null;
+}
+function saveCloudCfg(cfg){
+ if(cfg)safeSetLocalStorage(CLOUD_CFG_KEY,JSON.stringify({url:sanitizeSupabaseUrl(cfg.url),anonKey:String(cfg.anonKey).trim(),spaceId:String(cfg.spaceId).trim()}));
+ else localStorage.removeItem(CLOUD_CFG_KEY);
+}
+function updateCloudHeaderBadge(state, label){
+ const b=$('cloudHeaderBadge');
+ if(!b)return;
+ b.className='cloud-pill'+(state?' '+state:'');
+ b.textContent=label;
+}
+function setCloudStatus(type, msg){
+ const el=$('cloudStatus');if(!el)return;
+ el.className='alert'+(type==='good'?' good':type==='red'?' red':'');
+ el.textContent=msg;
+}
+function updateCloudUI(){
+ const cfg=loadCloudCfg();
+ $('cloudConnectedBox').hidden=!cfg;
+ $('cloudSetupBox').hidden=!!cfg;
+ if(cfg){
+   $('cloudSpaceLabel').textContent=cfg.spaceId;
+   $('cloudLastSyncLabel').textContent=cloud.lastSyncedAt?'Última sincronização: '+new Date(cloud.lastSyncedAt).toLocaleString('pt-PT'):'Ligado — a sincronizar…';
+ }else{
+   updateCloudHeaderBadge('','Local (sem nuvem)');
+ }
+}
+
+function getSupabaseHeaders(cfg, extra={}){
+ return {
+   'apikey':cfg.anonKey,
+   'Authorization':'Bearer '+cfg.anonKey,
+   'Content-Type':'application/json',
+   'Accept':'application/json',
+   ...extra
+ };
+}
+
+async function supabaseFetch(url, options={}, timeoutMs=12000){
+ const ctrl=new AbortController();
+ const t=setTimeout(()=>ctrl.abort(),timeoutMs);
+ try{
+   const res=await fetch(url,{...options,signal:ctrl.signal});
+   return res;
+ }catch(err){
+   if(err&&err.name==='AbortError')throw new Error('Tempo limite excedido (12s) ao contactar o Supabase. Verifica a tua ligação à Internet.');
+   throw new Error('Falha de rede ao contactar o Supabase ('+(err?.message||'bloqueio ou sem ligação')+').');
+ }finally{
+   clearTimeout(t);
+ }
+}
+
+async function parseSupabaseError(res){
+ let detail='';
+ try{
+   const txt=await res.text();
+   try{
+     const j=JSON.parse(txt);
+     detail=j.message||j.error_description||j.hint||txt;
+   }catch{
+     detail=txt;
+   }
+ }catch{}
+ if(res.status===401||res.status===403)return `Chave Anon/Publishable inválida ou políticas RLS bloqueadas (HTTP ${res.status}${detail?': '+detail:''}).`;
+ if(res.status===404)return `Tabela "household_spaces" não encontrada no Supabase (HTTP 404). Executa o script SQL no SQL Editor.`;
+ return `Erro Supabase HTTP ${res.status}${detail?': '+detail:''}`;
+}
+
+async function testSupabaseConnection(cfg){
+ const baseUrl=sanitizeSupabaseUrl(cfg.url);
+ const endpoint=`${baseUrl}/rest/v1/household_spaces?select=space_id&limit=1`;
+ const res=await supabaseFetch(endpoint,{method:'GET',headers:getSupabaseHeaders(cfg)});
+ if(!res.ok)throw new Error(await parseSupabaseError(res));
+ return true;
+}
+
+function mergeListById(localArr, remoteArr, deletedSet){
+ const map=new Map();
+ (localArr||[]).forEach(item=>{
+   if(item&&item.id!==undefined&&!deletedSet.has(String(item.id))){
+     map.set(String(item.id),item);
+   }
+ });
+ (remoteArr||[]).forEach(item=>{
+   if(!item||item.id===undefined||deletedSet.has(String(item.id)))return;
+   const id=String(item.id);
+   const existing=map.get(id);
+   if(!existing){
+     map.set(id,item);
+   }else{
+     const localTs=Number(existing.updatedAt)||0;
+     const remoteTs=Number(item.updatedAt)||0;
+     if(remoteTs>localTs)map.set(id,item);
+   }
+ });
+ return [...map.values()];
+}
+
+function mergeDatabases(localDb, remoteDb){
+ const delMap=new Map();
+ [...(localDb.deletedIds||[]),...(remoteDb.deletedIds||[])].forEach(d=>{
+   if(d&&d.id){
+     const id=String(d.id);
+     const prev=delMap.get(id);
+     if(!prev||(Number(d.at)||0)>(Number(prev.at)||0))delMap.set(id,d);
+   }
+ });
+ const deletedIds=[...delMap.values()];
+ const deletedSet=new Set(deletedIds.map(d=>String(d.id)));
+
+ const transactions=mergeListById(localDb.transactions,remoteDb.transactions,deletedSet);
+ const recurringExpenses=mergeListById(localDb.recurringExpenses,remoteDb.recurringExpenses,deletedSet);
+ const savingsGoals=mergeListById(localDb.savingsGoals,remoteDb.savingsGoals,deletedSet);
+ const creditCards=mergeListById(localDb.creditCards,remoteDb.creditCards,deletedSet);
+
+ const rolloverMap=new Map();
+ [...(localDb.handledCycleRollovers||[]),...(remoteDb.handledCycleRollovers||[])].forEach(h=>{
+   if(h&&h.cycleKey){
+     const prev=rolloverMap.get(h.cycleKey);
+     if(!prev||(Number(h.at)||0)>(Number(prev.at)||0))rolloverMap.set(h.cycleKey,h);
+   }
+ });
+ const handledCycleRollovers=[...rolloverMap.values()];
+
+ const rulesMap=new Map();
+ [...(remoteDb.settings?.categoryRules||[]),...(localDb.settings?.categoryRules||[])].forEach(r=>{
+   if(r&&r.keyword)rulesMap.set(r.keyword.toUpperCase(),r);
+ });
+ const categoryRules=[...rulesMap.values()];
+
+ const remoteTs=Number(remoteDb.settings?.updatedAt)||0;
+ const localTs=Number(localDb.settings?.updatedAt)||0;
+ const baseSettings=remoteTs>localTs?{...localDb.settings,...remoteDb.settings}:{...remoteDb.settings,...localDb.settings};
+ baseSettings.categoryRules=categoryRules;
+
+ return normalizeDb({
+   settings:baseSettings,
+   transactions,
+   recurringExpenses,
+   savingsGoals,
+   creditCards,
+   deletedIds,
+   handledCycleRollovers
+ }).db;
+}
+
+async function fetchRemoteSpace(cfg){
+ const baseUrl=sanitizeSupabaseUrl(cfg.url);
+ const endpoint=`${baseUrl}/rest/v1/household_spaces?space_id=eq.${encodeURIComponent(cfg.spaceId)}&select=space_id,data,updated_at`;
+ const res=await supabaseFetch(endpoint,{method:'GET',headers:getSupabaseHeaders(cfg)});
+ if(!res.ok)throw new Error(await parseSupabaseError(res));
+ const rows=await res.json();
+ return Array.isArray(rows)&&rows.length?rows[0]:null;
+}
+
+async function upsertRemoteSpace(cfg, dataObj){
+ const baseUrl=sanitizeSupabaseUrl(cfg.url);
+ const endpoint=`${baseUrl}/rest/v1/household_spaces?on_conflict=space_id`;
+ const nowIso=new Date().toISOString();
+ const res=await supabaseFetch(endpoint,{
+   method:'POST',
+   headers:getSupabaseHeaders(cfg,{'Prefer':'resolution=merge-duplicates,return=minimal'}),
+   body:JSON.stringify([{space_id:cfg.spaceId,data:dataObj,updated_at:nowIso}])
+ });
+ if(!res.ok)throw new Error(await parseSupabaseError(res));
+ return nowIso;
+}
+
+function queueCloudSave(){
+ const cfg=loadCloudCfg();if(!cfg)return;
+ cloud.dirty=true;
+ if(!db.settings)db.settings={};
+ db.settings.updatedAt=Date.now();
+ updateCloudHeaderBadge('syncing','A guardar…');
+ clearTimeout(cloud.timer);
+ cloud.timer=setTimeout(()=>pushCloud(true),1200);
+}
+
+async function pushCloud(silent=false){
+ const cfg=loadCloudCfg();if(!cfg||cloud.saving)return;
+ cloud.saving=true;
+ updateCloudHeaderBadge('syncing','A guardar…');
+ try{
+   const remoteRow=await fetchRemoteSpace(cfg);
+   if(remoteRow&&remoteRow.data&&remoteRow.data.settings){
+     db=mergeDatabases(db,remoteRow.data);
+     safeSetLocalStorage(KEY,JSON.stringify(db));
+     render();
+   }
+   const nowIso=await upsertRemoteSpace(cfg,db);
+   cloud.dirty=false;
+   cloud.lastSyncedAt=nowIso;
+   safeSetLocalStorage(CLOUD_LAST_SYNC_KEY,nowIso);
+   updateCloudHeaderBadge('online','Sincronizado');
+   updateCloudUI();
+   if(!silent)setCloudStatus('good','Dados enviados e sincronizados com sucesso com o Supabase!');
+ }catch(e){
+   updateCloudHeaderBadge('error','Erro de sync');
+   setCloudStatus('red','Erro ao guardar na nuvem: '+(e?.message||'falha de ligação.'));
+ }finally{
+   cloud.saving=false;
+ }
+}
+
+async function pullCloud(manual=false){
+ const cfg=loadCloudCfg();if(!cfg||cloud.pulling||cloud.saving)return;
+ if(!manual&&(cloud.dirty||(Date.now()-lastLocalMutationTs<5000)))return;
+ cloud.pulling=true;
+ if(manual)updateCloudHeaderBadge('syncing','A sincronizar…');
+ try{
+   const remoteRow=await fetchRemoteSpace(cfg);
+   if(remoteRow&&remoteRow.data&&remoteRow.data.settings){
+     const merged=mergeDatabases(db,remoteRow.data);
+     const beforeStr=JSON.stringify(db);
+     const afterStr=JSON.stringify(merged);
+     if(beforeStr!==afterStr){
+       db=merged;
+       generateDueOccurrences();
+       safeSetLocalStorage(KEY,JSON.stringify(db));
+       render();
+     }
+     if(JSON.stringify(remoteRow.data)!==JSON.stringify(db)){
+       await upsertRemoteSpace(cfg,db);
+     }
+   }else{
+     await upsertRemoteSpace(cfg,db);
+   }
+   const nowIso=new Date().toISOString();
+   cloud.lastSyncedAt=nowIso;
+   safeSetLocalStorage(CLOUD_LAST_SYNC_KEY,nowIso);
+   updateCloudHeaderBadge('online','Sincronizado');
+   updateCloudUI();
+   if(manual)setCloudStatus('good','Sincronização concluída! Os dados de ambos os dispositivos estão atualizados.');
+ }catch(e){
+   updateCloudHeaderBadge('error','Erro de sync');
+   if(manual)setCloudStatus('red','Erro ao sincronizar: '+(e?.message||'verifica as definições do Supabase.'));
+ }finally{
+   cloud.pulling=false;
+ }
+}
+
+$('cloudConnectForm').onsubmit=async e=>{
+ e.preventDefault();
+ const url=sanitizeSupabaseUrl($('cloudUrl').value);
+ const anonKey=$('cloudAnonKey').value.trim();
+ const spaceId=$('cloudSpaceId').value.trim();
+ if(!url||!anonKey||!spaceId){alert('Preenche o URL do projeto, a chave Anon/Publishable e o Código da Casa.');return;}
+ if(!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(url)){
+   setCloudStatus('red','O URL do projeto deve ter o formato: https://xxxx.supabase.co');
+   return;
+ }
+ const cfg={url,anonKey,spaceId};
+ $('cloudConnectBtn').disabled=true;
+ $('cloudConnectBtn').textContent='A testar ligação e sincronizar…';
+ setCloudStatus('','A contactar o Supabase e a verificar a tabela household_spaces…');
+ try{
+   await testSupabaseConnection(cfg);
+   saveCloudCfg(cfg);
+   updateCloudUI();
+   await pullCloud(true);
+ }catch(err){
+   setCloudStatus('red',err.message||'Não foi possível ligar ao Supabase.');
+ }finally{
+   $('cloudConnectBtn').disabled=false;
+   $('cloudConnectBtn').textContent='Ligar e sincronizar agora';
+ }
+};
+
+$('cloudTestBtn').onclick=async()=>{
+ const cfg=loadCloudCfg();if(!cfg)return;
+ setCloudStatus('','A verificar ligação ao Supabase…');
+ try{
+   await testSupabaseConnection(cfg);
+   setCloudStatus('good','Ligação confirmada! As tabelas da DuoFin existem e respondem corretamente.');
+ }catch(err){
+   setCloudStatus('red',err.message);
+ }
+};
+
+$('cloudSyncNowBtn').onclick=()=>pullCloud(true);
+$('cloudHeaderBadge').onclick=()=>{
+ switchTab('dados');
+ const cfg=loadCloudCfg();if(cfg)pullCloud(true);
+};
+$('cloudDisconnectBtn').onclick=()=>{
+ if(confirm('Desligar a sincronização neste dispositivo? Os dados locais atuais serão mantidos.')){
+   saveCloudCfg(null);
+   updateCloudUI();
+   setCloudStatus('','Sincronização desligada neste dispositivo.');
+ }
+};
+$('copySqlBtn').onclick=async()=>{
+ const sql=$('sqlSnippet').textContent;
+ try{
+   await navigator.clipboard.writeText(sql);
+   $('copySqlBtn').textContent='Copiado ✓';
+   setTimeout(()=>{$('copySqlBtn').textContent='Copiar SQL';},2000);
+ }catch{
+   alert('Seleciona o texto da caixa SQL e copia manualmente.');
+ }
+};
 
 // ============================================================================
-// MODAL DE NOVIDADES DA VERSÃO (CHANGELOG v6.8.0)
+// PREFERÊNCIAS DE INTERFACE: TEMA (CLARO / ESCURO), TAMANHO DE TEXTO & PRIVACIDADE
 // ============================================================================
-function openChangelogModal(){
- const m=$('changelogModal');
- if(m)m.hidden=false;
-}
-function closeChangelogModal(){
- const m=$('changelogModal');
- if(m)m.hidden=true;
- localStorage.setItem(CHANGELOG_KEY,APP_VERSION);
-}
-if($('versionBadgeBtn'))$('versionBadgeBtn').onclick=openChangelogModal;
-if($('openChangelogBtn'))$('openChangelogBtn').onclick=openChangelogModal;
-if($('closeChangelogBtn'))$('closeChangelogBtn').onclick=closeChangelogModal;
-if($('confirmChangelogBtn'))$('confirmChangelogBtn').onclick=closeChangelogModal;
-if($('changelogModal'))$('changelogModal').addEventListener('click',e=>{
- if(e.target===$('changelogModal'))closeChangelogModal();
-});
+const THEME_KEY = 'duofin-theme-v1';
+const FONT_SCALE_KEY = 'duofin-font-scale-v1';
+const PRIVACY_KEY = 'duofin-privacy-v1';
+const SUMMARY_LEVEL_KEY = 'duofin-summary-level-v1';
+let summaryDetailLevel = localStorage.getItem(SUMMARY_LEVEL_KEY) || 'basic';
 
-// ============================================================================
-// CAMADA DE SEGURANÇA & PRIVACIDADE
-// Web Crypto API (AES-256-GCM + PBKDF2 + SHA-256), PIN Local, WebAuthn, E2EE
-// ============================================================================
-const SEC_KEY='duofin-security-v1';
-const secDefaults={pinHash:'',pinSalt:'',autoLockMin:5,bioCredId:'',privacyMask:false};
-let secCfg=(()=>{try{return {...secDefaults,...JSON.parse(localStorage.getItem(SEC_KEY)||'{}')}}catch(e){return {...secDefaults}}})();
-function saveSecCfg(){localStorage.setItem(SEC_KEY,JSON.stringify(secCfg));}
+function applySummaryLevel(level, persistChoice = true) {
+  summaryDetailLevel = level === 'detailed' ? 'detailed' : 'basic';
+  const resumoView = $('resumo');
+  if (resumoView) {
+    resumoView.classList.toggle('is-basic-mode', summaryDetailLevel === 'basic');
+    resumoView.classList.toggle('is-detailed-mode', summaryDetailLevel === 'detailed');
+  }
+  const bBtn = $('summaryLevelBasicBtn');
+  const dBtn = $('summaryLevelDetailedBtn');
+  if (bBtn) {
+    bBtn.classList.toggle('active', summaryDetailLevel === 'basic');
+    bBtn.setAttribute('aria-pressed', String(summaryDetailLevel === 'basic'));
+  }
+  if (dBtn) {
+    dBtn.classList.toggle('active', summaryDetailLevel === 'detailed');
+    dBtn.setAttribute('aria-pressed', String(summaryDetailLevel === 'detailed'));
+  }
+  if (persistChoice) safeSetLocalStorage(SUMMARY_LEVEL_KEY, summaryDetailLevel);
+  if (summaryDetailLevel === 'detailed') requestAnimationFrame(drawChart);
+}
 
-function bufToB64(buf){
-  const bytes=new Uint8Array(buf);
-  let bin='';
-  for(let i=0;i<bytes.length;i++)bin+=String.fromCharCode(bytes[i]);
-  return btoa(bin);
-}
-function b64ToBuf(b64){
-  const bin=atob(b64);
-  const bytes=new Uint8Array(bin.length);
-  for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
-  return bytes;
-}
-function randomBytes(len){
-  const arr=new Uint8Array(len);
-  crypto.getRandomValues(arr);
-  return arr;
-}
-async function hashPinWithSalt(pin,saltB64){
-  const enc=new TextEncoder();
-  const data=enc.encode(saltB64+':'+String(pin));
-  const digest=await crypto.subtle.digest('SHA-256',data);
-  return bufToB64(digest);
-}
-async function deriveAesKey(passphrase,saltBytes,iterations=150000){
-  const enc=new TextEncoder();
-  const baseKey=await crypto.subtle.importKey('raw',enc.encode(String(passphrase)),'PBKDF2',false,['deriveKey']);
-  return crypto.subtle.deriveKey(
-    {name:'PBKDF2',salt:saltBytes,iterations,hash:'SHA-256'},
-    baseKey,
-    {name:'AES-GCM',length:256},
-    false,
-    ['encrypt','decrypt']
-  );
-}
-async function encryptJsonAesGcm(obj,passphrase){
-  const salt=randomBytes(16);
-  const iv=randomBytes(12);
-  const key=await deriveAesKey(passphrase,salt);
-  const plaintext=new TextEncoder().encode(JSON.stringify(obj));
-  const ciphertext=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,plaintext);
-  return {
-    __duofin_encrypted__:true,
-    v:1,
-    alg:'AES-256-GCM',
-    kdf:'PBKDF2-SHA256',
-    iter:150000,
-    salt:bufToB64(salt),
-    iv:bufToB64(iv),
-    ct:bufToB64(ciphertext)
+if ($('summaryLevelBasicBtn')) {
+  $('summaryLevelBasicBtn').onclick = () => {
+    applySummaryLevel('basic');
+    render();
+    haptic(10);
   };
 }
-async function decryptJsonAesGcm(envelope,passphrase){
-  if(!envelope||envelope.__duofin_encrypted__!==true||!envelope.ct||!envelope.iv||!envelope.salt){
-    throw new Error('Formato encriptado inválido.');
-  }
-  const salt=b64ToBuf(envelope.salt);
-  const iv=b64ToBuf(envelope.iv);
-  const ct=b64ToBuf(envelope.ct);
-  const iter=Number(envelope.iter)||150000;
-  const key=await deriveAesKey(passphrase,salt,iter);
-  const plainBuf=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,ct);
-  return JSON.parse(new TextDecoder().decode(plainBuf));
+if ($('summaryLevelDetailedBtn')) {
+  $('summaryLevelDetailedBtn').onclick = () => {
+    applySummaryLevel('detailed');
+    render();
+    haptic(10);
+  };
+}
+if ($('seeAllCycleMovementsBtn')) {
+  $('seeAllCycleMovementsBtn').onclick = () => {
+    switchTab('movimentos');
+    if ($('movementCycle')) $('movementCycle').value = 'selected';
+    renderTransactions();
+  };
 }
 
-// Modo Privacidade (Ocultar valores monetários)
-function applyPrivacyMask(){
-  document.body.classList.toggle('privacy-masked',!!secCfg.privacyMask);
-  const btn=$('privacyToggleBtn');
-  if(btn){
-    btn.classList.toggle('is-active',!!secCfg.privacyMask);
-    btn.title=secCfg.privacyMask?'Mostrar valores monetários':'Ocultar valores monetários';
+function getEffectiveTheme() {
+  const saved = localStorage.getItem(THEME_KEY);
+  if (saved === 'dark' || saved === 'light') return saved;
+  return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function applyTheme(theme, persistChoice = true) {
+  const isDark = theme === 'dark';
+  document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+  if (persistChoice) safeSetLocalStorage(THEME_KEY, isDark ? 'dark' : 'light');
+
+  const metaTheme = $('metaThemeColor');
+  if (metaTheme) metaTheme.setAttribute('content', isDark ? '#0f1722' : '#173653');
+
+  const hBtn = $('themeToggleBtn');
+  if (hBtn) {
+    hBtn.textContent = isDark ? '☀️' : '🌙';
+    hBtn.title = isDark ? 'Mudar para modo claro' : 'Mudar para modo escuro';
+  }
+  const sBtn = $('settingsThemeBtn');
+  if (sBtn) sBtn.textContent = isDark ? '☀️ Modo claro' : '🌙 Modo escuro';
+
+  if (typeof drawChart === 'function' && $('resumo')?.classList.contains('active')) drawChart();
+  if (typeof drawAnalyticsChart === 'function' && $('graficos')?.classList.contains('active')) drawAnalyticsChart();
+}
+
+function applyPrivacyMode(masked, persistChoice = true) {
+  const isMasked = !!masked;
+  document.body.classList.toggle('privacy-masked', isMasked);
+  if (persistChoice) safeSetLocalStorage(PRIVACY_KEY, isMasked ? '1' : '0');
+
+  const pBtn = $('privacyToggleBtn');
+  if (pBtn) {
+    pBtn.textContent = isMasked ? '🙈' : '👁️';
+    pBtn.title = isMasked ? 'Mostrar valores monetários' : 'Ocultar valores monetários';
+    pBtn.setAttribute('aria-pressed', String(isMasked));
+  }
+  const sBtn = $('settingsPrivacyBtn');
+  if (sBtn) {
+    sBtn.textContent = isMasked ? '👁️ Mostrar valores' : '🙈 Ocultar valores';
   }
   hideChartTooltip('chartTooltip');
   hideChartTooltip('analyticsTooltip');
 }
-function togglePrivacyMask(){
-  secCfg.privacyMask=!secCfg.privacyMask;
-  saveSecCfg();
-  applyPrivacyMask();
-  showToast(secCfg.privacyMask?'Modo privacidade ativado (valores ocultos).':'Valores monetários visíveis.');
-}
-if($('privacyToggleBtn'))$('privacyToggleBtn').onclick=togglePrivacyMask;
-if($('togglePrivacyCardBtn'))$('togglePrivacyCardBtn').onclick=togglePrivacyMask;
-applyPrivacyMask();
 
-// Bloqueio Local por PIN e Biometria (WebAuthn)
-let appLocked=false;
-let lastActivityTs=Date.now();
-function hasLocalPin(){return !!(secCfg.pinHash&&secCfg.pinSalt);}
-
-function updatePinDots(val){
-  const dots=$('pinDotsDisplay')?.querySelectorAll('span')||[];
-  dots.forEach((s,i)=>s.classList.toggle('filled',i<val.length));
-}
-
-function lockApp(){
-  if(!hasLocalPin())return;
-  appLocked=true;
-  const ov=$('appLockOverlay');
-  if(ov)ov.hidden=false;
-  if($('appLockPinInput')){$('appLockPinInput').value='';$('appLockPinInput').focus();}
-  if($('appLockError'))$('appLockError').textContent='';
-  updatePinDots('');
-  if($('appLockBioBtn'))$('appLockBioBtn').hidden=!secCfg.bioCredId;
-}
-
-function unlockAppSuccess(){
-  appLocked=false;
-  lastActivityTs=Date.now();
-  const ov=$('appLockOverlay');
-  if(ov)ov.hidden=true;
-  if($('appLockPinInput'))$('appLockPinInput').value='';
-  if($('appLockError'))$('appLockError').textContent='';
-  updatePinDots('');
-}
-
-async function verifyPinAndUnlock(){
-  const pin=($('appLockPinInput')?.value||'').trim();
-  if(!/^\d{4,6}$/.test(pin)){
-    $('appLockError').textContent='Introduz um PIN de 4 a 6 dígitos.';
-    return;
-  }
-  const h=await hashPinWithSalt(pin,secCfg.pinSalt);
-  if(h===secCfg.pinHash){
-    unlockAppSuccess();
-  }else{
-    $('appLockError').textContent='PIN incorreto. Tenta novamente.';
-    $('appLockPinInput').value='';
-    updatePinDots('');
-  }
-}
-
-async function registerWebAuthnBio(){
-  if(!window.PublicKeyCredential||!navigator.credentials){
-    alert('Este navegador ou dispositivo não suporta autenticação biométrica WebAuthn.');
-    return;
-  }
-  try{
-    const userId=randomBytes(16);
-    const challenge=randomBytes(32);
-    const cred=await navigator.credentials.create({
-      publicKey:{
-        challenge,
-        rp:{name:'DuoFin'},
-        user:{id:userId,name:'duofin-local-user',displayName:'Utilizador DuoFin'},
-        pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],
-        authenticatorSelection:{authenticatorAttachment:'platform',userVerification:'required'},
-        timeout:60000
-      }
-    });
-    if(cred&&cred.rawId){
-      secCfg.bioCredId=bufToB64(cred.rawId);
-      saveSecCfg();
-      paintSecurityCard();
-      showToast('Biometria do dispositivo ativada com sucesso.',{type:'success'});
-    }
-  }catch(e){
-    alert('Não foi possível ativar a biometria: '+(e.message||'operação cancelada'));
-  }
-}
-
-async function unlockWithWebAuthnBio(){
-  if(!secCfg.bioCredId||!navigator.credentials)return;
-  try{
-    const challenge=randomBytes(32);
-    const assertion=await navigator.credentials.get({
-      publicKey:{
-        challenge,
-        allowCredentials:[{id:b64ToBuf(secCfg.bioCredId),type:'public-key'}],
-        userVerification:'required',
-        timeout:60000
-      }
-    });
-    if(assertion)unlockAppSuccess();
-  }catch(e){
-    if($('appLockError'))$('appLockError').textContent='Verificação biométrica não concluída. Usa o PIN.';
-  }
-}
-
-function paintSecurityCard(){
-  const active=hasLocalPin();
-  if($('lockAppHeaderBtn'))$('lockAppHeaderBtn').hidden=!active;
-  if($('lockNowBtn'))$('lockNowBtn').hidden=!active;
-  if($('disablePinBtn'))$('disablePinBtn').hidden=!active;
-  if($('enableBioBtn'))$('enableBioBtn').hidden=!active||!window.PublicKeyCredential;
-  if($('autoLockMinutes'))$('autoLockMinutes').value=String(secCfg.autoLockMin??5);
-  const st=$('securityLockStatus');
-  if(st){
-    if(active){
-      st.className='alert good';
-      st.textContent='Bloqueio local ativo (PIN SHA-256'+(secCfg.bioCredId?' + Biometria':'')+' · bloqueio automático: '+(Number(secCfg.autoLockMin)>0?secCfg.autoLockMin+' min':'manual')+').';
-    }else{
-      st.className='alert';
-      st.textContent='Bloqueio por PIN desativado neste dispositivo.';
-    }
-  }
-}
-
-if($('savePinBtn'))$('savePinBtn').onclick=async()=>{
-  const pin=($('newPinInput')?.value||'').trim();
-  if(!/^\d{4,6}$/.test(pin)){alert('O PIN deve ter entre 4 e 6 dígitos numéricos.');return;}
-  const salt=bufToB64(randomBytes(16));
-  const hash=await hashPinWithSalt(pin,salt);
-  secCfg.pinSalt=salt;
-  secCfg.pinHash=hash;
-  secCfg.autoLockMin=Number($('autoLockMinutes')?.value||5);
-  saveSecCfg();
-  $('newPinInput').value='';
-  paintSecurityCard();
-  showToast('PIN de segurança guardado neste dispositivo.',{type:'success'});
-};
-if($('autoLockMinutes'))$('autoLockMinutes').onchange=()=>{
-  secCfg.autoLockMin=Number($('autoLockMinutes').value||0);
-  saveSecCfg();
-  paintSecurityCard();
-};
-if($('disablePinBtn'))$('disablePinBtn').onclick=()=>{
-  if(!confirm('Remover o bloqueio por PIN e biometria deste dispositivo?'))return;
-  secCfg.pinHash='';secCfg.pinSalt='';secCfg.bioCredId='';
-  saveSecCfg();
-  paintSecurityCard();
-  showToast('Bloqueio local desativado.');
-};
-if($('enableBioBtn'))$('enableBioBtn').onclick=registerWebAuthnBio;
-if($('lockNowBtn'))$('lockNowBtn').onclick=lockApp;
-if($('lockAppHeaderBtn'))$('lockAppHeaderBtn').onclick=lockApp;
-if($('appLockUnlockBtn'))$('appLockUnlockBtn').onclick=verifyPinAndUnlock;
-if($('appLockBioBtn'))$('appLockBioBtn').onclick=unlockWithWebAuthnBio;
-if($('appLockPinInput')){
-  $('appLockPinInput').addEventListener('input',e=>{
-    const clean=e.target.value.replace(/\D/g,'').slice(0,6);
-    e.target.value=clean;
-    updatePinDots(clean);
-    if(secCfg.pinHash&&clean.length>=4){
-      hashPinWithSalt(clean,secCfg.pinSalt).then(h=>{if(h===secCfg.pinHash)unlockAppSuccess();});
-    }
+function applyFontScale(scale) {
+  const valid = ['normal', 'large', 'xlarge'].includes(scale) ? scale : 'normal';
+  if (valid === 'normal') document.documentElement.removeAttribute('data-font-scale');
+  else document.documentElement.setAttribute('data-font-scale', valid);
+  safeSetLocalStorage(FONT_SCALE_KEY, valid);
+  document.querySelectorAll('[data-font-scale-btn]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.fontScaleBtn === valid);
   });
-  $('appLockPinInput').addEventListener('keydown',e=>{if(e.key==='Enter')verifyPinAndUnlock();});
 }
 
-// Monitorizar inatividade para auto-bloqueio
-['pointerdown','keydown','touchstart','scroll'].forEach(ev=>{
-  document.addEventListener(ev,()=>{if(!appLocked)lastActivityTs=Date.now();},{passive:true});
-});
-setInterval(()=>{
-  if(!hasLocalPin()||appLocked)return;
-  const mins=Number(secCfg.autoLockMin||0);
-  if(mins>0&&Date.now()-lastActivityTs>=mins*60000)lockApp();
-},10000);
+// Inicialização imediata das preferências visuais
+applyTheme(getEffectiveTheme(), false);
+applyFontScale(localStorage.getItem(FONT_SCALE_KEY) || 'normal');
+applyPrivacyMode(localStorage.getItem(PRIVACY_KEY) === '1', false);
+applySummaryLevel(summaryDetailLevel, false);
 
-paintSecurityCard();
-if(hasLocalPin())lockApp();
-
-// Exportação e Importação de Cópias de Segurança (Simples ou Encriptada AES-256-GCM)
-$('export').onclick=()=>{
-  let a=document.createElement('a'),u=URL.createObjectURL(new Blob([JSON.stringify(db,null,2)],{type:'application/json'}));
-  a.href=u;a.download='duofin-backup.json';a.click();URL.revokeObjectURL(u);
-};
-if($('exportEncryptedBtn'))$('exportEncryptedBtn').onclick=async()=>{
-  const pass=prompt('Define uma palavra-passe para proteger esta cópia de segurança (mínimo 6 caracteres):');
-  if(pass===null)return;
-  if(pass.trim().length<6){alert('A palavra-passe deve ter pelo menos 6 caracteres.');return;}
-  try{
-    const encrypted=await encryptJsonAesGcm(db,pass.trim());
-    const a=document.createElement('a');
-    const u=URL.createObjectURL(new Blob([JSON.stringify(encrypted,null,2)],{type:'application/json'}));
-    a.href=u;a.download='duofin-backup-protegido.duofin';a.click();URL.revokeObjectURL(u);
-    showToast('Cópia de segurança encriptada exportada.',{type:'success'});
-  }catch(e){
-    alert('Não foi possível encriptar a cópia: '+e.message);
-  }
-};
-$('import').onchange=async e=>{
-  try{
-    const rawText=await e.target.files[0].text();
-    let parsed=JSON.parse(rawText);
-    if(parsed&&parsed.__duofin_encrypted__===true){
-      const pass=prompt('Esta cópia está encriptada. Introduz a palavra-passe:');
-      if(!pass){e.target.value='';return;}
-      parsed=await decryptJsonAesGcm(parsed,pass.trim());
-    }
-    if(!parsed.settings||!Array.isArray(parsed.transactions))throw new Error('Estrutura inválida');
-    const n=normalizeDb(parsed);
-    db=n.db;
-    persist();
-    showToast('Cópia de segurança importada com sucesso.',{type:'success'});
-  }catch(_){
-    alert('Ficheiro inválido ou palavra-passe incorreta.');
-  }
-  e.target.value='';
-};
-$('reset').onclick=()=>{if(confirm('Apagar todos os dados deste dispositivo?')){db=fresh();persist()}};
-$('person').innerHTML=db.settings.people.map(p=>`<option>${esc(p)}</option>`).join('')+'<option>Conta conjunta</option>';
-
-// Preferências visuais locais & Nível de Detalhe do Resumo (Progressive Disclosure)
-const UI_PREF_KEY='duofin-ui-preferences-v1';
-const SUMMARY_LEVEL_KEY='duofin-summary-level-v1';
-const uiDefaults={theme:'auto',density:'balanced'};
-function readUiPrefs(){try{return {...uiDefaults,...JSON.parse(localStorage.getItem(UI_PREF_KEY)||'{}')}}catch(e){return {...uiDefaults}}}
-let uiPrefs=readUiPrefs();
-
-function getDefaultSummaryLevel(){
-  const saved=localStorage.getItem(SUMMARY_LEVEL_KEY);
-  if(saved==='basic'||saved==='detailed')return saved;
-  return (window.matchMedia&&window.matchMedia('(max-width: 767px)').matches)?'basic':'detailed';
-}
-let summaryDetailLevel=getDefaultSummaryLevel();
-
-function applySummaryDetailLevel(rerender=false){
-  const resumoEl=$('resumo');
-  if(resumoEl)resumoEl.setAttribute('data-summary-level',summaryDetailLevel);
-  document.querySelectorAll('[data-summary-level-btn]').forEach(btn=>{
-    const isMatch=btn.getAttribute('data-summary-level-btn')===summaryDetailLevel;
-    btn.classList.toggle('active',isMatch);
-    btn.setAttribute('aria-pressed',isMatch?'true':'false');
-  });
-  if(rerender){
-    render();
-    if(summaryDetailLevel==='detailed')requestAnimationFrame(drawChart);
-  }
-}
-
-function setSummaryDetailLevel(level){
-  if(level!=='basic'&&level!=='detailed')return;
-  summaryDetailLevel=level;
-  localStorage.setItem(SUMMARY_LEVEL_KEY,level);
-  // Reseta expansões locais ao alternar o nível global
-  document.querySelectorAll('#resumo [data-accordion-card].is-expanded').forEach(el=>el.classList.remove('is-expanded'));
-  applySummaryDetailLevel(true);
-}
-
-document.querySelectorAll('[data-summary-level-btn]').forEach(btn=>{
-  btn.addEventListener('click',()=>setSummaryDetailLevel(btn.getAttribute('data-summary-level-btn')));
-});
-
-// Cartões expansíveis localmente (Accordion) no nível Básico
-document.addEventListener('click',e=>{
-  const accCard=e.target.closest('#resumo[data-summary-level="basic"] [data-accordion-card]');
-  if(!accCard)return;
-  if(e.target.closest('button,a,input,select,[data-open-tx]'))return;
-  accCard.classList.toggle('is-expanded');
-});
-
-function applyUiPrefs(){
-  const root=document.documentElement;
-  root.classList.remove('theme-dark','density-compact','density-detailed');
-  const systemDark=!!(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);
-  const isDark=uiPrefs.theme==='dark'||(uiPrefs.theme==='auto'&&systemDark);
-  if(isDark)root.classList.add('theme-dark');
-  const metaTheme=$('metaThemeColor');
-  if(metaTheme)metaTheme.setAttribute('content',isDark?'#0f1924':'#142b45');
-  if(uiPrefs.density==='compact')root.classList.add('density-compact');
-  if(uiPrefs.density==='detailed')root.classList.add('density-detailed');
-  applySummaryDetailLevel(false);
-  requestAnimationFrame(()=>{drawChart();drawAnalyticsChart();});
-}
-function saveUiPrefs(){uiPrefs.theme=$('themeMode').value;uiPrefs.density=$('densityMode').value;localStorage.setItem(UI_PREF_KEY,JSON.stringify(uiPrefs));applyUiPrefs();}
-$('themeMode').value=uiPrefs.theme;$('densityMode').value=uiPrefs.density;$('themeMode').onchange=saveUiPrefs;$('densityMode').onchange=saveUiPrefs;
-applyUiPrefs();
-if(window.matchMedia){
-  const colorQuery=window.matchMedia('(prefers-color-scheme: dark)');
-  if(colorQuery.addEventListener)colorQuery.addEventListener('change',()=>{if(uiPrefs.theme==='auto')applyUiPrefs()});
-  else if(colorQuery.addListener)colorQuery.addListener(()=>{if(uiPrefs.theme==='auto')applyUiPrefs()});
-}
-
-// Instalação PWA
-let installPrompt=null;
-const installBtn=$('installApp');
-addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;installBtn.hidden=false;$('installHint').textContent='Este navegador permite instalar a DuoFin como aplicação opcional.'});
-installBtn.onclick=async()=>{if(!installPrompt)return;installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;installBtn.hidden=true};
-addEventListener('appinstalled',()=>{$('installHint').textContent='DuoFin adicionada ao dispositivo. Também podes continuar a utilizar o endereço no navegador.';installBtn.hidden=true});
-
-// Sincronização Supabase com Auto-Merge Inteligente (updatedAt + Tombstones + Rollovers)
-const CLOUD_KEY='orcamento-plus-cloud-v1';
-const E2EE_SECRET_KEY='duofin-e2ee-secret-v1';
-const SUPABASE_SETUP_SQL=`-- ============================================================================
--- DUOFIN v6.10.0 · SCRIPT SQL DE CONFIGURAÇÃO DO SUPABASE
--- Executa este script no SQL Editor do teu projeto Supabase (app.supabase.com)
--- ============================================================================
-
-create extension if not exists pgcrypto;
-
-create table if not exists public.households (
-  id uuid primary key default gen_random_uuid(),
-  name text not null default 'Orçamento do casal',
-  created_by uuid references auth.users(id) on delete set null,
-  created_at timestamptz not null default now()
-);
-
-create table if not exists public.household_members (
-  household_id uuid not null references public.households(id) on delete cascade,
-  user_id uuid not null references auth.users(id) on delete cascade,
-  role text not null default 'member',
-  joined_at timestamptz not null default now(),
-  primary key (household_id, user_id)
-);
-
-create table if not exists public.household_state (
-  household_id uuid primary key references public.households(id) on delete cascade,
-  payload jsonb not null default '{}'::jsonb,
-  revision integer not null default 1,
-  updated_by uuid references auth.users(id) on delete set null,
-  updated_at timestamptz not null default now()
-);
-
-create table if not exists public.household_invites (
-  code text primary key,
-  household_id uuid not null references public.households(id) on delete cascade,
-  created_by uuid references auth.users(id) on delete set null,
-  expires_at timestamptz not null,
-  used_by uuid references auth.users(id) on delete set null,
-  used_at timestamptz
-);
-
-alter table public.households enable row level security;
-alter table public.household_members enable row level security;
-alter table public.household_state enable row level security;
-alter table public.household_invites enable row level security;
-
-create or replace function public.is_household_member(p_household uuid)
-returns boolean
-language sql
-security definer
-set search_path = public
-stable
-as $$
-  select exists (
-    select 1 from public.household_members
-    where household_id = p_household and user_id = auth.uid()
-  );
-$$;
-
-drop policy if exists "members_select_households" on public.households;
-create policy "members_select_households" on public.households
-  for select using (public.is_household_member(id));
-
-drop policy if exists "members_select_members" on public.household_members;
-create policy "members_select_members" on public.household_members
-  for select using (public.is_household_member(household_id));
-
-drop policy if exists "members_select_state" on public.household_state;
-create policy "members_select_state" on public.household_state
-  for select using (public.is_household_member(household_id));
-
-drop policy if exists "members_update_state" on public.household_state;
-create policy "members_update_state" on public.household_state
-  for update using (public.is_household_member(household_id))
-  with check (public.is_household_member(household_id));
-
-drop policy if exists "members_insert_state" on public.household_state;
-create policy "members_insert_state" on public.household_state
-  for insert with check (public.is_household_member(household_id));
-
-create or replace function public.create_household(p_name text, p_payload jsonb default '{}'::jsonb)
-returns uuid
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_uid uuid := auth.uid();
-  v_hid uuid;
-begin
-  if v_uid is null then
-    raise exception 'Utilizador não autenticado.';
-  end if;
-  insert into public.households (name, created_by)
-  values (coalesce(nullif(trim(p_name), ''), 'Orçamento do casal'), v_uid)
-  returning id into v_hid;
-
-  insert into public.household_members (household_id, user_id, role)
-  values (v_hid, v_uid, 'owner');
-
-  insert into public.household_state (household_id, payload, revision, updated_by, updated_at)
-  values (v_hid, coalesce(p_payload, '{}'::jsonb), 1, v_uid, now());
-
-  return v_hid;
-end;
-$$;
-
-create or replace function public.create_household_invite(p_household uuid)
-returns text
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_uid uuid := auth.uid();
-  v_code text;
-begin
-  if v_uid is null or not public.is_household_member(p_household) then
-    raise exception 'Sem permissão para gerar convite.';
-  end if;
-  v_code := upper(substr(encode(gen_random_bytes(5), 'hex'), 1, 8));
-  insert into public.household_invites (code, household_id, created_by, expires_at)
-  values (v_code, p_household, v_uid, now() + interval '7 days');
-  return v_code;
-end;
-$$;
-
-create or replace function public.accept_household_invite(p_code text)
-returns uuid
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_uid uuid := auth.uid();
-  v_inv public.household_invites%rowtype;
-begin
-  if v_uid is null then
-    raise exception 'Utilizador não autenticado.';
-  end if;
-  select * into v_inv
-  from public.household_invites
-  where code = upper(trim(p_code))
-    and used_at is null
-    and expires_at > now();
-
-  if not found then
-    raise exception 'Código de convite inválido ou expirado.';
-  end if;
-
-  insert into public.household_members (household_id, user_id, role)
-  values (v_inv.household_id, v_uid, 'member')
-  on conflict (household_id, user_id) do nothing;
-
-  update public.household_invites
-  set used_by = v_uid, used_at = now()
-  where code = v_inv.code;
-
-  return v_inv.household_id;
-end;
-$$;
-
-grant execute on function public.is_household_member(uuid) to authenticated;
-grant execute on function public.create_household(text, jsonb) to authenticated;
-grant execute on function public.create_household_invite(uuid) to authenticated;
-grant execute on function public.accept_household_invite(text) to authenticated;
-
-notify pgrst, 'reload schema';`;
-
-let cloud={url:'',key:'',access_token:'',refresh_token:'',expires_at:0,user:null,household_id:null,revision:null,dirty:false};
-function getE2eeSecret(){return localStorage.getItem(E2EE_SECRET_KEY)||'';}
-function paintE2eeStatus(){
-  const hasSec=!!getE2eeSecret();
-  if($('disableE2eeBtn'))$('disableE2eeBtn').hidden=!hasSec;
-  if($('e2eeStatusText')){
-    $('e2eeStatusText').textContent=hasSec
-      ?'Ativa (AES-256-GCM): todos os dados enviados para o Supabase são cifrados localmente antes de sair deste dispositivo. Usa exatamente a mesma chave secreta no outro telemóvel.'
-      :'Desativada: os dados são enviados em JSON padrão protegidos por RLS. Se definirem a mesma chave secreta nos dois telemóveis, todo o payload é cifrado localmente em AES-256-GCM antes de sair do dispositivo.';
-  }
-}
-if($('saveE2eeBtn'))$('saveE2eeBtn').onclick=async()=>{
-  const val=($('e2eePassphrase')?.value||'').trim();
-  if(val.length<6){alert('A chave secreta E2EE deve ter pelo menos 6 caracteres.');return;}
-  localStorage.setItem(E2EE_SECRET_KEY,val);
-  $('e2eePassphrase').value='';
-  paintE2eeStatus();
-  showToast('Chave E2EE guardada. A sincronizar dados cifrados...',{type:'success'});
-  if(cloudConnected()&&cloud.household_id){cloud.dirty=true;saveCloud();await pushCloud(false).catch(()=>{});}
-};
-if($('disableE2eeBtn'))$('disableE2eeBtn').onclick=async()=>{
-  if(!confirm('Desativar a encriptação ponta-a-ponta neste dispositivo?'))return;
-  localStorage.removeItem(E2EE_SECRET_KEY);
-  paintE2eeStatus();
-  showToast('Encriptação ponta-a-ponta desativada.');
-};
-paintE2eeStatus();
-async function encodeCloudPayload(plainDb){
-  const sec=getE2eeSecret();
-  if(!sec)return plainDb;
-  return await encryptJsonAesGcm(plainDb,sec);
-}
-async function decodeCloudPayload(rawPayload){
-  if(!rawPayload||rawPayload.__duofin_encrypted__!==true)return rawPayload;
-  const sec=getE2eeSecret();
-  if(!sec)throw new Error('Os dados na nuvem estão cifrados (E2EE). Introduz a Chave Secreta do Casal em Dados -> Sincronização.');
-  try{
-    return await decryptJsonAesGcm(rawPayload,sec);
-  }catch(_){
-    throw new Error('Não foi possível decifrar os dados da nuvem. Confirma se a Chave Secreta E2EE é idêntica nos dois telemóveis.');
-  }
-}
-try{cloud={...cloud,...JSON.parse(localStorage.getItem(CLOUD_KEY)||'{}')}}catch(e){}
-if(dbNeedsSync){cloud.dirty=true;localStorage.setItem(CLOUD_KEY,JSON.stringify(cloud));}
-let cloudSaveTimer=null,cloudBusy=false;
-function normalizeSupabaseUrl(raw){
-  let u=String(raw||'').trim().replace(/\/+$/,'');
-  if(u&&!/^https?:\/\//i.test(u))u='https://'+u;
-  return u;
-}
-function saveCloud(){localStorage.setItem(CLOUD_KEY,JSON.stringify(cloud));paintCloud()}
-function cloudConfigured(){return /^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(normalizeSupabaseUrl(cloud.url))&&cloud.key.trim().length>20}
-function cloudConnected(){return cloudConfigured()&&!!cloud.access_token}
-
-function formatSupabaseError(rawMsg){
-  const m=String(rawMsg||'');
-  if(/household_state|household_members|households|household_invites/i.test(m)&&/schema cache|does not exist|relation/i.test(m)){
-    return 'A base de dados Supabase ainda não tem as tabelas da DuoFin criadas (ou a schema cache precisa de ser atualizada). Usa o botão «Copiar SQL de configuração» abaixo, cola no SQL Editor do Supabase e clica em Run.';
-  }
-  if(/create_household|accept_household_invite|create_household_invite/i.test(m)&&/function|schema cache/i.test(m)){
-    return 'Faltam as funções RPC no Supabase. Executa o script SQL de configuração no SQL Editor do projeto Supabase.';
-  }
-  if(/Invalid login credentials/i.test(m))return 'Email ou palavra-passe incorretos.';
-  if(/Email not confirmed/i.test(m))return 'O email ainda não foi confirmado. Verifica a caixa de correio ou desativa a confirmação de email no Supabase Auth.';
-  if(/Failed to fetch|NetworkError|AbortError|timeout/i.test(m))return 'Sem resposta do servidor Supabase. Verifica a ligação à internet e o URL do projeto.';
-  return m;
-}
-
-function setCloudStatus(msg,kind=''){
-  const el=$('cloudStatus');
-  if(!el)return;
-  el.textContent=msg;
-  el.className='alert'+(kind?' '+kind:'');
-  const isSchemaErr=/tabelas da DuoFin|funções RPC|schema cache/i.test(msg);
-  if($('sqlSetupHelperBox'))$('sqlSetupHelperBox').hidden=!isSchemaErr;
-}
-
-function paintCloud(){
-  $('sbUrl').value=cloud.url;$('sbKey').value=cloud.key;
-  $('cloudLogout').hidden=!cloudConnected();
-  $('householdPanel').hidden=!cloudConnected();
-  if(!cloudConfigured()){setCloudStatus('Ainda não configurada. Preenche o URL (https://xxxx.supabase.co) e a chave pública anon do projeto Supabase.');return}
-  if(!cloudConnected()){setCloudStatus('Configurada. Inicia sessão ou cria uma conta para sincronizar.');return}
-  $('householdInfo').textContent=cloud.household_id?'Orçamento partilhado associado (rev. '+(cloud.revision??0)+').':'Sessão iniciada como '+(cloud.user?.email||'utilizador')+'. Cria ou associa um orçamento partilhado.';
-  if(cloud.dirty)setCloudStatus('Alterações locais por enviar para o servidor.','');
-  else if(cloud.household_id)setCloudStatus('Sincronizado com '+ (cloud.user?.email||'a conta'), 'good');
-  else setCloudStatus('Sessão iniciada. Falta criar ou associar o orçamento partilhado.','');
-}
-
-function mergeArrayById(localArr, remoteArr, deletedSet){
-  const map=new Map();
-  (remoteArr||[]).forEach(item=>{
-    if(!item||item.id===undefined||item.id===null)return;
-    const id=String(item.id);
-    if(deletedSet.has(id))return;
-    map.set(id,{...item});
-  });
-  (localArr||[]).forEach(item=>{
-    if(!item||item.id===undefined||item.id===null)return;
-    const id=String(item.id);
-    if(deletedSet.has(id))return;
-    const existing=map.get(id);
-    if(!existing){
-      map.set(id,{...item});
-    }else{
-      const locTs=Number(item.updatedAt)||0;
-      const remTs=Number(existing.updatedAt)||0;
-      if(locTs>=remTs)map.set(id,{...existing,...item});
-      else map.set(id,{...item,...existing});
-    }
-  });
-  return Array.from(map.values());
-}
-
-function mergeDatabases(localDb, remoteDb){
-  const loc=normalizeDb(JSON.parse(JSON.stringify(localDb))).db;
-  const rem=normalizeDb(JSON.parse(JSON.stringify(remoteDb))).db;
-
-  const delMap=new Map();
-  [...(rem.deletedIds||[]),...(loc.deletedIds||[])].forEach(d=>{
-    if(d&&d.id){
-      const k=String(d.id);
-      const prev=delMap.get(k);
-      if(!prev||(Number(d.at)||0)>(Number(prev.at)||0))delMap.set(k,{id:k,at:Number(d.at)||Date.now()});
-    }
-  });
-  const deletedSet=new Set(delMap.keys());
-
-  const mergedTransactions=mergeArrayById(loc.transactions,rem.transactions,deletedSet);
-  const mergedRecurrences=mergeArrayById(loc.recurringExpenses,rem.recurringExpenses,deletedSet);
-  const mergedGoals=mergeArrayById(loc.savingsGoals,rem.savingsGoals,deletedSet);
-  const mergedCards=mergeArrayById(loc.creditCards,rem.creditCards,deletedSet);
-
-  const catMap=new Map();
-  (rem.settings.categories||[]).forEach(c=>{if(c&&c.name)catMap.set(c.name,{...c});});
-  (loc.settings.categories||[]).forEach(c=>{if(c&&c.name)catMap.set(c.name,{...c});});
-
-  const rulesMap=new Map();
-  (rem.settings.categoryRules||[]).forEach(r=>{if(r&&r.keyword)rulesMap.set(r.keyword.toUpperCase(),{...r});});
-  (loc.settings.categoryRules||[]).forEach(r=>{if(r&&r.keyword)rulesMap.set(r.keyword.toUpperCase(),{...r});});
-
-  const rolloverMap=new Map();
-  (rem.handledCycleRollovers||[]).forEach(h=>{if(h&&h.cycleKey)rolloverMap.set(h.cycleKey,{...h});});
-  (loc.handledCycleRollovers||[]).forEach(h=>{if(h&&h.cycleKey)rolloverMap.set(h.cycleKey,{...h});});
-
-  const mergedSettings={
-    ...rem.settings,
-    ...loc.settings,
-    categories:Array.from(catMap.values()),
-    categoryRules:Array.from(rulesMap.values())
+if ($('themeToggleBtn')) {
+  $('themeToggleBtn').onclick = () => {
+    const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    applyTheme(next, true);
   };
+}
+if ($('settingsThemeBtn')) {
+  $('settingsThemeBtn').onclick = () => {
+    const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    applyTheme(next, true);
+  };
+}
+if ($('privacyToggleBtn')) {
+  $('privacyToggleBtn').onclick = () => {
+    const next = !document.body.classList.contains('privacy-masked');
+    applyPrivacyMode(next, true);
+    showToast(next ? 'Modo privacidade ativado (valores ocultos).' : 'Valores visíveis.');
+  };
+}
+if ($('settingsPrivacyBtn')) {
+  $('settingsPrivacyBtn').onclick = () => {
+    const next = !document.body.classList.contains('privacy-masked');
+    applyPrivacyMode(next, true);
+  };
+}
+document.querySelectorAll('[data-font-scale-btn]').forEach(btn => {
+  btn.onclick = () => {
+    applyFontScale(btn.dataset.fontScaleBtn);
+    showToast('Tamanho de texto atualizado.');
+  };
+});
 
-  return normalizeDb({
-    settings:mergedSettings,
-    transactions:mergedTransactions,
-    recurringExpenses:mergedRecurrences,
-    savingsGoals:mergedGoals,
-    creditCards:mergedCards,
-    deletedIds:Array.from(delMap.values()),
-    handledCycleRollovers:Array.from(rolloverMap.values())
-  }).db;
+// ============================================================================
+// REGISTO DE NOVIDADES E VERSÃO (CHANGELOG MODAL)
+// ============================================================================
+const RELEASE_NOTES = [
+  {
+    version: 'v6.10.1',
+    date: 'Novembro 2026',
+    title: 'Estabilidade ao Guardar Movimentos & Cache Atualizada',
+    items: [
+      '<strong>Gravação blindada contra falhas:</strong> Proteção contra bloqueios de <code>localStorage</code> e validações mais seguras para que nenhum movimento fique retido.',
+      '<strong>Sincronização inteligente sem sobreescritas:</strong> A atualização automática em segundo plano deixa de interferir enquanto estás a registar ou editar movimentos recentes.',
+      '<strong>Cache Network-First no Service Worker:</strong> Garante que o navegador e a app instalada carregam sempre a versão mais recente sem misturar ficheiros antigos.'
+    ]
+  },
+  {
+    version: 'v6.10.0',
+    date: 'Novembro 2026',
+    title: 'Cartões de Crédito & Controlo de Faturas sem Dupla Contagem',
+    items: [
+      '<strong>Gestão dedicada de Cartões de Crédito:</strong> Cria os teus cartões (em <em>Orçamento → Cartões de Crédito</em>) com limite/plafond e dívida inicial opcional.',
+      '<strong>Sem duplicação de despesas:</strong> Ao registar uma compra com cartão de crédito, o gasto entra logo na categoria respetiva. Quando pagares a fatura (tipo <em>Pagamento de cartão de crédito</em>), o valor abate a dívida do cartão sem voltar a inflacionar as despesas por categoria.'
+    ]
+  },
+  {
+    version: 'v6.9.0',
+    date: 'Novembro 2026',
+    title: 'Modo Básico por Defeito & Vista Detalhada Expansível',
+    items: [
+      '<strong>Resumo focado no essencial (Básico):</strong> Ao abrir a aplicação, vês de imediato os 4 indicadores principais, uma barra única de consumo do ciclo e os últimos 3 movimentos.',
+      '<strong>Expansão instantânea (Detalhado):</strong> Com um toque no seletor <em>Básico / Detalhado</em> no topo do Resumo, acedes aos alertas inteligentes, progresso por categoria, gastos por adulto e gráfico de poupança.'
+    ]
+  }
+];
+
+function openChangelogModal() {
+  const body = $('changelogBody');
+  if (!body) return;
+  body.innerHTML = RELEASE_NOTES.map((rel, idx) => `
+    <div class="changelog-entry">
+      <div class="changelog-ver-row">
+        <span class="changelog-ver-badge ${idx === 0 ? '' : 'is-past'}">${esc(rel.version)}</span>
+        <span class="changelog-ver-date">${esc(rel.date)}</span>
+      </div>
+      <div class="changelog-ver-title">${esc(rel.title)}</div>
+      <ul class="changelog-list">
+        ${rel.items.map(li => `<li>${li}</li>`).join('')}
+      </ul>
+    </div>
+  `).join('');
+  safeSetLocalStorage(CHANGELOG_KEY, APP_VERSION);
+  if ($('whatsNewBadge')) $('whatsNewBadge').hidden = true;
+  $('changelogModal').hidden = false;
 }
 
-async function sbFetch(path,{method='GET',body,auth=true,headers={},timeoutMs=12000}={}){
-  if(!cloudConfigured())throw new Error('Configura primeiro o URL e a chave pública do projeto Supabase.');
-  if(auth&&cloud.expires_at&&Date.now()>cloud.expires_at-30000&&cloud.refresh_token)await refreshSession();
-  const h={'apikey':cloud.key.trim(),'Content-Type':'application/json',...headers};
-  if(auth&&cloud.access_token)h['Authorization']='Bearer '+cloud.access_token;
-  const ctrl=typeof AbortController!=='undefined'?new AbortController():null;
-  const timer=ctrl?setTimeout(()=>ctrl.abort(),timeoutMs):null;
-  let r;
-  try{
-    r=await fetch(normalizeSupabaseUrl(cloud.url)+path,{
-      method,
-      headers:h,
-      body:body!==undefined?JSON.stringify(body):undefined,
-      signal:ctrl?ctrl.signal:undefined
-    });
-  }catch(netErr){
-    if(timer)clearTimeout(timer);
-    throw new Error(netErr?.name==='AbortError'?'Tempo limite excedido ao contactar o Supabase.':'Erro de rede ao contactar o Supabase.');
-  }
-  if(timer)clearTimeout(timer);
-  const text=await r.text();
-  let data=null;try{data=text?JSON.parse(text):null}catch(e){data=text}
-  if(!r.ok){
-    if(r.status===401&&auth&&cloud.refresh_token){await refreshSession();return sbFetch(path,{method,body,auth,headers,timeoutMs})}
-    const raw=data?.msg||data?.error_description||data?.message||data?.hint||('Erro HTTP '+r.status);
-    throw new Error(formatSupabaseError(raw));
-  }
-  return data;
+if ($('openChangelogBtn')) $('openChangelogBtn').onclick = openChangelogModal;
+if ($('footerVersionBtn')) $('footerVersionBtn').onclick = openChangelogModal;
+if ($('closeChangelogBtn')) $('closeChangelogBtn').onclick = () => { $('changelogModal').hidden = true; };
+if ($('changelogAckBtn')) $('changelogAckBtn').onclick = () => { $('changelogModal').hidden = true; };
+if ($('changelogModal')) {
+  $('changelogModal').addEventListener('click', e => {
+    if (e.target === $('changelogModal')) $('changelogModal').hidden = true;
+  });
 }
-async function refreshSession(){
-  const data=await sbFetch('/auth/v1/token?grant_type=refresh_token',{method:'POST',auth:false,body:{refresh_token:cloud.refresh_token}});
-  cloud.access_token=data.access_token;cloud.refresh_token=data.refresh_token||cloud.refresh_token;cloud.expires_at=Date.now()+(data.expires_in||3600)*1000;cloud.user=data.user||cloud.user;saveCloud();
+
+if ($('whatsNewBadge')) {
+  const seenVer = localStorage.getItem(CHANGELOG_KEY);
+  $('whatsNewBadge').hidden = seenVer === APP_VERSION;
 }
-async function loadMembership(){
-  const rows=await sbFetch('/rest/v1/household_members?select=household_id,role&limit=1');
-  cloud.household_id=rows?.[0]?.household_id||null;saveCloud();
-  if(cloud.household_id)await pullCloud(false);
-}
-async function pullCloud(manual=true){
-  if(!cloudConnected()||!cloud.household_id)return;
-  const rows=await sbFetch('/rest/v1/household_state?household_id=eq.'+encodeURIComponent(cloud.household_id)+'&select=payload,revision,updated_at');
-  const row=rows?.[0];
-  if(!row){
-    const encodedInitial=await encodeCloudPayload(db);
-    await sbFetch('/rest/v1/household_state',{method:'POST',headers:{'Prefer':'return=representation'},body:{household_id:cloud.household_id,payload:encodedInitial,revision:1,updated_by:cloud.user?.id||null,updated_at:new Date().toISOString()}});
-    cloud.revision=1;cloud.dirty=false;saveCloud();
-    if(manual)setCloudStatus('Estado inicial criado e sincronizado com sucesso.','good');
-    return;
-  }
-  const decodedPayload=await decodeCloudPayload(row.payload);
-  if(decodedPayload&&decodedPayload.settings&&Array.isArray(decodedPayload.transactions)){
-    if(cloud.dirty){
-      db=mergeDatabases(db,decodedPayload);
-      localStorage.setItem(KEY,JSON.stringify(db));
-      cloud.revision=row.revision;
-      await pushCloud(false);
-      render();
-      if(manual)setCloudStatus('Dados locais e partilhados fundidos com sucesso.','good');
+
+// ============================================================================
+// REFINAMENTO FINAL: NAVEGAÇÃO POR TECLADO (ESC) E ATALHOS RÁPIDOS
+// ============================================================================
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if ($('changelogModal') && !$('changelogModal').hidden) {
+      $('changelogModal').hidden = true;
       return;
-    }else{
-      const n=normalizeDb(decodedPayload);
-      db=n.db;
-      localStorage.setItem(KEY,JSON.stringify(db));
-      cloud.revision=row.revision;
-      cloud.dirty=false;
-      saveCloud();
-      generateDueOccurrences();
-      render();
     }
-  }else if(row.payload&&Object.keys(row.payload).length===0){
-    cloud.revision=row.revision??1;
-    await pushCloud(false);
-  }
-  if(manual)setCloudStatus('Versão partilhada carregada.','good');
-}
-async function pushCloud(manual=true){
-  if(!cloudConnected()||!cloud.household_id||cloudBusy)return;
-  cloudBusy=true;
-  try{
-    const rows=await sbFetch('/rest/v1/household_state?household_id=eq.'+encodeURIComponent(cloud.household_id)+'&select=payload,revision');
-    const remote=rows?.[0];
-    if(remote&&cloud.revision!==null&&remote.revision!==cloud.revision&&remote.payload&&Object.keys(remote.payload).length>0){
-      const decodedRemote=await decodeCloudPayload(remote.payload);
-      if(decodedRemote&&decodedRemote.settings){
-        db=mergeDatabases(db,decodedRemote);
-        localStorage.setItem(KEY,JSON.stringify(db));
-        cloud.revision=remote.revision;
-        render();
-      }
+    if ($('txDetailModal') && !$('txDetailModal').hidden) {
+      $('txDetailModal').hidden = true;
+      return;
     }
-    const nextRev=(remote?.revision??cloud.revision??0)+1;
-    const encodedPayload=await encodeCloudPayload(db);
-    if(remote){
-      await sbFetch('/rest/v1/household_state?household_id=eq.'+encodeURIComponent(cloud.household_id),{method:'PATCH',headers:{'Prefer':'return=representation'},body:{payload:encodedPayload,revision:nextRev,updated_by:cloud.user?.id||null,updated_at:new Date().toISOString()}});
-    }else{
-      await sbFetch('/rest/v1/household_state',{method:'POST',headers:{'Prefer':'return=representation'},body:{household_id:cloud.household_id,payload:encodedPayload,revision:nextRev,updated_by:cloud.user?.id||null,updated_at:new Date().toISOString()}});
+    if ($('importDetailModal') && !$('importDetailModal').hidden) {
+      saveCurrentImportModal();
+      $('importDetailModal').hidden = true;
+      return;
     }
-    cloud.revision=nextRev;cloud.dirty=false;saveCloud();
-    if(manual)setCloudStatus('Dados enviados e sincronizados.','good');
-  }catch(e){cloud.dirty=true;saveCloud();setCloudStatus('Sincronização pendente: '+formatSupabaseError(e.message),'red')}
-  finally{cloudBusy=false}
-}
-function queueCloudSave(){
-  if(!cloudConnected()||!cloud.household_id)return;
-  cloud.dirty=true;saveCloud();clearTimeout(cloudSaveTimer);cloudSaveTimer=setTimeout(()=>pushCloud(false),1200);
-}
-$('saveCloudConfig').onclick=()=>{
-  cloud.url=normalizeSupabaseUrl($('sbUrl').value);
-  cloud.key=$('sbKey').value.trim();
-  saveCloud();
-  if(cloudConfigured())showToast('Configuração Supabase guardada.',{type:'success'});
-  else showToast('Verifica o formato do URL (https://xxxx.supabase.co) e a chave pública.',{type:'error'});
-};
-if($('testCloudDbBtn'))$('testCloudDbBtn').onclick=async()=>{
-  try{
-    cloud.url=normalizeSupabaseUrl($('sbUrl').value);
-    cloud.key=$('sbKey').value.trim();
-    saveCloud();
-    if(!cloudConfigured())throw new Error('Preenche primeiro um URL válido (*.supabase.co) e a chave pública anon.');
-    setCloudStatus('A verificar ligação e tabelas no Supabase...','');
-    await sbFetch('/rest/v1/household_state?select=household_id&limit=1',{auth:!!cloud.access_token});
-    setCloudStatus('Ligação confirmada! As tabelas da DuoFin existem e respondem corretamente.','good');
-    showToast('Base de dados Supabase verificada com sucesso.',{type:'success'});
-  }catch(e){
-    setCloudStatus(formatSupabaseError(e.message),'red');
+    if ($('mobileMoreDrawer') && !$('mobileMoreDrawer').hidden) {
+      closeMobileMoreDrawer();
+    }
   }
-};
-if($('copySetupSqlBtn'))$('copySetupSqlBtn').onclick=async()=>{
-  try{
-    await navigator.clipboard.writeText(SUPABASE_SETUP_SQL);
-    showToast('Script SQL copiado! Cola no SQL Editor do Supabase e clica em Run.',{type:'success',duration:5000});
-  }catch(_){
-    const box=$('sqlRawFallbackBox');
-    if(box){box.hidden=false;$('sqlRawTextarea').value=SUPABASE_SETUP_SQL;$('sqlRawTextarea').select();}
-  }
-};
-if($('toggleSqlPreviewBtn'))$('toggleSqlPreviewBtn').onclick=()=>{
-  const box=$('sqlRawFallbackBox');
-  if(!box)return;
-  box.hidden=!box.hidden;
-  if(!box.hidden)$('sqlRawTextarea').value=SUPABASE_SETUP_SQL;
-};
-$('cloudLogin').onclick=async()=>{
-  try{
-    cloud.url=normalizeSupabaseUrl($('sbUrl').value);cloud.key=$('sbKey').value.trim();
-    const data=await sbFetch('/auth/v1/token?grant_type=password',{method:'POST',auth:false,body:{email:$('cloudEmail').value.trim(),password:$('cloudPassword').value}});
-    cloud.access_token=data.access_token;cloud.refresh_token=data.refresh_token;cloud.expires_at=Date.now()+(data.expires_in||3600)*1000;cloud.user=data.user;saveCloud();await loadMembership();
-    showToast('Sessão iniciada com sucesso.',{type:'success'});
-  }catch(e){setCloudStatus('Não foi possível entrar: '+formatSupabaseError(e.message),'red')}
-};
-$('cloudSignup').onclick=async()=>{
-  try{
-    cloud.url=normalizeSupabaseUrl($('sbUrl').value);cloud.key=$('sbKey').value.trim();
-    const data=await sbFetch('/auth/v1/signup',{method:'POST',auth:false,body:{email:$('cloudEmail').value.trim(),password:$('cloudPassword').value}});
-    if(data.access_token){cloud.access_token=data.access_token;cloud.refresh_token=data.refresh_token;cloud.expires_at=Date.now()+(data.expires_in||3600)*1000;cloud.user=data.user;saveCloud();await loadMembership();}
-    else setCloudStatus('Conta criada. Confirma o email se o Supabase pedir verificação e depois entra.','good');
-  }catch(e){setCloudStatus('Não foi possível criar conta: '+formatSupabaseError(e.message),'red')}
-};
-$('cloudLogout').onclick=()=>{cloud={...cloud,access_token:'',refresh_token:'',expires_at:0,user:null,household_id:null,revision:null,dirty:false};saveCloud()};
-$('createHousehold').onclick=async()=>{
-  try{
-    const encodedInitial=await encodeCloudPayload(db);
-    const id=await sbFetch('/rest/v1/rpc/create_household',{method:'POST',body:{p_name:$('householdName').value.trim()||'Orçamento do casal',p_payload:encodedInitial}});
-    cloud.household_id=id;cloud.revision=1;cloud.dirty=false;saveCloud();await pullCloud(true);
-    showToast('Orçamento partilhado criado!',{type:'success'});
-  }catch(e){setCloudStatus('Erro ao criar orçamento partilhado: '+formatSupabaseError(e.message),'red')}
-};
-$('createInvite').onclick=async()=>{
-  try{
-    const code=await sbFetch('/rest/v1/rpc/create_household_invite',{method:'POST',body:{p_household:cloud.household_id}});
-    $('inviteResult').hidden=false;$('inviteResult').textContent='Código de convite (válido por 7 dias): '+code;
-  }catch(e){setCloudStatus('Erro ao gerar convite: '+formatSupabaseError(e.message),'red')}
-};
-$('joinHousehold').onclick=async()=>{
-  try{
-    const id=await sbFetch('/rest/v1/rpc/accept_household_invite',{method:'POST',body:{p_code:$('inviteCode').value.trim()}});
-    cloud.household_id=id;cloud.dirty=false;saveCloud();await pullCloud(true);
-    showToast('Associado ao orçamento partilhado!',{type:'success'});
-  }catch(e){setCloudStatus('Erro ao usar convite: '+formatSupabaseError(e.message),'red')}
-};
-$('syncNow').onclick=async()=>{try{if(cloud.dirty)await pushCloud(true);else await pullCloud(true)}catch(e){setCloudStatus(formatSupabaseError(e.message),'red')}};
-$('cloudPull').onclick=async()=>{try{cloud.dirty=false;await pullCloud(true)}catch(e){setCloudStatus(formatSupabaseError(e.message),'red')}};
-$('cloudPush').onclick=async()=>{try{await pushCloud(true)}catch(e){setCloudStatus(formatSupabaseError(e.message),'red')}};
-setInterval(()=>{if(document.visibilityState==='visible'&&cloudConnected()&&cloud.household_id&&!cloudBusy){if(cloud.dirty)pushCloud(false);else pullCloud(false).catch(()=>{})}},15000);
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&cloudConnected()&&cloud.household_id){if(cloud.dirty)pushCloud(false);else pullCloud(false).catch(()=>{})}});
-window.addEventListener('online',()=>{if(cloudConnected()&&cloud.household_id){if(cloud.dirty)pushCloud(false);else pullCloud(false).catch(()=>{})}});
-if('serviceWorker' in navigator && location.protocol.startsWith('http')){
-  window.addEventListener('load',()=>{navigator.serviceWorker.register('./sw.js').catch(()=>{})});
-}
+});
 
+$('person').innerHTML=db.settings.people.map(p=>`<option>${esc(p)}</option>`).join('')+'<option>Conta conjunta</option>';
 generateDueOccurrences();
-if(db.settings.autoAdjustBudgets)runAutoBudgetAdjustment(true);
-paintCloud();
+runAutoBudgetAdjustment(true);
+updateCloudUI();
 render();
-if(cloudConnected()&&cloud.household_id){
-  if(cloud.dirty)pushCloud(false);
-  else pullCloud(false).catch(()=>{});
+if(dbNeedsSync)queueCloudSave();
+
+if(loadCloudCfg()){
+ pullCloud(false);
+ setInterval(()=>{if(document.visibilityState==='visible')pullCloud(false);},15000);
+ document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pullCloud(false);});
 }
 
-if(localStorage.getItem(CHANGELOG_KEY)!==APP_VERSION){
-  setTimeout(()=>{if(!appLocked)openChangelogModal();},450);
-}
+if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js');
