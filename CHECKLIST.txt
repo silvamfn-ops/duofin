@@ -1,0 +1,10 @@
+CHECKLIST ANTES DE PUBLICAR
+[ ] HTTPS ativo e certificado válido
+[ ] index.html na raiz da publicação
+[ ] manifest.webmanifest acessível
+[ ] sw.js acessível
+[ ] icons/icon-192.png e icons/icon-512.png acessíveis
+[ ] Executado supabase/setup.sql no SQL Editor
+[ ] Configurados Project URL e chave pública nos dois telemóveis
+[ ] Testado login de cada adulto e convite de utilização única
+[ ] Exportada uma cópia de segurança inicial
